@@ -1,0 +1,20 @@
+# Local deployment configuration
+Frontend/js/config.js
+.clasp.json
+.clasp.json.*
+
+# Credentials and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local/editor/runtime files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
+coverage/
+*.log

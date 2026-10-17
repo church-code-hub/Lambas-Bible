@@ -8,8 +8,9 @@
     />
     <title>Lambas Bible</title>
 
+    <script src="./js/config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" defer></script>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
@@ -17,7 +18,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css" />
+    <link rel="stylesheet" href="./css/styles.css?v=2" />
   </head>
   <body data-theme="dark">
     <div id="toastContainer" class="toast-container"></div>
@@ -27,7 +28,11 @@
 
     <header class="top-app-bar">
       <div class="brand">
-        <img src="Assets/icons/new-icon-512.png" alt="App Icon" data-i18n-alt="appIconAlt" />
+        <img
+          src="Assets/icons/new-icon-512.png"
+          alt="App Icon"
+          data-i18n-alt="appIconAlt"
+        />
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
@@ -94,22 +99,8 @@
         >
           يرجى تسجيل الدخول بحساب Google المصرح له للبدء
         </p>
-        <div
-          id="g_id_onload"
-          data-client_id="759295584482-3qpocftq0uk3du9s3g77pi91apt323im.apps.googleusercontent.com"
-          data-callback="handleCredentialResponse"
-          data-auto_prompt="false"
-        ></div>
         <div style="display: flex; justify-content: center; margin-top: 10px">
-          <div
-            class="g_id_signin"
-            data-type="standard"
-            data-size="large"
-            data-theme="outline"
-            data-text="sign_in_with"
-            data-shape="rectangular"
-            data-logo_alignment="left"
-          ></div>
+          <div id="g_id_signin"></div>
         </div>
         <div
           id="loginError"
@@ -127,7 +118,13 @@
       <div id="dashboardView" style="display: none">
         <div class="user-profile-bar">
           <div class="user-info">
-            <img id="uAvatar" class="user-avatar" src="" alt="Avatar" data-i18n-alt="avatarAlt" />
+            <img
+              id="uAvatar"
+              class="user-avatar"
+              src=""
+              alt="Avatar"
+              data-i18n-alt="avatarAlt"
+            />
             <div class="user-details">
               <span id="uName" class="user-name">الاسم</span>
               <span id="uEmail" class="user-email">email@gmail.com</span>
@@ -211,7 +208,11 @@
         >
           بحث
         </button>
-        <div id="searchResults" style="margin-top: 15px" aria-live="polite"></div>
+        <div
+          id="searchResults"
+          style="margin-top: 15px"
+          aria-live="polite"
+        ></div>
       </div>
 
       <!-- 3.5 Card Share View -->
@@ -234,7 +235,11 @@
         >
           بحث عن الكارت
         </button>
-        <div id="shareResults" style="margin-top: 15px" aria-live="polite"></div>
+        <div
+          id="shareResults"
+          style="margin-top: 15px"
+          aria-live="polite"
+        ></div>
       </div>
 
       <!-- 3.6 Individual Card Preview View -->
@@ -486,7 +491,13 @@
             data-i18n="delayLabel"
             >مدة السماح بالتأخير (دقائق)</label
           >
-          <input type="number" id="cfgAcceptedDelay" min="0" max="240" step="1" />
+          <input
+            type="number"
+            id="cfgAcceptedDelay"
+            min="0"
+            max="240"
+            step="1"
+          />
 
           <label
             style="
@@ -573,6 +584,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js"></script>
+    <script src="./js/app.js?v=2"></script>
   </body>
 </html>

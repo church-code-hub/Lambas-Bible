@@ -1,0 +1,18 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --test tests/*.test.js
+      - run: node --check Frontend/js/app.js
+      - run: node --check Frontend/sw.js
+      - run: node --check < Backend/code.gs

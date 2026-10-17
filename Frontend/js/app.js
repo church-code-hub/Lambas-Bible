@@ -1,7 +1,6 @@
-      const API_URL =
-        "https://script.google.com/macros/s/AKfycbyPnUu7R0VaCrwyEYYW_YvyVI0q4g96OZLC9z5-MwTuL8Scw-0xa-_6-SfqCjgWw7KT/exec";
-      const GOOGLE_SHEET_URL =
-        "https://docs.google.com/spreadsheets/d/1jqkN7v_0Uk3m3p_gfoXRdF4Q1c9XDXank1fnVmsm7jU/edit?usp=sharing";
+      const APP_CONFIG = window.LAMBAS_CONFIG || {};
+      const API_URL = APP_CONFIG.apiUrl || "";
+      const GOOGLE_SHEET_URL = APP_CONFIG.googleSheetUrl || "";
 
       var currentUser = null;
       var googleIdToken = sessionStorage.getItem("google_id_token") || "";
@@ -324,6 +323,8 @@
         "Request failed": { ar: "فشل الطلب", en: "Request failed" },
         "duplicate attendee: ": { ar: "المخدوم مسجل بالفعل: ", en: "Attendee already exists: " },
         "card generation failed": { ar: "تم تسجيل المخدوم، لكن تعذر إنشاء البطاقة.", en: "Attendee was saved, but card generation failed." },
+        "Application is not configured.": { ar: "لم يتم إعداد إعدادات التطبيق المحلية.", en: "Local app configuration is missing." },
+        "Google sign-in could not be loaded.": { ar: "تعذر تحميل تسجيل الدخول عبر Google.", en: "Google sign-in could not be loaded." },
       };
 
       function translateText(text) {
@@ -388,6 +389,12 @@
         document.querySelectorAll(".card-result-status[data-i18n-key]").forEach((el) => {
           el.textContent = translations[lang][el.dataset.i18nKey];
         });
+        document.querySelectorAll(".admin-del-btn[data-i18n-key]").forEach((el) => {
+          el.textContent = translateText("Delete");
+        });
+        document.querySelectorAll(".admin-owner-tag[data-i18n-key]").forEach((el) => {
+          el.textContent = translateText("Owner");
+        });
         document.querySelectorAll(".search-empty[data-i18n-key]").forEach((el) => {
           el.textContent = "❌ " + translations[lang][el.dataset.i18nKey];
         });
@@ -423,6 +430,7 @@
       }
 
       async function apiCall(action, payload = {}) {
+        if (!API_URL) throw new Error("Application is not configured.");
         const requestBody = {
           ...payload,
           action: action,
@@ -604,6 +612,7 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
+        initializeGoogleSignIn();
         if (!navigator.onLine)
           document.getElementById("offlineOverlay").style.display = "block";
 
@@ -632,6 +641,32 @@
           showView("loginView", false);
         }
       });
+
+      function initializeGoogleSignIn() {
+        const clientId = APP_CONFIG.googleClientId;
+        const button = document.getElementById("g_id_signin");
+        if (!clientId || !button) {
+          showLoginError("Application is not configured.");
+          return;
+        }
+        if (!window.google || !google.accounts || !google.accounts.id) {
+          showLoginError("Google sign-in could not be loaded.");
+          return;
+        }
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleCredentialResponse,
+          auto_select: false,
+        });
+        google.accounts.id.renderButton(button, {
+          type: "standard",
+          size: "large",
+          theme: "outline",
+          text: "sign_in_with",
+          shape: "rectangular",
+          logo_alignment: "left",
+        });
+      }
 
       async function handleCredentialResponse(response) {
         const payload = parseJwt(response.credential);
@@ -762,10 +797,15 @@
         showView("resultView");
       }
 
+      function setCameraStatus(translationKey) {
+        const status = document.getElementById("cameraStatus");
+        status.setAttribute("data-i18n", translationKey);
+        status.textContent = translations[currentLang][translationKey];
+      }
+
       function startLiveScanner() {
         if (isScannerRunning) return;
-        document.getElementById("cameraStatus").innerText =
-          translations[currentLang].cameraStarting;
+        setCameraStatus("cameraStarting");
         const config = { fps: 10, qrbox: { width: 220, height: 220 } };
 
         try {
@@ -779,8 +819,7 @@
             )
             .then(() => {
               isScannerRunning = true;
-              document.getElementById("cameraStatus").innerText =
-                translations[currentLang].cameraActive;
+              setCameraStatus("cameraActive");
             })
             .catch(() => {
               html5QrCode
@@ -792,19 +831,16 @@
                 )
                 .then(() => {
                   isScannerRunning = true;
-                  document.getElementById("cameraStatus").innerText =
-                    translations[currentLang].cameraActive;
+                  setCameraStatus("cameraActive");
                 })
                 .catch(() => {
                   isScannerRunning = false;
-                  document.getElementById("cameraStatus").innerText =
-                    translations[currentLang].cameraUnavailable;
+                  setCameraStatus("cameraUnavailable");
                 });
             });
         } catch (err) {
           isScannerRunning = false;
-          document.getElementById("cameraStatus").innerText =
-            translations[currentLang].cameraError;
+          setCameraStatus("cameraError");
         }
       }
 
@@ -1042,6 +1078,7 @@
           }
 
           const response = await fetch(fetchUrl, { mode: "cors" });
+          if (!response.ok) throw new Error("Card image could not be loaded");
           const blob = await response.blob();
           const file = new File([blob], activePreviewCard.name + "_card.png", {
             type: "image/png",
@@ -1073,7 +1110,9 @@
           showToast("✅ Shared successfully", "success");
         } catch (e) {
           hideLoader();
-          window.open(activePreviewCard.driveUrl, "_blank");
+          if (e.name === "AbortError") return;
+          if (e.message && e.message.includes("البطاقة")) showToast(e.message, "error");
+          else window.open(activePreviewCard.driveUrl, "_blank", "noopener");
         }
       }
 
@@ -1191,14 +1230,17 @@
               if (!admin.isOwner) {
                 var delBtn = document.createElement("button");
                 delBtn.className = "admin-del-btn";
-                delBtn.innerText = currentLang === "ar" ? "حذف" : "Delete";
+                delBtn.dataset.i18nKey = "Delete";
+                delBtn.innerText = translateText("Delete");
                 delBtn.onclick = () => deleteAdmin(admin.email);
                 div.appendChild(delBtn);
               } else {
                 var tag = document.createElement("span");
                 tag.style.cssText =
                   "font-size:11px; color:var(--accent-gold); font-weight:bold;";
-                tag.innerText = currentLang === "ar" ? "المالك" : "Owner";
+                tag.className = "admin-owner-tag";
+                tag.dataset.i18nKey = "Owner";
+                tag.innerText = translateText("Owner");
                 div.appendChild(tag);
               }
               container.appendChild(div);

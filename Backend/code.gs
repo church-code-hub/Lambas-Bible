@@ -3,33 +3,41 @@
 // =========================================================================
 const SETTINGS_SHEET_NAME = "Settings";
 const DELAYS_SHEET_NAME = "Delays";
-const SECRET_KEY = "LambasBible2026_Secure_Key";
-const GOOGLE_CLIENT_ID =
-  "759295584482-3qpocftq0uk3du9s3g77pi91apt323im.apps.googleusercontent.com";
-const MAIN_FOLDER_ID = "1D5ElLa8-fNzShWqwgwcKQMC11XtfkE2z";
-const NEW_FOLDER_ID = "1ztX-7jxIwqz-q4bUiW_23ysWyZpuBGe9";
 
 const DEFAULT_SETTINGS = {
   startTime: "10:00",
   endTime: "12:00",
   acceptedDelay: 15,
-  password: "123",
   allowedDays: [0, 1, 2, 3, 4, 5, 6],
 };
 
 let cachedSettings_ = null;
 let cachedAdminsMap_ = null;
+let cachedScriptProperties_ = null;
+
+function getRequiredScriptProperty_(name) {
+  if (cachedScriptProperties_ === null) {
+    cachedScriptProperties_ =
+      PropertiesService.getScriptProperties().getProperties();
+  }
+  const value = cachedScriptProperties_[name];
+  if (!value || !String(value).trim()) {
+    throw new Error("Missing required Script Property: " + name);
+  }
+  return String(value).trim();
+}
 
 // =========================================================================
 // 🔐 Encryption Module (100 Characters)
 // =========================================================================
 function encryptId(id) {
   if (id === null || id === undefined || id === "") return "";
+  const secretKey = getRequiredScriptProperty_("QR_SECRET_KEY");
   let str = String(id).trim();
   let scrambled = "";
   for (let i = 0; i < str.length; i++) {
     let charCode =
-      str.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length);
+      str.charCodeAt(i) ^ secretKey.charCodeAt(i % secretKey.length);
     scrambled += String.fromCharCode(charCode);
   }
   let base64 = Utilities.base64Encode(scrambled);
@@ -39,7 +47,7 @@ function encryptId(id) {
     .replace(/=/g, "");
   let hash = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
-    str + SECRET_KEY,
+    str + secretKey,
   );
   let hashHex = hash
     .map((b) => (b < 0 ? b + 256 : b).toString(16).padStart(2, "0"))
@@ -53,6 +61,7 @@ function encryptId(id) {
 
 function decryptId(token) {
   if (token === null || token === undefined) return "";
+  const secretKey = getRequiredScriptProperty_("QR_SECRET_KEY");
   let cleanToken = String(token).trim();
   if (cleanToken.includes("id=")) {
     let match = cleanToken.match(/id=([^&#]+)/);
@@ -75,7 +84,7 @@ function decryptId(token) {
     let originalId = "";
     for (let i = 0; i < scrambled.length; i++) {
       let charCode =
-        scrambled.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length);
+        scrambled.charCodeAt(i) ^ secretKey.charCodeAt(i % secretKey.length);
       originalId += String.fromCharCode(charCode);
     }
     if (/^[0-9A-Za-z_-]+$/.test(originalId) && originalId.length > 0)
@@ -110,7 +119,11 @@ function doGet(e) {
     else if (action === "get_admins")
       result = { success: true, admins: getAdminsData() };
   } catch (err) {
-    result = { success: false, code: "SERVER_ERROR", message: "تعذر إتمام الطلب. حاول مرة أخرى." };
+    result = {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+    };
   }
   return responseJSON_(result);
 }
@@ -266,7 +279,7 @@ function verifyGoogleIdToken_(idToken) {
       tokenInfo.iss === "accounts.google.com" ||
       tokenInfo.iss === "https://accounts.google.com";
     if (
-      tokenInfo.aud !== GOOGLE_CLIENT_ID ||
+      tokenInfo.aud !== getRequiredScriptProperty_("GOOGLE_CLIENT_ID") ||
       !validIssuer ||
       !verifiedEmail ||
       !email ||
@@ -366,9 +379,15 @@ function addAdmin(email, name, password) {
     return { success: false, message: "❌ كلمة المرور غير صحيحة" };
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim()))
     return { success: false, message: "⚠️ بريد إلكتروني غير صالح" };
-  const cleanName = String(name || "").replace(/\s+/g, " ").trim();
+  const cleanName = String(name || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (cleanName.length > 100 || cleanName.startsWith("="))
-    return { success: false, code: "INVALID_NAME", message: "يجب أن يكون الاسم صالحاً وألا يتجاوز 100 حرف." };
+    return {
+      success: false,
+      code: "INVALID_NAME",
+      message: "يجب أن يكون الاسم صالحاً وألا يتجاوز 100 حرف.",
+    };
   try {
     let ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName("Admins");
@@ -394,7 +413,11 @@ function addAdmin(email, name, password) {
       admins: getAdminsData(),
     };
   } catch (e) {
-    return { success: false, code: "SERVER_ERROR", message: "تعذر إتمام الطلب. حاول مرة أخرى." };
+    return {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+    };
   }
 }
 
@@ -427,16 +450,26 @@ function deleteAdmin(email, password) {
     }
     return { success: false, message: "❌ لم يتم العثور على الخادم" };
   } catch (e) {
-    return { success: false, code: "SERVER_ERROR", message: "تعذر إتمام الطلب. حاول مرة أخرى." };
+    return {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+    };
   }
 }
 
 function updateAdminProfile(email, newName, password) {
   if (!verifySettingsPassword(password))
     return { success: false, message: "❌ كلمة المرور غير صحيحة" };
-  const cleanName = String(newName || "").replace(/\s+/g, " ").trim();
+  const cleanName = String(newName || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!cleanName || cleanName.length > 100 || cleanName.startsWith("="))
-    return { success: false, code: "INVALID_NAME", message: "يرجى إدخال اسم لا يتجاوز 100 حرف." };
+    return {
+      success: false,
+      code: "INVALID_NAME",
+      message: "يرجى إدخال اسم لا يتجاوز 100 حرف.",
+    };
   try {
     let ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName("Admins");
@@ -466,7 +499,11 @@ function updateAdminProfile(email, newName, password) {
       name: cleanName,
     };
   } catch (e) {
-    return { success: false, code: "SERVER_ERROR", message: "تعذر إتمام الطلب. حاول مرة أخرى." };
+    return {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+    };
   }
 }
 
@@ -477,13 +514,21 @@ function getSettingsSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SETTINGS_SHEET_NAME);
   if (!sheet) {
+    const initialPassword = getRequiredScriptProperty_(
+      "INITIAL_SETTINGS_PASSWORD",
+    );
+    if (initialPassword.length < 12) {
+      throw new Error(
+        "INITIAL_SETTINGS_PASSWORD must contain at least 12 characters",
+      );
+    }
     sheet = ss.insertSheet(SETTINGS_SHEET_NAME);
     sheet.getRange(1, 1, 6, 2).setValues([
       ["Key", "Value"],
       ["StartTime", DEFAULT_SETTINGS.startTime],
       ["EndTime", DEFAULT_SETTINGS.endTime],
       ["AcceptedDelay", DEFAULT_SETTINGS.acceptedDelay],
-      ["Password", DEFAULT_SETTINGS.password],
+      ["Password", initialPassword],
       ["AllowedDays", DEFAULT_SETTINGS.allowedDays.join(",")],
     ]);
   }
@@ -557,7 +602,11 @@ function saveSettings(
     }
     const delay = Number(acceptedDelay);
     if (newPassword && String(newPassword).trim().length < 8) {
-      return { success: false, code: "PASSWORD_TOO_SHORT", message: "يجب أن تتكون كلمة المرور الجديدة من 8 أحرف على الأقل." };
+      return {
+        success: false,
+        code: "PASSWORD_TOO_SHORT",
+        message: "يجب أن تتكون كلمة المرور الجديدة من 8 أحرف على الأقل.",
+      };
     }
     const days = Array.isArray(allowedDays)
       ? [
@@ -608,7 +657,11 @@ function saveSettings(
     cachedSettings_ = null;
     return { success: true, message: "✅ تم حفظ الإعدادات بنجاح" };
   } catch (e) {
-    return { success: false, code: "SERVER_ERROR", message: "تعذر إتمام الطلب. حاول مرة أخرى." };
+    return {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+    };
   }
 }
 
@@ -644,7 +697,10 @@ function searchCardForShare(name) {
             let file = DriveApp.getFileById(fileId);
             let parents = file.getParents();
             while (parents.hasNext()) {
-              if (parents.next().getId() === NEW_FOLDER_ID) {
+              if (
+                parents.next().getId() ===
+                getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID")
+              ) {
                 isNew = true;
                 break;
               }
@@ -670,27 +726,44 @@ function shareAndMoveCard(fileId) {
   if (!fileId) return { success: false };
   try {
     if (!/^[A-Za-z0-9_-]+$/.test(String(fileId))) {
-      return { success: false, code: "INVALID_CARD", message: "معرّف البطاقة غير صالح." };
+      return {
+        success: false,
+        code: "INVALID_CARD",
+        message: "معرّف البطاقة غير صالح.",
+      };
     }
-    const rosterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
+    const rosterSheet =
+      SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
     if (!rosterSheet || rosterSheet.getLastRow() < 2) {
-      return { success: false, code: "INVALID_CARD", message: "لم يتم العثور على البطاقة في سجل المخدومين." };
+      return {
+        success: false,
+        code: "INVALID_CARD",
+        message: "لم يتم العثور على البطاقة في سجل المخدومين.",
+      };
     }
-    const rosterCards = rosterSheet.getRange(2, 3, rosterSheet.getLastRow() - 1, 1).getValues();
+    const rosterCards = rosterSheet
+      .getRange(2, 3, rosterSheet.getLastRow() - 1, 1)
+      .getValues();
     const isRegisteredCard = rosterCards.some((row) => {
       const match = String(row[0] || "").match(/\/d\/([A-Za-z0-9_-]+)/);
       return match && match[1] === String(fileId);
     });
     if (!isRegisteredCard) {
-      return { success: false, code: "INVALID_CARD", message: "لم يتم العثور على البطاقة في سجل المخدومين." };
+      return {
+        success: false,
+        code: "INVALID_CARD",
+        message: "لم يتم العثور على البطاقة في سجل المخدومين.",
+      };
     }
     let file = DriveApp.getFileById(fileId);
-    let mainFolder = DriveApp.getFolderById(MAIN_FOLDER_ID);
+    let mainFolder = DriveApp.getFolderById(
+      getRequiredScriptProperty_("ACTIVE_CARDS_FOLDER_ID"),
+    );
     let parents = file.getParents();
     let wasNew = false;
     while (parents.hasNext()) {
       let p = parents.next();
-      if (p.getId() === NEW_FOLDER_ID) {
+      if (p.getId() === getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID")) {
         wasNew = true;
         p.removeFile(file);
       }
@@ -698,7 +771,11 @@ function shareAndMoveCard(fileId) {
     mainFolder.addFile(file);
     return { success: true };
   } catch (e) {
-    return { success: false, code: "SERVER_ERROR", message: "تعذر نقل البطاقة. تحقق من صلاحيات Drive وحاول مجدداً." };
+    return {
+      success: false,
+      code: "SERVER_ERROR",
+      message: "تعذر نقل البطاقة. تحقق من صلاحيات Drive وحاول مجدداً.",
+    };
   }
 }
 
@@ -1140,19 +1217,22 @@ function saveStudentAndGenerateCard_(name, adminEmail) {
 
 function generateAllCardsFromRoster(targetStudentId) {
   try {
-    const FOLDER_ID = NEW_FOLDER_ID;
-    const SQUARE_TEMPLATE_IMAGE_ID = "1v7tfI_HGVV6iZDqDkxONRGcNPREdOOyD";
-    const BLANK_SLIDES_TEMPLATE_ID =
-      "1XA_RWlFpT5mzic-U0BfWlNGc3XglRxvDSpC52QTWixs";
+    const folderId = getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID");
+    const squareTemplateImageId = getRequiredScriptProperty_(
+      "CARD_TEMPLATE_IMAGE_ID",
+    );
+    const blankSlidesTemplateId = getRequiredScriptProperty_(
+      "CARD_SLIDES_TEMPLATE_ID",
+    );
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const rosterSheet = ss.getSheetByName("Roster");
     const rosterLastRow = rosterSheet.getLastRow();
     if (rosterLastRow < 2) return { success: true, cards: [] };
     const data = rosterSheet.getRange(2, 1, rosterLastRow - 1, 3).getValues();
-    const folder = DriveApp.getFolderById(FOLDER_ID);
+    const folder = DriveApp.getFolderById(folderId);
     const templateImageBlob = DriveApp.getFileById(
-      SQUARE_TEMPLATE_IMAGE_ID,
+      squareTemplateImageId,
     ).getBlob();
 
     let generatedCards = [];
@@ -1172,7 +1252,7 @@ function generateAllCardsFromRoster(targetStudentId) {
         .getBlob()
         .setName(studentName + ".png");
 
-      const tempFile = DriveApp.getFileById(BLANK_SLIDES_TEMPLATE_ID).makeCopy(
+      const tempFile = DriveApp.getFileById(blankSlidesTemplateId).makeCopy(
         "Temp_" + studentId,
         folder,
       );
@@ -1233,6 +1313,10 @@ function generateAllCardsFromRoster(targetStudentId) {
     }
     return { success: true, cards: generatedCards };
   } catch (e) {
-    return { success: false, code: "CARD_GENERATION_FAILED", message: "تعذر إنشاء بطاقة المخدوم." };
+    return {
+      success: false,
+      code: "CARD_GENERATION_FAILED",
+      message: "تعذر إنشاء بطاقة المخدوم.",
+    };
   }
 }
