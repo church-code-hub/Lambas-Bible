@@ -119,6 +119,13 @@ test("allocates the next ID after a successful unique attendee insert", () => {
     ["ID", "Name", "Card URL"],
     [8, "Alice", ""],
   ]);
+  context.getSettings = () => ({
+    startTime: "10:00",
+    endTime: "12:00",
+    acceptedDelay: 15,
+    allowedDays: [0, 1, 2, 3, 4, 5, 6],
+  });
+  context.isAttendanceTimeAllowedAt_ = () => false;
 
   const result = context.saveStudentAndGenerateCard_(
     "Bob",
@@ -215,4 +222,99 @@ test("check_auth returns the email verified from the ID token", () => {
   assert.equal(result.authorized, true);
   assert.equal(result.email, "admin@example.com");
   assert.equal(result.adminName, "Test Admin");
+});
+
+test("evaluates the meeting schedule against the captured event timestamp", () => {
+  const { context } = createBackendContext();
+  const eventTime = new Date(2026, 9, 18, 11, 0, 0);
+  const settings = {
+    startTime: "10:00",
+    endTime: "12:00",
+    acceptedDelay: 15,
+    allowedDays: [eventTime.getDay()],
+  };
+
+  assert.equal(context.isAttendanceTimeAllowedAt_(eventTime, settings), true);
+  assert.equal(
+    context.isAttendanceTimeAllowedAt_(new Date(2026, 9, 18, 13, 0, 0), settings),
+    false,
+  );
+});
+
+test("does not apply an offline event twice when the client retries sync", () => {
+  const { context } = createBackendContext();
+  const rows = [["Event ID", "Status", "Event Timestamp", "Result JSON", "Completed At"]];
+  let applyCount = 0;
+  const eventSheet = {
+    getLastRow: () => rows.length,
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues: () => rows.slice(row - 1, row - 1 + rowCount).map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValues: (values) => values.forEach((valueRow, rowOffset) => valueRow.forEach((value, columnOffset) => { rows[row - 1 + rowOffset][column - 1 + columnOffset] = value; })),
+      };
+    },
+    appendRow: (row) => rows.push(row),
+  };
+  const spreadsheet = {
+    getSheetByName: (name) => name === "Offline Events" ? eventSheet : null,
+    insertSheet: () => eventSheet,
+  };
+  context.SpreadsheetApp.getActiveSpreadsheet = () => spreadsheet;
+  context.saveStudentAndGenerateCard_ = (name, email, options) => {
+    applyCount += 1;
+    return { success: true, name, email, timestamp: options.timestamp.toISOString() };
+  };
+  const event = {
+    eventId: "offline-event-12345678",
+    type: "add_student",
+    name: "Offline attendee",
+    attendIfOpen: true,
+    queuedBy: "admin@example.com",
+    timestamp: new Date().toISOString(),
+  };
+
+  const first = context.syncOfflineEvents_([event], "admin@example.com");
+  const retry = context.syncOfflineEvents_([event], "admin@example.com");
+
+  assert.equal(first.results[0].status, "complete");
+  assert.equal(retry.results[0].status, "complete");
+  assert.equal(applyCount, 1);
+});
+
+test("preserves offline add time and honors the do-not-attend choice", () => {
+  const { context, rosterSheet } = createBackendContext();
+  const newRows = [];
+  const attendanceRows = [["ID", "Name"], [1, "Header"]];
+  const checkinRows = [["ID", "Name", "Check-in"]];
+  const appendOnlySheet = (rows) => ({ appendRow: (row) => rows.push(row) });
+  const newSheet = appendOnlySheet(newRows);
+  const attendanceSheet = appendOnlySheet(attendanceRows);
+  const checkinSheet = appendOnlySheet(checkinRows);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName(name) {
+      return ({
+        Roster: rosterSheet,
+        New: newSheet,
+        Attendance: attendanceSheet,
+        "Check-in & Check-out": checkinSheet,
+      })[name] || null;
+    },
+  });
+  context.getSettings = () => ({
+    startTime: "10:00",
+    endTime: "12:00",
+    acceptedDelay: 15,
+    allowedDays: [0, 1, 2, 3, 4, 5, 6],
+  });
+  context.isAttendanceTimeAllowedAt_ = () => true;
+  const eventTime = new Date("2026-10-18T10:30:00.000Z");
+
+  const result = context.saveStudentAndGenerateCard_("Offline person", "admin@example.com", {
+    timestamp: eventTime,
+    attendIfOpen: false,
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(newRows[0][0].toISOString(), eventTime.toISOString());
+  assert.equal(checkinRows.length, 1);
 });

@@ -204,6 +204,9 @@
           transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
           filter 0.25s;
       }
+      .icon-btn[hidden] {
+        display: none;
+      }
       .icon-btn:hover {
         transform: scale(1.1);
         filter: brightness(1.15);
@@ -872,6 +875,54 @@
         font-size: 13px;
         z-index: 99999;
         box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5);
+      }
+
+      .sync-status {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1001;
+        max-width: min(420px, calc(100vw - 40px));
+        padding: 10px 14px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--app-bar-bg);
+        color: var(--text-main);
+        font-size: 13px;
+        font-weight: 700;
+        backdrop-filter: blur(16px);
+      }
+        .sync-status:focus-visible {
+          outline: 3px solid #38bdf8;
+          outline-offset: 2px;
+        }
+
+      .attendance-choice {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin: 4px 0 12px;
+        padding: 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        color: var(--text-main);
+        background: var(--chip-bg);
+        font-size: 14px;
+        line-height: 1.45;
+        cursor: pointer;
+      }
+
+      .attendance-choice input {
+        flex: 0 0 auto;
+        width: 18px;
+        height: 18px;
+        margin: 1px 0 0;
+        accent-color: var(--accent-gold);
+      }
+
+      @media (max-width: 480px) {
+        .sync-status { right: 10px; bottom: 10px; }
+        #offlineOverlay { bottom: 64px; }
       }
 
       @media (max-width: 480px) {

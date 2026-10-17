@@ -9,7 +9,7 @@
     <title>Lambas Bible</title>
 
     <script src="./js/config.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="./vendor/html5-qrcode.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" defer></script>
     <link
       rel="stylesheet"
@@ -18,18 +18,26 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=3" />
+    <link rel="stylesheet" href="./css/styles.css?v=5" />
   </head>
   <body data-theme="dark">
     <div id="toastContainer" class="toast-container"></div>
     <div id="offlineOverlay" data-i18n="offlineMsg">
       ⚠️ لا توجد اتصال بالإنترنت، يرجى التحقق من الشبكة
     </div>
+    <button
+      id="syncStatus"
+      class="sync-status"
+      type="button"
+      onclick="syncOfflineQueue()"
+      aria-live="polite"
+      hidden
+    ></button>
 
     <header class="top-app-bar">
       <div class="brand">
         <img
-          src="Assets/icons/new-icon-512.png"
+          src="Assets/icons/PWA-ICON-192.png"
           alt="App Icon"
           data-i18n-alt="appIconAlt"
         />
@@ -57,9 +65,11 @@
         </button>
         <button
           class="icon-btn"
+          id="adminToolbarButton"
           onclick="openAdminSettings()"
           title=" إدارة الخدام"
           data-i18n-title="adminTooltip"
+          hidden
         >
           <i class="fa-solid fa-user-shield"></i>
         </button>
@@ -307,6 +317,12 @@
           data-i18n-placeholder="studentNamePlaceholder"
           autocomplete="off"
         />
+        <label class="attendance-choice" for="attendNewStudent">
+          <input type="checkbox" id="attendNewStudent" checked />
+          <span data-i18n="attendNewStudent"
+            >Mark present if the meeting is open</span
+          >
+        </label>
         <button
           class="btn"
           id="btnAddStudent"
@@ -584,6 +600,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js?v=3"></script>
+    <script src="./js/app.js?v=5"></script>
   </body>
 </html>

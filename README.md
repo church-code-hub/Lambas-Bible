@@ -25,7 +25,9 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 3. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
 4. Run the checks with `node --test tests/*.test.js`.
 
-Google Identity Services, the QR scanner library, and icon fonts are loaded from external CDNs. Attendance and administration actions require a network connection.
+After one successful online load, a previously authenticated user can scan QR cards and queue new attendees while offline. Events and device timestamps are stored in IndexedDB on that device and sync, in timestamp order, when connectivity returns and the same authorized account is available. A fresh login, name search, card operations, and management actions still require a connection. Offline device clocks are not a tamper-proof time source; the backend rejects events more than seven days old or more than five minutes in the future. Keep devices physically controlled and review synced timestamps.
+
+The QR decoder is bundled locally for offline camera scanning. Google sign-in and Font Awesome still load externally. The sync ledger is stored in an `Offline Events` spreadsheet tab, created automatically on the first sync.
 
 ## Open From GitHub
 
@@ -53,7 +55,7 @@ Deploy `Backend/code.gs` as a Google Apps Script web app. In the Apps Script pro
 | `CARD_TEMPLATE_IMAGE_ID`    | Drive image used as the card background                                                                      |
 | `CARD_SLIDES_TEMPLATE_ID`   | Google Slides template used to generate cards                                                                |
 
-The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, and `Delays` are created by the backend when needed.
+The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, `Delays`, and `Offline Events` are created by the backend when needed.
 
 ## GitHub Safety
 

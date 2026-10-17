@@ -9,6 +9,8 @@
       var isProcessingScan = false;
       var isNameSearchRunning = false;
       var isCardSearchRunning = false;
+      var isSyncingOfflineQueue = false;
+      var offlineDatabasePromise = null;
       var verifiedPassword = "";
       var currentLoaderText = "";
       var currentActiveViewId = "loginView";
@@ -20,6 +22,19 @@
       const translations = {
         ar: {
           offlineMsg: "⚠️ لا توجد اتصال بالإنترنت، يرجى التحقق من الشبكة",
+          offlineQueueStatus: "سيتم حفظ الإجراءات على هذا الجهاز حتى عودة الاتصال.",
+          queuedEventsCount: "إجراءات محفوظة للمزامنة: ",
+          offlineScanQueued: "تم حفظ المسح على هذا الجهاز وسيُسجل عند عودة الاتصال.",
+          offlineAddQueued: "تم حفظ إضافة المخدوم على هذا الجهاز وستتم مزامنتها عند عودة الاتصال.",
+          offlineSyncing: "جارٍ مزامنة الإجراءات المحفوظة...",
+          offlineNeedsLogin: "سجّل الدخول بحساب مخول عند عودة الاتصال لمزامنة الإجراءات.",
+          offlineStorageError: "تعذر حفظ الإجراء دون اتصال على هذا الجهاز.",
+          offlineSyncFailed: "تعذرت مزامنة الإجراءات المحفوظة. ستظل محفوظة على هذا الجهاز للمحاولة لاحقاً.",
+          offlineQueuedTitle: "محفوظ للمزامنة",
+          offlineSyncMessage: "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
+          offlineAccountMismatch: "بعض الإجراءات المحفوظة تخص حساباً آخر. سجّل الدخول بذلك الحساب لمزامنتها.",
+          attendNewStudent: "تسجيل حضور المخدوم إذا كان وقت الاجتماع مفتوحاً",
+          searchRequiresInternet: "البحث بالاسم يحتاج إلى اتصال بالإنترنت. يمكن استخدام مسح QR دون اتصال.",
           home: "الرئيسية",
           loading: "جاري معالجة الطلب...",
           loginTitle: "🔐 تسجيل الدخول للنظام",
@@ -90,6 +105,19 @@
         },
         en: {
           offlineMsg: "⚠️ No internet connection, please check your network",
+          offlineQueueStatus: "Actions will be saved on this device until the connection returns.",
+          queuedEventsCount: "Actions waiting to sync: ",
+          offlineScanQueued: "Scan saved on this device and will be recorded when online.",
+          offlineAddQueued: "Attendee addition saved on this device and will sync when online.",
+          offlineSyncing: "Syncing saved actions...",
+          offlineNeedsLogin: "Sign in with an authorized account when online to sync saved actions.",
+          offlineStorageError: "Could not save this offline action on the device.",
+          offlineSyncFailed: "Saved actions could not sync. They remain on this device for another attempt.",
+          offlineQueuedTitle: "Saved for sync",
+          offlineSyncMessage: "This action will be recorded after connection and account verification return.",
+          offlineAccountMismatch: "Some saved actions belong to another account. Sign in with that account to sync them.",
+          attendNewStudent: "Record attendance if the meeting is open",
+          searchRequiresInternet: "Name search requires internet. QR scanning can be queued offline.",
           home: "Home",
           loading: "Processing request...",
           loginTitle: "🔐 System Login",
@@ -255,6 +283,7 @@
         "خطأ في إعداد النظام": { ar: "خطأ في إعداد النظام", en: "System configuration error" },
         "تحقق من وجود شيت Roster وCheck-in & Check-out.": { ar: "تحقق من وجود شيت Roster وCheck-in & Check-out.", en: "Make sure the Roster and Check-in & Check-out sheets exist." },
         "تعذر إتمام تسجيل الحضور. حاول مرة أخرى.": { ar: "تعذر إتمام تسجيل الحضور. حاول مرة أخرى.", en: "Attendance could not be recorded. Please try again." },
+        "خاصية QR_SECRET_KEY غير مضبوطة في Script Properties في Apps Script.": { ar: "خاصية QR_SECRET_KEY غير مضبوطة في Script Properties في Apps Script.", en: "The QR_SECRET_KEY Script Property is missing from the Apps Script project." },
         "تعذر نقل البطاقة. تحقق من صلاحيات Drive وحاول مجدداً.": { ar: "تعذر نقل البطاقة. تحقق من صلاحيات Drive وحاول مجدداً.", en: "Could not move the card. Check Drive permissions and try again." },
         "طلب غير صالح": { ar: "طلب غير صالح", en: "Invalid request" },
         "إجراء غير معروف": { ar: "إجراء غير معروف", en: "Unknown action" },
@@ -344,6 +373,7 @@
         }
         if (backendMsgMap[text]) return backendMsgMap[text][currentLang] || text;
         if (uiMessages[text]) return uiMessages[text][currentLang] || text;
+        if (translations[currentLang][text]) return translations[currentLang][text];
         for (const [source, translationsForMessage] of Object.entries(backendMsgMap)) {
           if (text.startsWith(source)) {
             return (translationsForMessage[currentLang] || source) + text.slice(source.length);
@@ -361,6 +391,7 @@
         root.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
         document.getElementById("langLabel").innerText =
           lang === "ar" ? "EN" : "AR";
+        updateOfflineStatus();
 
         document.querySelectorAll("[data-i18n]").forEach((el) => {
           const key = el.getAttribute("data-i18n");
@@ -441,7 +472,7 @@
           requestId: "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         };
         const controller = new AbortController();
-        const timeoutMs = action === "add_student" ? 120000 : 30000;
+        const timeoutMs = ["add_student", "sync_offline_events"].includes(action) ? 180000 : 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
           const response = await fetch(API_URL, {
@@ -460,6 +491,121 @@
         } finally {
           clearTimeout(timeoutId);
         }
+      }
+
+      function openOfflineDatabase() {
+        if (!window.indexedDB) return Promise.reject(new Error("IndexedDB unavailable"));
+        if (!offlineDatabasePromise) {
+          offlineDatabasePromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open("lambas-attendance-offline", 1);
+            request.onupgradeneeded = () => {
+              if (!request.result.objectStoreNames.contains("events")) {
+                request.result.createObjectStore("events", { keyPath: "eventId" });
+              }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error("Could not open offline queue"));
+          });
+        }
+        return offlineDatabasePromise;
+      }
+
+      async function saveOfflineEvent(event) {
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("events", "readwrite");
+          transaction.objectStore("events").put(event);
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not save offline event"));
+          transaction.onabort = () => reject(transaction.error || new Error("Offline save was cancelled"));
+        });
+        await updateOfflineStatus();
+      }
+
+      async function getOfflineEvents() {
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("events", "readonly").objectStore("events").getAll();
+          request.onsuccess = () => resolve(request.result.sort((a, b) => a.timestamp.localeCompare(b.timestamp)));
+          request.onerror = () => reject(request.error || new Error("Could not read offline queue"));
+        });
+      }
+
+      async function removeOfflineEvent(eventId) {
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("events", "readwrite");
+          transaction.objectStore("events").delete(eventId);
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not update offline queue"));
+        });
+      }
+
+      async function queueOfflineEvent(event) {
+        if (!currentUser || !googleIdToken) throw new Error("Offline actions require a previously authenticated session.");
+        const queuedEvent = {
+          ...event,
+          eventId: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          queuedBy: currentUser.email,
+        };
+        await saveOfflineEvent(queuedEvent);
+        return queuedEvent;
+      }
+
+      async function updateOfflineStatus() {
+        const status = document.getElementById("syncStatus");
+        const offlineOverlay = document.getElementById("offlineOverlay");
+        offlineOverlay.style.display = navigator.onLine ? "none" : "block";
+        status.style.bottom = navigator.onLine ? "20px" : "70px";
+        try {
+          const events = await getOfflineEvents();
+          const count = events.length;
+          status.hidden = count === 0 && navigator.onLine;
+          const hasOtherAccountEvents = currentUser && events.some((event) => event.queuedBy !== currentUser.email);
+          status.textContent = isSyncingOfflineQueue && navigator.onLine
+            ? translations[currentLang].offlineSyncing
+            : count && (!currentUser || !googleIdToken)
+              ? translations[currentLang].offlineNeedsLogin + ` (${translations[currentLang].queuedEventsCount}${count})`
+              : hasOtherAccountEvents
+            ? translations[currentLang].offlineAccountMismatch
+            : !navigator.onLine
+              ? translations[currentLang].offlineQueueStatus + (count ? ` (${translations[currentLang].queuedEventsCount}${count})` : "")
+              : count ? translations[currentLang].queuedEventsCount + count : "";
+        } catch (error) {
+          status.hidden = navigator.onLine;
+          status.textContent = navigator.onLine ? "" : translations[currentLang].offlineQueueStatus;
+        }
+      }
+
+      async function syncOfflineQueue(targetEventId = "") {
+        if (isSyncingOfflineQueue || !navigator.onLine || !currentUser || !googleIdToken) return null;
+        isSyncingOfflineQueue = true;
+        let targetResult = null;
+        await updateOfflineStatus();
+        try {
+          let events = await getOfflineEvents();
+          while (events.length && navigator.onLine && currentUser && googleIdToken) {
+            const event = events[0];
+            if (event.queuedBy !== currentUser.email) break;
+            const response = await apiCall("sync_offline_events", { events: [event] });
+            if (!response || !response.success || !Array.isArray(response.results)) break;
+            const eventResult = response.results[0];
+            if (!eventResult || eventResult.status !== "complete") break;
+            await removeOfflineEvent(event.eventId);
+            const result = eventResult.result || {};
+            if (event.eventId === targetEventId) targetResult = result;
+            if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
+            else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
+            events = await getOfflineEvents();
+          }
+        } catch (error) {
+          if (currentUser && googleIdToken) showToast(translations[currentLang].offlineSyncFailed, "error");
+        } finally {
+          isSyncingOfflineQueue = false;
+          await updateOfflineStatus();
+        }
+        return targetResult;
       }
 
       function extractId(text) {
@@ -551,6 +697,10 @@
         });
 
         const homeBtn = document.getElementById("homeBtn");
+        const adminToolbarButton = document.getElementById("adminToolbarButton");
+        if (adminToolbarButton) {
+          adminToolbarButton.hidden = !currentUser || viewId === "loginView";
+        }
         if (viewId === "dashboardView" || viewId === "loginView") {
           homeBtn.style.display = "none";
         } else {
@@ -601,28 +751,27 @@
         showView("scheduleSettingsView");
       }
 
-      window.addEventListener(
-        "online",
-        () =>
-          (document.getElementById("offlineOverlay").style.display = "none"),
-      );
-      window.addEventListener(
-        "offline",
-        () =>
-          (document.getElementById("offlineOverlay").style.display = "block"),
-      );
+      window.addEventListener("online", async () => {
+        await updateOfflineStatus();
+        await syncOfflineQueue();
+      });
+      window.addEventListener("offline", updateOfflineStatus);
 
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
-        initializeGoogleSignIn();
-        if (!navigator.onLine)
-          document.getElementById("offlineOverlay").style.display = "block";
+        if (navigator.onLine) initializeGoogleSignIn();
+        await updateOfflineStatus();
 
         const savedUser = localStorage.getItem("app_user");
         if (savedUser && googleIdToken) {
           try {
             currentUser = JSON.parse(savedUser);
+            if (!navigator.onLine) {
+              setupUserProfileUI();
+              await updateOfflineStatus();
+              return;
+            }
             showLoader();
             const authRes = await apiCall("check_auth", {
               email: currentUser.email,
@@ -632,6 +781,7 @@
               if (authRes.adminName) currentUser.name = authRes.adminName;
               setupUserProfileUI();
               checkDirectUrlScan();
+              await syncOfflineQueue();
             } else {
               logoutUser("❌ Unauthorized account.");
             }
@@ -695,6 +845,7 @@
             localStorage.setItem("app_user", JSON.stringify(currentUser));
             setupUserProfileUI();
             checkDirectUrlScan();
+            await syncOfflineQueue();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
             sessionStorage.removeItem("google_id_token");
@@ -792,6 +943,7 @@
           warn: "#d97706",
           error: "#ef4444",
           closed: "#d97706",
+          queued: "#0284c7",
         };
         var color = COLORS[r.kind] || "#d97706";
         document.getElementById("rIcon").innerHTML =
@@ -900,26 +1052,32 @@
           });
           return;
         }
-        showLoader();
+        if (!currentUser || !googleIdToken) {
+          renderResult({ kind: "error", title: "Sign-in required", message: "offlineNeedsLogin" });
+          return;
+        }
         try {
-          const res = await apiCall("scan", {
-            id: id,
-            email: currentUser ? currentUser.email : "",
-          });
+          const queuedEvent = await queueOfflineEvent({ type: "scan", qrText: id });
+          if (!navigator.onLine) {
+            renderResult({ kind: "queued", title: "offlineQueuedTitle", name: "", message: "offlineScanQueued" });
+            return;
+          }
+          showLoader();
+          const res = await syncOfflineQueue(queuedEvent.eventId);
           hideLoader();
-          if (res && (res.code === "AUTH_INVALID" || res.code === "AUTH_DENIED")) return;
-          renderResult(res);
+          if (res) renderResult(res);
+          else renderResult({ kind: "queued", title: "offlineQueuedTitle", name: "", message: "offlineScanQueued" });
         } catch (e) {
           hideLoader();
-          renderResult({
-            kind: "error",
-            title: "Connection Error",
-            message: "Failed to connect to server",
-          });
+          renderResult({ kind: "error", title: "Error", message: "offlineStorageError" });
         }
       }
 
       async function processDirectAttendance(rawId) {
+        if (!navigator.onLine) {
+          showToast(translateText("searchRequiresInternet"), "info");
+          return;
+        }
         showLoader();
         try {
           const res = await apiCall("scan", {
@@ -945,6 +1103,10 @@
         var resDiv = document.getElementById("searchResults");
         if (!name) {
           showToast("⚠️ Please enter a name", "error");
+          return;
+        }
+        if (!navigator.onLine) {
+          showToast(translateText("searchRequiresInternet"), "info");
           return;
         }
 
@@ -1001,6 +1163,10 @@
         var resDiv = document.getElementById("shareResults");
         if (!name) {
           showToast("⚠️ Please enter a servant name", "error");
+          return;
+        }
+        if (!navigator.onLine) {
+          showToast(translateText("searchRequiresInternet"), "info");
           return;
         }
 
@@ -1140,6 +1306,7 @@
 
       async function submitNewStudent() {
         var name = document.getElementById("newStudentName").value.trim();
+        const attendIfOpen = document.getElementById("attendNewStudent").checked;
         const submitButton = document.getElementById("btnAddStudent");
         if (submitButton.disabled) return;
         if (!name) {
@@ -1148,13 +1315,31 @@
         }
         submitButton.disabled = true;
         submitButton.setAttribute("aria-busy", "true");
-        showLoader("Registering & generating card...");
+        const showQueuedResult = () => {
+          const resultContainer = document.getElementById("addResult");
+          resultContainer.replaceChildren();
+          const status = document.createElement("p");
+          status.dataset.message = "offlineAddQueued";
+          status.textContent = translations[currentLang].offlineAddQueued;
+          resultContainer.appendChild(status);
+          document.getElementById("newStudentName").value = "";
+          showToast(translations[currentLang].offlineAddQueued, "info");
+        };
         try {
-          const res = await apiCall("add_student", {
-            name: name,
-            email: currentUser ? currentUser.email : "",
-          });
+          if (!currentUser || !googleIdToken) throw new Error("Offline actions require a signed-in account.");
+          const queuedEvent = await queueOfflineEvent({ type: "add_student", name: name, attendIfOpen: attendIfOpen });
+          if (!navigator.onLine) {
+            showQueuedResult();
+            return;
+          }
+
+          showLoader("Registering & generating card...");
+          const res = await syncOfflineQueue(queuedEvent.eventId);
           hideLoader();
+          if (!res) {
+            showQueuedResult();
+            return;
+          }
           if (res && res.success) {
             const resultContainer = document.getElementById("addResult");
             resultContainer.replaceChildren();
@@ -1187,7 +1372,8 @@
             showToast(message, "error");
           }
         } catch (e) {
-          showToast("Server connection error", "error");
+          hideLoader();
+          showToast(navigator.onLine ? "Server connection error" : translations[currentLang].offlineStorageError, "error");
         } finally {
           hideLoader();
           submitButton.disabled = false;

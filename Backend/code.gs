@@ -3,6 +3,7 @@
 // =========================================================================
 const SETTINGS_SHEET_NAME = "Settings";
 const DELAYS_SHEET_NAME = "Delays";
+const INITIAL_SETTINGS_PASSWORD_PROPERTY = "INITIAL_SETTINGS_PASSWORD";
 
 const DEFAULT_SETTINGS = {
   startTime: "10:00",
@@ -15,14 +16,14 @@ let cachedSettings_ = null;
 let cachedAdminsMap_ = null;
 let cachedScriptProperties_ = null;
 
-function getRequiredScriptProperty_(name) {
+function getRequiredScriptProperty_(propertyKey) {
   if (cachedScriptProperties_ === null) {
     cachedScriptProperties_ =
       PropertiesService.getScriptProperties().getProperties();
   }
-  const value = cachedScriptProperties_[name];
+  const value = cachedScriptProperties_[propertyKey];
   if (!value || !String(value).trim()) {
-    throw new Error("Missing required Script Property: " + name);
+    throw new Error("Missing required Script Property: " + propertyKey);
   }
   return String(value).trim();
 }
@@ -154,6 +155,8 @@ function doPost(e) {
       };
     } else if (!isEmailAllowed(identity.email)) {
       result = authorizationDenied_();
+    } else if (action === "sync_offline_events") {
+      result = syncOfflineEvents_(data.events, identity.email);
     } else if (action === "scan") {
       result = withScriptLock_(() => processScan(data.id, identity.email));
     } else if (action === "search")
@@ -175,7 +178,9 @@ function doPost(e) {
         ),
       );
     else if (action === "add_student")
-      result = saveStudentAndGenerateCard_(data.name, identity.email);
+      result = saveStudentAndGenerateCard_(data.name, identity.email, {
+        attendIfOpen: data.attendIfOpen !== false,
+      });
     else if (action === "get_admins")
       result = { success: true, admins: getAdminsData() };
     else if (action === "add_admin")
@@ -207,6 +212,152 @@ function responseJSON_(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(
     ContentService.MimeType.JSON,
   );
+}
+
+function getOfflineEventsSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("Offline Events");
+  if (!sheet) {
+    sheet = ss.insertSheet("Offline Events");
+    sheet
+      .getRange(1, 1, 1, 5)
+      .setValues([
+        [
+          "Event ID",
+          "Status",
+          "Event Timestamp",
+          "Result JSON",
+          "Completed At",
+        ],
+      ]);
+  }
+  return sheet;
+}
+
+function syncOfflineEvents_(events, adminEmail) {
+  if (!Array.isArray(events) || events.length === 0 || events.length > 20) {
+    return {
+      success: false,
+      code: "INVALID_OFFLINE_BATCH",
+      message: "دفعة المزامنة غير صالحة.",
+    };
+  }
+
+  const results = [];
+  for (const event of events) {
+    const eventId = String((event && event.eventId) || "");
+    const timestamp = new Date((event && event.timestamp) || "");
+    const now = Date.now();
+    if (
+      event &&
+      event.queuedBy &&
+      String(event.queuedBy).toLowerCase().trim() !==
+        adminEmail.toLowerCase().trim()
+    ) {
+      results.push({
+        eventId: eventId,
+        status: "rejected",
+        code: "OFFLINE_ACCOUNT_MISMATCH",
+        message: "سجّل الدخول بالحساب الذي حفظ هذا الإجراء لمزامنته.",
+      });
+      continue;
+    }
+    if (
+      !/^[A-Za-z0-9_-]{16,80}$/.test(eventId) ||
+      isNaN(timestamp.getTime()) ||
+      timestamp.getTime() > now + 5 * 60 * 1000 ||
+      timestamp.getTime() < now - 7 * 24 * 60 * 60 * 1000
+    ) {
+      results.push({
+        eventId: eventId,
+        status: "rejected",
+        code: "INVALID_OFFLINE_EVENT",
+        message: "تعذر مزامنة حدث قديم أو غير صالح.",
+      });
+      continue;
+    }
+
+    const claim = withScriptLock_(() => {
+      const sheet = getOfflineEventsSheet_();
+      const lastRow = sheet.getLastRow();
+      const rows =
+        lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 5).getValues() : [];
+      const existingIndex = rows.findIndex((row) => String(row[0]) === eventId);
+      if (existingIndex !== -1) {
+        const row = rows[existingIndex];
+        return {
+          status: row[1] === "COMPLETE" ? "complete" : "pending",
+          rowNumber: existingIndex + 2,
+          result: row[3] ? JSON.parse(row[3]) : null,
+        };
+      }
+      sheet.appendRow([eventId, "PENDING", timestamp, "", ""]);
+      return { status: "claimed", rowNumber: sheet.getLastRow() };
+    });
+
+    if (!claim || claim.success === false) {
+      results.push({
+        eventId: eventId,
+        status: "pending",
+        code: "SERVER_BUSY",
+      });
+      continue;
+    }
+    if (claim.status === "complete") {
+      results.push({
+        eventId: eventId,
+        status: "complete",
+        result: claim.result,
+      });
+      continue;
+    }
+    if (claim.status === "pending") {
+      results.push({ eventId: eventId, status: "pending" });
+      continue;
+    }
+
+    let eventResult;
+    try {
+      if (event.type === "scan" && event.qrText) {
+        eventResult = withScriptLock_(() =>
+          processScan(event.qrText, adminEmail, timestamp),
+        );
+      } else if (event.type === "add_student" && event.name) {
+        eventResult = saveStudentAndGenerateCard_(event.name, adminEmail, {
+          timestamp: timestamp,
+          attendIfOpen: event.attendIfOpen === true,
+        });
+      } else {
+        eventResult = {
+          success: false,
+          code: "INVALID_OFFLINE_EVENT",
+          message: "نوع حدث المزامنة غير صالح.",
+        };
+      }
+    } catch (error) {
+      eventResult = {
+        success: false,
+        code: "OFFLINE_SYNC_FAILED",
+        message: "تعذر مزامنة هذا الحدث.",
+      };
+    }
+
+    const savedResult = withScriptLock_(() => {
+      const sheet = getOfflineEventsSheet_();
+      sheet
+        .getRange(claim.rowNumber, 2, 1, 4)
+        .setValues([
+          ["COMPLETE", timestamp, JSON.stringify(eventResult), new Date()],
+        ]);
+      return true;
+    });
+    results.push({
+      eventId: eventId,
+      status: savedResult ? "complete" : "pending",
+      result: eventResult,
+    });
+  }
+  return { success: true, results: results };
 }
 
 function authorizationDenied_() {
@@ -516,7 +667,7 @@ function getSettingsSheet_() {
   let sheet = ss.getSheetByName(SETTINGS_SHEET_NAME);
   if (!sheet) {
     const initialPassword = getRequiredScriptProperty_(
-      "INITIAL_SETTINGS_PASSWORD",
+      INITIAL_SETTINGS_PASSWORD_PROPERTY,
     );
     if (initialPassword.length < 12) {
       throw new Error(
@@ -839,10 +990,12 @@ function recordDelay_(id, name, delayMinutes) {
 }
 
 function isAttendanceTimeAllowed() {
-  const settings = getSettings();
-  const now = new Date();
-  if (settings.allowedDays.indexOf(now.getDay()) === -1) return false;
-  const currMin = now.getHours() * 60 + now.getMinutes();
+  return isAttendanceTimeAllowedAt_(new Date(), getSettings());
+}
+
+function isAttendanceTimeAllowedAt_(date, settings) {
+  if (settings.allowedDays.indexOf(date.getDay()) === -1) return false;
+  const currMin = date.getHours() * 60 + date.getMinutes();
   const startParts = settings.startTime.split(":");
   const endParts = settings.endTime.split(":");
   const startMin =
@@ -891,7 +1044,7 @@ function setAttendanceMark_(sheet, id, date, mark) {
   }
 }
 
-function processScan(scannedInput, adminEmail) {
+function processScan(scannedInput, adminEmail, capturedTimestamp) {
   try {
     const email = (adminEmail || "").toLowerCase().trim();
     if (!isEmailAllowed(email)) {
@@ -951,7 +1104,19 @@ function processScan(scannedInput, adminEmail) {
       };
 
     const adminLogText = getAdminNameByEmail(email);
-    const timestamp = new Date();
+    const timestamp = capturedTimestamp
+      ? new Date(capturedTimestamp)
+      : new Date();
+    if (isNaN(timestamp.getTime())) {
+      return {
+        kind: "error",
+        code: "INVALID_TIMESTAMP",
+        icon: "❌",
+        title: "وقت التسجيل غير صالح",
+        name: personName,
+        message: "تعذر التحقق من وقت المسح.",
+      };
+    }
     const todayStr = timestamp.toDateString();
     const settings = getSettings();
     const checkinLastRow = checkinSheet.getLastRow();
@@ -1020,7 +1185,7 @@ function processScan(scannedInput, adminEmail) {
       }
     }
 
-    if (!isAttendanceTimeAllowed()) {
+    if (!isAttendanceTimeAllowedAt_(timestamp, settings)) {
       return {
         kind: "closed",
         icon: "🕒",
@@ -1065,8 +1230,21 @@ function processScan(scannedInput, adminEmail) {
       message: "🎯 في الموعد المحدد",
     };
   } catch (e) {
+    const errorMessage = String(e && e.message ? e.message : e);
+    if (errorMessage.includes("QR_SECRET_KEY")) {
+      return {
+        kind: "error",
+        code: "QR_KEY_NOT_CONFIGURED",
+        icon: "⚙️",
+        title: "إعداد النظام غير مكتمل",
+        name: "",
+        message:
+          "خاصية QR_SECRET_KEY غير مضبوطة في Script Properties في Apps Script.",
+      };
+    }
     return {
       kind: "error",
+      code: "ATTENDANCE_FAILED",
       icon: "❌",
       title: "خطأ",
       name: "",
@@ -1110,7 +1288,7 @@ function verifyOrSuggestName(inputName) {
     : { status: "no_match" };
 }
 
-function saveStudentAndGenerateCard_(name, adminEmail) {
+function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
   const cleanName = String(name || "")
     .normalize("NFKC")
     .replace(/\s+/g, " ")
@@ -1174,15 +1352,29 @@ function saveStudentAndGenerateCard_(name, adminEmail) {
     const newSheet = ss.getSheetByName("New");
     const checkinSheet = ss.getSheetByName("Check-in & Check-out");
     const attendanceSheet = ss.getSheetByName("Attendance");
+    const attendanceTimestamp = options.timestamp
+      ? new Date(options.timestamp)
+      : new Date();
 
     if (newSheet)
-      newSheet.appendRow([new Date(), cleanName, cleanEmail, adminName]);
+      newSheet.appendRow([
+        attendanceTimestamp,
+        cleanName,
+        cleanEmail,
+        adminName,
+      ]);
     rosterSheet.appendRow([newId, cleanName]);
     if (attendanceSheet) attendanceSheet.appendRow([newId, cleanName]);
 
-    if (checkinSheet && isAttendanceTimeAllowed()) {
-      const checkinTime = new Date();
-      const delayMin = computeDelayMinutes_(checkinTime, getSettings());
+    const shouldAttend = options.attendIfOpen !== false;
+    const settings = getSettings();
+    if (
+      checkinSheet &&
+      shouldAttend &&
+      isAttendanceTimeAllowedAt_(attendanceTimestamp, settings)
+    ) {
+      const checkinTime = attendanceTimestamp;
+      const delayMin = computeDelayMinutes_(checkinTime, settings);
       checkinSheet.appendRow([
         newId,
         cleanName,
