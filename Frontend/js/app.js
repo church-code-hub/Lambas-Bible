@@ -754,7 +754,21 @@
 
       window.addEventListener("online", async () => {
         await updateOfflineStatus();
-        await syncOfflineQueue();
+        const retryDelays = [0, 1000, 3000, 7000];
+        for (const delay of retryDelays) {
+          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+          if (!navigator.onLine || !currentUser || !googleIdToken) break;
+
+          await syncOfflineQueue();
+          if (!currentUser || !googleIdToken) break;
+          let events;
+          try {
+            events = await getOfflineEvents();
+          } catch (error) {
+            break;
+          }
+          if (!events.some((event) => event.queuedBy === currentUser.email)) break;
+        }
       });
       window.addEventListener("offline", updateOfflineStatus);
 
