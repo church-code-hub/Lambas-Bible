@@ -3,7 +3,6 @@
 // =========================================================================
 const SETTINGS_SHEET_NAME = "Settings";
 const DELAYS_SHEET_NAME = "Delays";
-const INITIAL_SETTINGS_PASSWORD_PROPERTY = "INITIAL_SETTINGS_PASSWORD";
 
 const DEFAULT_SETTINGS = {
   startTime: "10:00",
@@ -703,6 +702,11 @@ function getSettings() {
       settings.acceptedDelay = Number(value);
     if (key === "Password" && value !== "" && value !== null)
       settings.password = String(value).trim();
+    else {
+      settings.password = getRequiredScriptProperty_(
+        "INITIAL_SETTINGS_PASSWORD_PROPERTY",
+      );
+    }
     if (
       key === "AllowedDays" &&
       value !== "" &&
@@ -1141,7 +1145,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
     }
 
     if (rowIdx !== -1) {
-      if (attendanceData[rowIdx - 2][3]) {
+      if (attendanceData[rowIdx - 2][5]) {
         return {
           kind: "warn",
           icon: "⚠️",
@@ -1151,8 +1155,8 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
         };
       }
       if (isCheckoutAllowed(timestamp, settings)) {
-        checkinSheet.getRange(rowIdx, 4).setValue(timestamp);
-        checkinSheet.getRange(rowIdx, 7).setValue(adminLogText);
+        checkinSheet.getRange(rowIdx, 5).setValue(timestamp);
+        checkinSheet.getRange(rowIdx, 6).setValue(adminLogText);
         const delayMin = computeDelayMinutes_(existingCheckIn, settings);
 
         setAttendanceMark_(
@@ -1203,9 +1207,10 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
       realId,
       personName,
       timestamp,
+      adminLogText,
+      "",
       "",
       delayText,
-      adminLogText,
     ]);
     setAttendanceMark_(
       ss.getSheetByName("Attendance"),
