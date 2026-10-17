@@ -1,0 +1,578 @@
+<!doctype html>
+<html dir="rtl" lang="ar" id="htmlRoot">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Lambas Bible</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0d1b2a" />
+    <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body data-theme="dark">
+    <div id="toastContainer" class="toast-container"></div>
+    <div id="offlineOverlay" data-i18n="offlineMsg">
+      ⚠️ لا توجد اتصال بالإنترنت، يرجى التحقق من الشبكة
+    </div>
+
+    <header class="top-app-bar">
+      <div class="brand">
+        <img src="Assets/icons/new-icon-512.png" alt="App Icon" data-i18n-alt="appIconAlt" />
+        <span>Lambas Bible</span>
+      </div>
+      <div class="top-actions">
+        <button
+          class="icon-btn"
+          id="langToggleBtn"
+          onclick="toggleLanguage()"
+          title="تغيير اللغة / Switch Language"
+        >
+          <span style="font-weight: bold; font-size: 12px" id="langLabel"
+            >EN</span
+          >
+        </button>
+        <button
+          class="icon-btn"
+          id="themeToggleBtn"
+          onclick="toggleTheme()"
+          title="تبديل الثيم"
+          data-i18n-title="themeTooltip"
+        >
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <button
+          class="icon-btn"
+          onclick="openAdminSettings()"
+          title=" إدارة الخدام"
+          data-i18n-title="adminTooltip"
+        >
+          <i class="fa-solid fa-user-shield"></i>
+        </button>
+      </div>
+    </header>
+
+    <button
+      id="homeBtn"
+      class="home-btn"
+      style="display: none"
+      onclick="showView('dashboardView')"
+    >
+      <i class="fa-solid fa-house"></i> <span data-i18n="home">الرئيسية</span>
+    </button>
+
+    <div class="container" id="mainContainer">
+      <div id="loader" class="loader-overlay" role="status" aria-live="polite">
+        <div class="tech-loader">
+          <div></div>
+          <div></div>
+        </div>
+        <div id="loaderText" data-i18n="loading">جاري معالجة الطلب...</div>
+      </div>
+
+      <!-- 0. Login View -->
+      <div id="loginView">
+        <h2 data-i18n="loginTitle">🔐 تسجيل الدخول للنظام</h2>
+        <p
+          style="
+            text-align: center;
+            color: var(--text-sub);
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 18px;
+          "
+          data-i18n="loginSub"
+        >
+          يرجى تسجيل الدخول بحساب Google المصرح له للبدء
+        </p>
+        <div
+          id="g_id_onload"
+          data-client_id="759295584482-3qpocftq0uk3du9s3g77pi91apt323im.apps.googleusercontent.com"
+          data-callback="handleCredentialResponse"
+          data-auto_prompt="false"
+        ></div>
+        <div style="display: flex; justify-content: center; margin-top: 10px">
+          <div
+            class="g_id_signin"
+            data-type="standard"
+            data-size="large"
+            data-theme="outline"
+            data-text="sign_in_with"
+            data-shape="rectangular"
+            data-logo_alignment="left"
+          ></div>
+        </div>
+        <div
+          id="loginError"
+          style="
+            color: #ef4444;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 12px;
+            display: none;
+          "
+        ></div>
+      </div>
+
+      <!-- 1. Dashboard View -->
+      <div id="dashboardView" style="display: none">
+        <div class="user-profile-bar">
+          <div class="user-info">
+            <img id="uAvatar" class="user-avatar" src="" alt="Avatar" data-i18n-alt="avatarAlt" />
+            <div class="user-details">
+              <span id="uName" class="user-name">الاسم</span>
+              <span id="uEmail" class="user-email">email@gmail.com</span>
+            </div>
+          </div>
+          <button class="logout-btn" onclick="logoutUser()">
+            <span data-i18n="logout">خروج</span>
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+
+        <h2 data-i18n="dashboardTitle">🏠 لوحة التحكم</h2>
+        <div class="grid">
+          <button class="tile primary" onclick="showView('scanView')">
+            <span class="ico"><i class="fa-solid fa-qrcode"></i></span
+            ><span data-i18n="scanQr">مسح QR</span>
+          </button>
+          <button class="tile" onclick="showView('searchView')">
+            <span class="ico"><i class="fa-solid fa-magnifying-glass"></i></span
+            ><span data-i18n="searchName">تحضير بالاسم</span>
+          </button>
+          <button class="tile" onclick="showView('cardShareView')">
+            <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
+            ><span data-i18n="shareCard">مشاركة كارت QR</span>
+          </button>
+          <button class="tile" onclick="openSheet()">
+            <span class="ico"><i class="fa-solid fa-table"></i></span
+            ><span data-i18n="openSheet">فتح الشيت</span>
+          </button>
+          <button class="tile" onclick="showView('addView')">
+            <span class="ico"><i class="fa-solid fa-user-plus"></i></span
+            ><span data-i18n="addStudent">إضافة مخدوم</span>
+          </button>
+          <button class="tile" onclick="openScheduleSettings()">
+            <span class="ico"><i class="fa-solid fa-gear"></i></span
+            ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. Live QR Scan View -->
+      <div id="scanView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-qrcode"></i>
+          <span data-i18n="scanQrTitle">مسح QR</span>
+        </h2>
+        <div class="camera-wrapper">
+          <div id="qr-reader"></div>
+        </div>
+        <div class="camera-status" id="cameraStatus" data-i18n="cameraStarting">
+          جاري تشغيل الكاميرا...
+        </div>
+        <button
+          class="btn secondary"
+          style="margin-top: 12px"
+          onclick="restartScanner()"
+        >
+          <i class="fa-solid fa-rotate"></i>
+          <span data-i18n="restartCamera">إعادة تشغيل الكاميرا</span>
+        </button>
+      </div>
+
+      <!-- 3. Search View -->
+      <div id="searchView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="quickSearchTitle">التحضير السريع بالاسم</span>
+        </h2>
+        <input
+          type="text"
+          id="searchNameInput"
+          placeholder="اكتب الاسم هنا..."
+          data-i18n-placeholder="searchPlaceholder"
+          autocomplete="off"
+        />
+        <button
+          class="btn"
+          id="btnSearch"
+          onclick="executeSearch()"
+          data-i18n="searchBtn"
+        >
+          بحث
+        </button>
+        <div id="searchResults" style="margin-top: 15px" aria-live="polite"></div>
+      </div>
+
+      <!-- 3.5 Card Share View -->
+      <div id="cardShareView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-share-nodes"></i>
+          <span data-i18n="shareCardTitle">مشاركة كارت المخدوم</span>
+        </h2>
+        <input
+          type="text"
+          id="shareNameInput"
+          placeholder="اكتب اسم المخدوم للبحث..."
+          data-i18n-placeholder="sharePlaceholder"
+          autocomplete="off"
+        />
+        <button
+          class="btn"
+          onclick="executeCardSearch()"
+          data-i18n="searchCardBtn"
+        >
+          بحث عن الكارت
+        </button>
+        <div id="shareResults" style="margin-top: 15px" aria-live="polite"></div>
+      </div>
+
+      <!-- 3.6 Individual Card Preview View -->
+      <div id="cardPreviewView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-eye"></i>
+          <span data-i18n="cardPreviewTitle">معاينة الكارت والمشاركة</span>
+        </h2>
+        <div class="name" id="previewStudentName">اسم المخدوم</div>
+        <div
+          class="camera-wrapper"
+          style="
+            background: #0f172a;
+            min-height: 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+          "
+        >
+          <img
+            id="previewCardImg"
+            src=""
+            alt="Card Preview"
+            data-i18n-alt="cardPreviewAlt"
+            crossorigin="anonymous"
+            style="
+              max-width: 100%;
+              max-height: 320px;
+              object-fit: contain;
+              border-radius: 14px;
+              border: 1px solid var(--card-border);
+            "
+          />
+        </div>
+        <button class="btn" onclick="shareCurrentCardImage()">
+          <i class="fa-solid fa-share-nodes"></i>
+          <span data-i18n="sendCopyBtn">📤 مشاركة الصورة (Send a Copy)</span>
+        </button>
+        <button class="btn secondary" onclick="openCurrentCardDrive()">
+          <i class="fa-solid fa-folder-open"></i>
+          <span data-i18n="openDriveBtn">فتح في Google Drive</span>
+        </button>
+        <button
+          class="btn secondary"
+          style="margin-top: 8px"
+          onclick="showView('cardShareView')"
+        >
+          <i class="fa-solid fa-arrow-right"></i>
+          <span data-i18n="backBtn">رجوع</span>
+        </button>
+      </div>
+
+      <!-- 4. Add Student View -->
+      <div id="addView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-user-plus"></i>
+          <span data-i18n="addStudentTitle">إضافة مخدوم جديد</span>
+        </h2>
+        <input
+          type="text"
+          id="newStudentName"
+          maxlength="120"
+          placeholder="اسم المخدوم ثلاثي..."
+          data-i18n-placeholder="studentNamePlaceholder"
+          autocomplete="off"
+        />
+        <button
+          class="btn"
+          id="btnAddStudent"
+          onclick="submitNewStudent()"
+          data-i18n="saveGenerateBtn"
+        >
+          حفظ وتوليد الكارت 🎨
+        </button>
+        <div id="addResult" style="margin-top: 12px; text-align: center"></div>
+      </div>
+
+      <!-- 5. Admin Settings View -->
+      <div id="adminSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-user-shield"></i>
+          <span data-i18n="adminSettingsTitle">إدارة الخدام وكلمة المرور</span>
+        </h2>
+        <div id="adminSettingsLock">
+          <input
+            type="password"
+            id="adminGatePassword"
+            placeholder="ادخل كلمة المرور"
+            data-i18n-placeholder="passwordPlaceholder"
+          />
+          <button
+            class="btn"
+            onclick="unlockAdminSettings()"
+            data-i18n="enterBtn"
+          >
+            دخول
+          </button>
+        </div>
+
+        <div id="adminSettingsForm" style="display: none">
+          <h3
+            style="
+              font-size: 14px;
+              color: var(--accent-gold);
+              margin-bottom: 8px;
+            "
+            data-i18n="editMyName"
+          >
+            تعديل اسمك في الشيت
+          </h3>
+          <input
+            type="text"
+            id="cfgAdminName"
+            placeholder="اسمك الذي يظهر في الشيت"
+            data-i18n-placeholder="adminNamePlaceholder"
+          />
+          <button
+            class="btn secondary"
+            onclick="updateMyName()"
+            style="margin-bottom: 16px"
+          >
+            💾 <span data-i18n="updateMyNameBtn">تحديث اسمي</span>
+          </button>
+
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="newPasswordLabel"
+            >كلمة مرور النظام الجديدة (اختياري)</label
+          >
+          <input
+            type="password"
+            id="cfgNewPassword"
+            minlength="8"
+            placeholder="اتركها فارغة للإبقاء على الحالية"
+            data-i18n-placeholder="newPasswordPlaceholder"
+            style="margin-bottom: 16px"
+          />
+
+          <h3
+            style="
+              font-size: 14px;
+              color: var(--accent-gold);
+              margin-bottom: 8px;
+            "
+            data-i18n="adminsListTitle"
+          >
+            👥 قائمة الخدام
+          </h3>
+          <div id="adminsListContainer" style="margin-bottom: 12px"></div>
+
+          <div
+            style="
+              background: var(--chip-bg);
+              backdrop-filter: blur(15px);
+              padding: 10px;
+              border-radius: 14px;
+              border: 1px dashed var(--card-border);
+              margin-bottom: 12px;
+            "
+          >
+            <input
+              type="text"
+              id="newAdminEmail"
+              type="email"
+              placeholder="البريد الإلكتروني للخادم الجديد"
+              data-i18n-placeholder="newAdminEmailPlaceholder"
+              style="margin-bottom: 8px"
+            />
+            <input
+              type="text"
+              id="newAdminNameInput"
+              placeholder="اسم الخادم"
+              data-i18n-placeholder="newAdminNamePlaceholder"
+              style="margin-bottom: 8px"
+            />
+            <button class="btn secondary" onclick="addNewAdmin()">
+              ➕ <span data-i18n="addAdminBtn">إضافة خادم جديد</span>
+            </button>
+          </div>
+
+          <button
+            class="btn"
+            onclick="saveAdminSettings()"
+            data-i18n="saveChangesBtn"
+          >
+            💾 حفظ التغييرات
+          </button>
+        </div>
+      </div>
+
+      <!-- 6. Schedule Settings View -->
+      <div id="scheduleSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-gear"></i>
+          <span data-i18n="scheduleTitle">مواعيد الاجتماع وأيامه</span>
+        </h2>
+        <div id="scheduleSettingsLock">
+          <input
+            type="password"
+            id="scheduleGatePassword"
+            placeholder="ادخل كلمة المرور"
+            data-i18n-placeholder="passwordPlaceholder"
+          />
+          <button
+            class="btn"
+            onclick="unlockScheduleSettings()"
+            data-i18n="enterBtn"
+          >
+            دخول
+          </button>
+        </div>
+
+        <div id="scheduleSettingsForm" style="display: none">
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="startTimeLabel"
+            >موعد بدء الاجتماع</label
+          >
+          <input type="time" id="cfgStartTime" />
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="endTimeLabel"
+            >موعد نهاية الاجتماع</label
+          >
+          <input type="time" id="cfgEndTime" />
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="delayLabel"
+            >مدة السماح بالتأخير (دقائق)</label
+          >
+          <input type="number" id="cfgAcceptedDelay" min="0" max="240" step="1" />
+
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="allowedDaysLabel"
+            >الأيام المسموحة</label
+          >
+          <div class="days-grid">
+            <div class="day-chip">
+              <input type="checkbox" id="day0" value="0" /><label
+                for="day0"
+                data-i18n="daySun"
+                >الأحد</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day1" value="1" /><label
+                for="day1"
+                data-i18n="dayMon"
+                >الاثنين</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day2" value="2" /><label
+                for="day2"
+                data-i18n="dayTue"
+                >الثلاثاء</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day3" value="3" /><label
+                for="day3"
+                data-i18n="dayWed"
+                >الأربعاء</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day4" value="4" /><label
+                for="day4"
+                data-i18n="dayThu"
+                >الخميس</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day5" value="5" /><label
+                for="day5"
+                data-i18n="dayFri"
+                >الجمعة</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day6" value="6" /><label
+                for="day6"
+                data-i18n="daySat"
+                >السبت</label
+              >
+            </div>
+          </div>
+
+          <button
+            class="btn"
+            onclick="saveScheduleSettings()"
+            data-i18n="saveScheduleBtn"
+          >
+            💾 حفظ المواعيد
+          </button>
+        </div>
+      </div>
+
+      <!-- Result View -->
+      <div id="resultView" style="display: none">
+        <div class="icon" id="rIcon"><i class="fa-solid fa-check"></i></div>
+        <div class="title" id="rTitle">تم التسجيل</div>
+        <div class="name" id="rName">الاسم</div>
+        <div class="status-tag" id="rMsg">تفاصيل</div>
+        <button class="btn" onclick="showView('scanView')">
+          <i class="fa-solid fa-qrcode"></i>
+          <span data-i18n="scanAnother">مسح آخر</span>
+        </button>
+      </div>
+    </div>
+
+    <script src="./js/app.js"></script>
+  </body>
+</html>
