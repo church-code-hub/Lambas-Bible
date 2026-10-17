@@ -1,6 +1,7 @@
       const APP_CONFIG = window.LAMBAS_CONFIG || {};
       const API_URL = APP_CONFIG.apiUrl || "";
       const GOOGLE_SHEET_URL = APP_CONFIG.googleSheetUrl || "";
+      const OFFLINE_SESSION_KEY = "app_offline_session_email";
 
       var currentUser = null;
       var googleIdToken = sessionStorage.getItem("google_id_token") || "";
@@ -542,7 +543,7 @@
       }
 
       async function queueOfflineEvent(event) {
-        if (!currentUser || !googleIdToken) throw new Error("Offline actions require a previously authenticated session.");
+        if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a previously authenticated session.");
         const queuedEvent = {
           ...event,
           eventId: crypto.randomUUID(),
@@ -557,7 +558,7 @@
         const status = document.getElementById("syncStatus");
         const offlineOverlay = document.getElementById("offlineOverlay");
         offlineOverlay.style.display = navigator.onLine ? "none" : "block";
-        status.style.bottom = navigator.onLine ? "20px" : "70px";
+        status.style.bottom = navigator.onLine ? "20px" : "12px";
         try {
           const events = await getOfflineEvents();
           const count = events.length;
@@ -565,7 +566,7 @@
           const hasOtherAccountEvents = currentUser && events.some((event) => event.queuedBy !== currentUser.email);
           status.textContent = isSyncingOfflineQueue && navigator.onLine
             ? translations[currentLang].offlineSyncing
-            : count && (!currentUser || !googleIdToken)
+            : count && (!currentUser || (navigator.onLine && !googleIdToken))
               ? translations[currentLang].offlineNeedsLogin + ` (${translations[currentLang].queuedEventsCount}${count})`
               : hasOtherAccountEvents
             ? translations[currentLang].offlineAccountMismatch
@@ -764,11 +765,25 @@
         await updateOfflineStatus();
 
         const savedUser = localStorage.getItem("app_user");
-        if (savedUser && googleIdToken) {
+        if (savedUser) {
           try {
             currentUser = JSON.parse(savedUser);
+            if (!currentUser || !currentUser.email) throw new Error("Saved user is invalid.");
+            const rememberedEmail = (localStorage.getItem(OFFLINE_SESSION_KEY) || "").toLowerCase().trim();
+            if (!navigator.onLine && rememberedEmail === currentUser.email.toLowerCase().trim()) {
+              setupUserProfileUI();
+              checkDirectUrlScan();
+              await updateOfflineStatus();
+              return;
+            }
+            if (!googleIdToken) {
+              currentUser = null;
+              showView("loginView", false);
+              return;
+            }
             if (!navigator.onLine) {
               setupUserProfileUI();
+              checkDirectUrlScan();
               await updateOfflineStatus();
               return;
             }
@@ -779,6 +794,8 @@
             hideLoader();
             if (authRes && authRes.authorized) {
               if (authRes.adminName) currentUser.name = authRes.adminName;
+              localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email.toLowerCase().trim());
+              localStorage.setItem("app_user", JSON.stringify(currentUser));
               setupUserProfileUI();
               checkDirectUrlScan();
               await syncOfflineQueue();
@@ -787,10 +804,10 @@
             }
           } catch (e) {
             hideLoader();
-            logoutUser();
+            currentUser = null;
+            showView("loginView", false);
           }
         } else {
-          localStorage.removeItem("app_user");
           showView("loginView", false);
         }
       });
@@ -843,6 +860,7 @@
             };
             sessionStorage.setItem("google_id_token", googleIdToken);
             localStorage.setItem("app_user", JSON.stringify(currentUser));
+            localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
             setupUserProfileUI();
             checkDirectUrlScan();
             await syncOfflineQueue();
@@ -880,6 +898,7 @@
 
       function logoutUser(msg) {
         localStorage.removeItem("app_user");
+        localStorage.removeItem(OFFLINE_SESSION_KEY);
         sessionStorage.removeItem("google_id_token");
         googleIdToken = "";
         currentUser = null;
@@ -1052,7 +1071,7 @@
           });
           return;
         }
-        if (!currentUser || !googleIdToken) {
+        if (!currentUser || (navigator.onLine && !googleIdToken)) {
           renderResult({ kind: "error", title: "Sign-in required", message: "offlineNeedsLogin" });
           return;
         }
@@ -1326,7 +1345,7 @@
           showToast(translations[currentLang].offlineAddQueued, "info");
         };
         try {
-          if (!currentUser || !googleIdToken) throw new Error("Offline actions require a signed-in account.");
+          if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a signed-in account.");
           const queuedEvent = await queueOfflineEvent({ type: "add_student", name: name, attendIfOpen: attendIfOpen });
           if (!navigator.onLine) {
             showQueuedResult();

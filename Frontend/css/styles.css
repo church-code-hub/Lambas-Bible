@@ -864,17 +864,22 @@
       #offlineOverlay {
         display: none;
         position: fixed;
-        top: 128px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: calc(72px + env(safe-area-inset-top, 0px));
+        left: 12px;
+        right: 12px;
+        width: fit-content;
+        max-width: calc(100vw - 24px);
+        margin-inline: auto;
         background: #ef4444;
         color: #fff;
-        padding: 10px 22px;
-        border-radius: 30px;
+        padding: 9px 16px;
+        border-radius: 12px;
         font-weight: 700;
         font-size: 13px;
-        z-index: 99999;
-        box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5);
+        line-height: 1.4;
+        text-align: center;
+        z-index: 1002;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
       }
 
       .sync-status {
@@ -922,7 +927,6 @@
 
       @media (max-width: 480px) {
         .sync-status { right: 10px; bottom: 10px; }
-        #offlineOverlay { top: 128px; }
       }
 
       @media (max-width: 480px) {
