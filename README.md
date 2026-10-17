@@ -2,6 +2,8 @@
 
 QR attendance Progressive Web App for a church community. The frontend is static HTML, CSS, and JavaScript. Attendance data and card operations are handled by a separately deployed Google Apps Script backend.
 
+**Open the app:** [Lambas Bible on GitHub Pages](https://church-code-hub.github.io/Lambas-Bible/)
+
 ## Repository Layout
 
 ```text
@@ -24,6 +26,18 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 4. Run the checks with `node --test tests/*.test.js`.
 
 Google Identity Services, the QR scanner library, and icon fonts are loaded from external CDNs. Attendance and administration actions require a network connection.
+
+## Open From GitHub
+
+The `Deploy GitHub Pages` workflow publishes the app whenever a commit reaches `main`. In the repository's **Settings > Pages**, set the build and deployment source to **GitHub Actions**. Add these repository variables under **Settings > Secrets and variables > Actions > Variables**:
+
+| Variable                  | Value                             |
+| ------------------------- | --------------------------------- |
+| `LAMBAS_API_URL`          | Deployed Apps Script `/exec` URL  |
+| `LAMBAS_GOOGLE_CLIENT_ID` | Google OAuth web client ID        |
+| `LAMBAS_GOOGLE_SHEET_URL` | Spreadsheet URL opened by the app |
+
+After the first successful workflow run, GitHub Pages provides the app URL, normally `https://<owner>.github.io/<repository>/`. Add that exact origin to the OAuth client's Authorized JavaScript origins. These values are embedded in the public browser app at deployment time; they are configuration, not secrets. Never put private credentials or Script Property values in these variables.
 
 ## Apps Script Setup
 

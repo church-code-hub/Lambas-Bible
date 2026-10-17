@@ -1,0 +1,56 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Create runtime configuration
+        working-directory: Frontend/js
+        env:
+          APP_API_URL: ${{ vars.LAMBAS_API_URL }}
+          APP_GOOGLE_CLIENT_ID: ${{ vars.LAMBAS_GOOGLE_CLIENT_ID }}
+          APP_GOOGLE_SHEET_URL: ${{ vars.LAMBAS_GOOGLE_SHEET_URL }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const required = ['APP_API_URL', 'APP_GOOGLE_CLIENT_ID', 'APP_GOOGLE_SHEET_URL'];
+          for (const name of required) {
+            if (!process.env[name]) throw new Error(`Missing repository variable: ${name.replace('APP_', 'LAMBAS_')}`);
+          }
+          if (!process.env.APP_API_URL.startsWith('https://script.google.com/macros/s/') || !process.env.APP_API_URL.endsWith('/exec')) {
+            throw new Error('LAMBAS_API_URL must be the deployed Apps Script /exec URL.');
+          }
+          if (!process.env.APP_GOOGLE_CLIENT_ID.endsWith('.apps.googleusercontent.com')) {
+            throw new Error('LAMBAS_GOOGLE_CLIENT_ID is not a Google OAuth client ID.');
+          }
+          const config = {
+            apiUrl: process.env.APP_API_URL,
+            googleClientId: process.env.APP_GOOGLE_CLIENT_ID,
+            googleSheetUrl: process.env.APP_GOOGLE_SHEET_URL,
+          };
+          fs.writeFileSync('config.js', `window.LAMBAS_CONFIG = Object.freeze(${JSON.stringify(config)});\n`);
+          NODE
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: Frontend
+      - id: deployment
+        uses: actions/deploy-pages@v4
