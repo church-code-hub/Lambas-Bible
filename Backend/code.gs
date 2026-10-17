@@ -149,6 +149,7 @@ function doPost(e) {
       result = {
         success: true,
         authorized: authorized,
+        email: identity.email,
         adminName: authorized ? getAdminNameByEmail(identity.email) : "",
       };
     } else if (!isEmailAllowed(identity.email)) {

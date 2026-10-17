@@ -310,6 +310,9 @@
         "❌ Unauthorized account.": { ar: "❌ هذا الحساب غير مصرح له", en: "❌ This account is not authorized" },
         "Could not read Google account data": { ar: "تعذر قراءة بيانات حساب Google", en: "Could not read Google account data" },
         "❌ Sorry, email is not authorized.": { ar: "❌ هذا البريد الإلكتروني غير مصرح له", en: "❌ This email is not authorized" },
+        "Email not listed in Admins: ": { ar: "هذا البريد غير موجود في قائمة Admins: ", en: "Email not listed in Admins: " },
+        "Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.": { ar: "تعذر التحقق من تسجيل الدخول. تحقق من خاصية GOOGLE_CLIENT_ID في Apps Script ثم أعد نشر الخادم.", en: "Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend." },
+        "Sign-in check failed on the server. Verify the latest Apps Script deployment.": { ar: "فشل التحقق من تسجيل الدخول على الخادم. تحقق من نشر أحدث إصدار من Apps Script.", en: "Sign-in check failed on the server. Verify the latest Apps Script deployment." },
         "Connection error.": { ar: "تعذر الاتصال بالخادم", en: "Connection error" },
         "Suggestions:": { ar: "اقتراحات:", en: "Suggestions:" },
         "No cards found": { ar: "لم يتم العثور على بطاقات", en: "No cards found" },
@@ -692,10 +695,21 @@
             localStorage.setItem("app_user", JSON.stringify(currentUser));
             setupUserProfileUI();
             checkDirectUrlScan();
+          } else if (authRes && authRes.code === "AUTH_INVALID") {
+            googleIdToken = "";
+            sessionStorage.removeItem("google_id_token");
+            showLoginError("Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.");
+          } else if (authRes && authRes.code === "AUTH_REQUIRED") {
+            googleIdToken = "";
+            sessionStorage.removeItem("google_id_token");
+            showLoginError("Please sign in again.");
+          } else if (authRes && authRes.success === false) {
+            showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
           } else {
             googleIdToken = "";
             sessionStorage.removeItem("google_id_token");
-            showLoginError("❌ Sorry, email is not authorized.");
+            const checkedEmail = authRes && authRes.email ? authRes.email : payload.email;
+            showLoginError("❌ Sorry, email is not authorized.\n" + translateText("Email not listed in Admins: ") + checkedEmail);
           }
         } catch (e) {
           googleIdToken = "";

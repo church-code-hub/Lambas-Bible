@@ -179,3 +179,40 @@ test("verifies token audience and caches successful Google token checks", () => 
   assert.equal(context.verifyGoogleIdToken_("wrong-audience").code, "AUTH_INVALID");
   assert.equal(getTokenFetchCount(), 2);
 });
+
+test("check_auth returns the email verified from the ID token", () => {
+  const { context, tokenResponses } = createBackendContext();
+  tokenResponses.set("valid-auth", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: "admin@example.com",
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  context.isEmailAllowed = (email) => email === "admin@example.com";
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  context.LockService.getScriptLock = () => ({
+    waitLock() {},
+    releaseLock() {},
+  });
+
+  const result = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "valid-auth",
+        email: "spoofed@example.com",
+      }),
+    },
+  });
+
+  assert.equal(result.authorized, true);
+  assert.equal(result.email, "admin@example.com");
+  assert.equal(result.adminName, "Test Admin");
+});
