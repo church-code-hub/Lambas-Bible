@@ -25,9 +25,11 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 3. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
 4. Run the checks with `node --test tests/*.test.js`.
 
-After one successful online load, a previously authenticated user can scan QR cards and queue new attendees while offline. Events and device timestamps are stored in IndexedDB on that device and sync, in timestamp order, when connectivity returns and the same authorized account is available. A fresh login, name search, card operations, and management actions still require a connection. Offline device clocks are not a tamper-proof time source; the backend rejects events more than seven days old or more than five minutes in the future. Keep devices physically controlled and review synced timestamps.
+After one successful online load, a previously authenticated user can scan QR cards, search the saved roster by name, and queue new attendees while offline. The roster is downloaded to that device after an authorized online sign-in; offline search uses that saved snapshot and may not include recent roster changes. Name matching ranks exact and word matches first, then supports partial names and one-character typos. Selecting a name queues the same attendance scan used by QR check-in/check-out. Scans are synced in timestamp order when connectivity returns and the same authorized account is available. Events and the roster snapshot are stored in IndexedDB on that device; the backend uses Script Properties for retry protection and prunes records older than seven days during a subsequent sync. A fresh login, card operations, and management actions still require a connection. Offline device clocks are not a tamper-proof time source; the backend rejects events more than seven days old or more than five minutes in the future. Keep devices physically controlled and review synced timestamps.
 
-The QR decoder is bundled locally for offline camera scanning. Google sign-in and Font Awesome still load externally. The sync ledger is stored in an `Offline Events` spreadsheet tab, created automatically on the first sync.
+Multiple online devices can use the app at once. Attendance, roster ID allocation, and administrative writes are serialized by the Apps Script project lock; transient lock contention returns a retryable response, and queued sync retries it automatically. Offline queues are device-local and sync when that device reconnects, so actions created on separate devices cannot be globally ordered until each device reconnects. Use online attendance when the order of check-in/check-out matters across devices.
+
+The QR decoder is bundled locally for offline camera scanning. Google sign-in and Font Awesome still load externally. Offline sync does not create or use an `Offline Events` spreadsheet tab.
 
 ## Open From GitHub
 
@@ -55,7 +57,7 @@ Deploy `Backend/code.gs` as a Google Apps Script web app. In the Apps Script pro
 | `CARD_TEMPLATE_IMAGE_ID`    | Drive image used as the card background                                                                      |
 | `CARD_SLIDES_TEMPLATE_ID`   | Google Slides template used to generate cards                                                                |
 
-The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, `Delays`, and `Offline Events` are created by the backend when needed.
+The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, and `Delays` are created by the backend when needed.
 
 ## GitHub Safety
 

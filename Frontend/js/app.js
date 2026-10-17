@@ -35,7 +35,13 @@
           offlineSyncMessage: "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
           offlineAccountMismatch: "بعض الإجراءات المحفوظة تخص حساباً آخر. سجّل الدخول بذلك الحساب لمزامنتها.",
           attendNewStudent: "تسجيل حضور المخدوم إذا كان وقت الاجتماع مفتوحاً",
-          searchRequiresInternet: "البحث بالاسم يحتاج إلى اتصال بالإنترنت. يمكن استخدام مسح QR دون اتصال.",
+          searchRequiresInternet: "هذه الميزة تحتاج إلى اتصال بالإنترنت.",
+          offlineRosterUnavailable: "لا توجد قائمة أسماء محفوظة على هذا الجهاز. اتصل بالإنترنت مرة واحدة لتجهيز البحث دون اتصال.",
+          offlineSearchResults: "نتائج من القائمة المحفوظة على هذا الجهاز. قد لا تتضمن أحدث التغييرات.",
+          offlineSearchCacheFailed: "تعذر تحديث قائمة البحث دون اتصال. ستظل آخر قائمة محفوظة متاحة.",
+          offlineSearchNoCache: "لا يمكن البحث دون اتصال قبل حفظ قائمة الأسماء على هذا الجهاز.",
+          noSearchMatches: "لم يتم العثور على أسماء مطابقة.",
+          searchSuggestions: "أفضل النتائج",
           home: "الرئيسية",
           loading: "جاري معالجة الطلب...",
           loginTitle: "🔐 تسجيل الدخول للنظام",
@@ -118,7 +124,13 @@
           offlineSyncMessage: "This action will be recorded after connection and account verification return.",
           offlineAccountMismatch: "Some saved actions belong to another account. Sign in with that account to sync them.",
           attendNewStudent: "Record attendance if the meeting is open",
-          searchRequiresInternet: "Name search requires internet. QR scanning can be queued offline.",
+          searchRequiresInternet: "This feature requires an internet connection.",
+          offlineRosterUnavailable: "No saved roster is available on this device. Connect once to enable offline search.",
+          offlineSearchResults: "Results from this device's saved roster. Recent changes may not be included.",
+          offlineSearchCacheFailed: "Could not refresh offline search data. The last saved roster remains available.",
+          offlineSearchNoCache: "Offline search is unavailable until the roster has been saved on this device.",
+          noSearchMatches: "No matching names found.",
+          searchSuggestions: "Best matches",
           home: "Home",
           loading: "Processing request...",
           loginTitle: "🔐 System Login",
@@ -383,65 +395,100 @@
         return text;
       }
 
+      function runAppearanceTransition(update) {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          update();
+          return;
+        }
+        if (document.startViewTransition) {
+          document.startViewTransition(update);
+          return;
+        }
+
+        document.body.classList.add("appearance-transitioning");
+        document.body.offsetWidth;
+        update();
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.body.classList.remove("appearance-transitioning");
+          });
+        });
+      }
+
       function setLanguage(lang) {
         lang = translations[lang] ? lang : "ar";
-        currentLang = lang;
-        localStorage.setItem("app_lang", lang);
-        const root = document.getElementById("htmlRoot");
-        root.setAttribute("lang", lang);
-        root.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
-        document.getElementById("langLabel").innerText =
-          lang === "ar" ? "EN" : "AR";
-        updateOfflineStatus();
+        const languageChanged = currentLang !== lang;
+        const changeLanguage = () => {
+          currentLang = lang;
+          localStorage.setItem("app_lang", lang);
+          const root = document.getElementById("htmlRoot");
+          root.setAttribute("lang", lang);
+          root.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+          const languageLabel = document.getElementById("langLabel");
+          languageLabel.innerText = lang === "ar" ? "EN" : "AR";
+          if (languageChanged) {
+            languageLabel.classList.remove("language-label-change");
+            languageLabel.offsetWidth;
+            languageLabel.classList.add("language-label-change");
+            window.setTimeout(
+              () => languageLabel.classList.remove("language-label-change"),
+              360,
+            );
+          }
+          updateOfflineStatus();
 
-        document.querySelectorAll("[data-i18n]").forEach((el) => {
-          const key = el.getAttribute("data-i18n");
-          if (translations[lang][key]) el.innerText = translations[lang][key];
-        });
-        document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
-          const key = el.getAttribute("data-i18n-placeholder");
-          if (translations[lang][key])
-            el.setAttribute("placeholder", translations[lang][key]);
-        });
-        document.querySelectorAll("[data-i18n-title]").forEach((el) => {
-          const key = el.getAttribute("data-i18n-title");
-          if (translations[lang][key]) el.setAttribute("title", translations[lang][key]);
-        });
-        document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
-          const key = el.getAttribute("data-i18n-alt");
-          if (translations[lang][key]) el.setAttribute("alt", translations[lang][key]);
-        });
-        document.querySelectorAll(".toast[data-message]").forEach((el) => {
-          el.textContent = translateText(el.dataset.message);
-        });
-        const resultTitle = document.getElementById("rTitle");
-        const resultMessage = document.getElementById("rMsg");
-        if (resultTitle.dataset.message) resultTitle.textContent = translateText(resultTitle.dataset.message);
-        if (resultMessage.dataset.message) resultMessage.textContent = translateText(resultMessage.dataset.message);
-        document.querySelectorAll(".search-suggestions-heading").forEach((el) => {
-          el.textContent = "💡 " + translateText("Suggestions:");
-        });
-        document.querySelectorAll(".card-result-status[data-i18n-key]").forEach((el) => {
-          el.textContent = translations[lang][el.dataset.i18nKey];
-        });
-        document.querySelectorAll(".admin-del-btn[data-i18n-key]").forEach((el) => {
-          el.textContent = translateText("Delete");
-        });
-        document.querySelectorAll(".admin-owner-tag[data-i18n-key]").forEach((el) => {
-          el.textContent = translateText("Owner");
-        });
-        document.querySelectorAll(".search-empty[data-i18n-key]").forEach((el) => {
-          el.textContent = "❌ " + translations[lang][el.dataset.i18nKey];
-        });
-        const addStatus = document.querySelector("#addResult [data-message]");
-        if (addStatus) addStatus.textContent = translateText(addStatus.dataset.message);
-        const addLink = document.querySelector("#addResult a[data-message]");
-        if (addLink) addLink.lastChild.textContent = translateText(addLink.dataset.message);
-        if (currentLoaderText && document.getElementById("loader").style.display === "flex") {
-          document.getElementById("loaderText").innerText = translateText(currentLoaderText);
-        }
-        const loginError = document.getElementById("loginError");
-        if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
+          document.querySelectorAll("[data-i18n]").forEach((el) => {
+            const key = el.getAttribute("data-i18n");
+            if (translations[lang][key]) el.innerText = translations[lang][key];
+          });
+          document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+            const key = el.getAttribute("data-i18n-placeholder");
+            if (translations[lang][key])
+              el.setAttribute("placeholder", translations[lang][key]);
+          });
+          document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+            const key = el.getAttribute("data-i18n-title");
+            if (translations[lang][key]) el.setAttribute("title", translations[lang][key]);
+          });
+          document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
+            const key = el.getAttribute("data-i18n-alt");
+            if (translations[lang][key]) el.setAttribute("alt", translations[lang][key]);
+          });
+          document.querySelectorAll(".toast[data-message]").forEach((el) => {
+            el.textContent = translateText(el.dataset.message);
+          });
+          const resultTitle = document.getElementById("rTitle");
+          const resultMessage = document.getElementById("rMsg");
+          if (resultTitle.dataset.message) resultTitle.textContent = translateText(resultTitle.dataset.message);
+          if (resultMessage.dataset.message) resultMessage.textContent = translateText(resultMessage.dataset.message);
+          document.querySelectorAll(".search-suggestions-heading[data-translation-key]").forEach((el) => {
+            const prefix = el.dataset.translationKey === "searchSuggestions" ? "💡 " : "";
+            el.textContent = prefix + translateText(el.dataset.translationKey);
+          });
+          document.querySelectorAll(".card-result-status[data-i18n-key]").forEach((el) => {
+            el.textContent = translations[lang][el.dataset.i18nKey];
+          });
+          document.querySelectorAll(".admin-del-btn[data-i18n-key]").forEach((el) => {
+            el.textContent = translateText("Delete");
+          });
+          document.querySelectorAll(".admin-owner-tag[data-i18n-key]").forEach((el) => {
+            el.textContent = translateText("Owner");
+          });
+          document.querySelectorAll(".search-empty[data-i18n-key]").forEach((el) => {
+            el.textContent = "❌ " + translations[lang][el.dataset.i18nKey];
+          });
+          const addStatus = document.querySelector("#addResult [data-message]");
+          if (addStatus) addStatus.textContent = translateText(addStatus.dataset.message);
+          const addLink = document.querySelector("#addResult a[data-message]");
+          if (addLink) addLink.lastChild.textContent = translateText(addLink.dataset.message);
+          if (currentLoaderText && document.getElementById("loader").style.display === "flex") {
+            document.getElementById("loaderText").innerText = translateText(currentLoaderText);
+          }
+          const loginError = document.getElementById("loginError");
+          if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
+        };
+        if (currentLang === lang) changeLanguage();
+        else runAppearanceTransition(changeLanguage);
       }
 
       function toggleLanguage() {
@@ -450,13 +497,27 @@
 
       function applyTheme(mode) {
         mode = mode === "light" ? "light" : "dark";
-        currentThemeMode = mode;
-        localStorage.setItem("app_theme", mode);
-        const body = document.body;
-        const btn = document.getElementById("themeToggleBtn");
-        body.setAttribute("data-theme", mode);
-        if (mode === "dark") btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
-        else btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+        const themeChanged = currentThemeMode !== mode;
+        const changeTheme = () => {
+          currentThemeMode = mode;
+          localStorage.setItem("app_theme", mode);
+          const body = document.body;
+          const btn = document.getElementById("themeToggleBtn");
+          body.setAttribute("data-theme", mode);
+          btn.classList.remove("theme-icon-change");
+          btn.offsetWidth;
+          if (mode === "dark") btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
+          else btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+          if (themeChanged) {
+            btn.classList.add("theme-icon-change");
+            window.setTimeout(
+              () => btn.classList.remove("theme-icon-change"),
+              360,
+            );
+          }
+        };
+        if (!themeChanged) changeTheme();
+        else runAppearanceTransition(changeTheme);
       }
 
       function toggleTheme() {
@@ -498,10 +559,13 @@
         if (!window.indexedDB) return Promise.reject(new Error("IndexedDB unavailable"));
         if (!offlineDatabasePromise) {
           offlineDatabasePromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open("lambas-attendance-offline", 1);
+            const request = indexedDB.open("lambas-attendance-offline", 2);
             request.onupgradeneeded = () => {
               if (!request.result.objectStoreNames.contains("events")) {
                 request.result.createObjectStore("events", { keyPath: "eventId" });
+              }
+              if (!request.result.objectStoreNames.contains("roster")) {
+                request.result.createObjectStore("roster", { keyPath: "id" });
               }
             };
             request.onsuccess = () => resolve(request.result);
@@ -509,6 +573,130 @@
           });
         }
         return offlineDatabasePromise;
+      }
+
+      async function getCachedRoster() {
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("roster", "readonly").objectStore("roster").getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("Could not read saved roster"));
+        });
+      }
+
+      async function saveCachedRoster(roster) {
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("roster", "readwrite");
+          const store = transaction.objectStore("roster");
+          store.clear();
+          roster.forEach((person) => store.put(person));
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not save roster"));
+          transaction.onabort = () => reject(transaction.error || new Error("Roster cache update was cancelled"));
+        });
+      }
+
+      async function refreshRosterCache() {
+        if (!navigator.onLine || !currentUser || !googleIdToken) return false;
+        try {
+          const response = await apiCall("get_roster");
+          if (!response || !response.success || !Array.isArray(response.roster)) {
+            throw new Error(response && response.message ? response.message : "Invalid roster response");
+          }
+          const roster = response.roster.filter(
+            (person) => person && person.id != null && person.name,
+          ).map((person) => ({
+            id: String(person.id),
+            name: String(person.name),
+          }));
+          await saveCachedRoster(roster);
+          return true;
+        } catch (error) {
+          showToast(translations[currentLang].offlineSearchCacheFailed, "info");
+          return false;
+        }
+      }
+
+      function normalizeSearchName(name) {
+        return String(name || "")
+          .normalize("NFKC")
+          .toLowerCase()
+          .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+          .replace(/[أإآٱ]/g, "ا")
+          .replace(/ى/g, "ي")
+          .replace(/[^\p{L}\p{N}\s]/gu, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function editDistanceAtMostOne(left, right) {
+        if (Math.abs(left.length - right.length) > 1) return false;
+        let leftIndex = 0;
+        let rightIndex = 0;
+        let edits = 0;
+        while (leftIndex < left.length && rightIndex < right.length) {
+          if (left[leftIndex] === right[rightIndex]) {
+            leftIndex++;
+            rightIndex++;
+            continue;
+          }
+          if (++edits > 1) return false;
+          if (left.length > right.length) leftIndex++;
+          else if (right.length > left.length) rightIndex++;
+          else {
+            leftIndex++;
+            rightIndex++;
+          }
+        }
+        if (leftIndex < left.length || rightIndex < right.length) edits++;
+        return edits <= 1;
+      }
+
+      function scoreCachedName(cleanName, queryTokens) {
+        const nameTokens = cleanName.split(" ");
+        let score = 0;
+        for (const queryToken of queryTokens) {
+          let bestScore = 0;
+          for (const nameToken of nameTokens) {
+            if (nameToken === queryToken) bestScore = Math.max(bestScore, 100);
+            else if (nameToken.startsWith(queryToken)) bestScore = Math.max(bestScore, 80);
+            else if (nameToken.includes(queryToken)) bestScore = Math.max(bestScore, 60);
+            else if (queryToken.length >= 4 && editDistanceAtMostOne(nameToken, queryToken)) {
+              bestScore = Math.max(bestScore, 40);
+            }
+          }
+          if (!bestScore) return -1;
+          score += bestScore;
+        }
+        return score;
+      }
+
+      function searchCachedRoster(roster, inputName) {
+        const query = normalizeSearchName(inputName);
+        if (!query) return { status: "error" };
+        const exactMatch = roster.find((person) => normalizeSearchName(person.name) === query);
+        if (exactMatch) {
+          return { status: "exact_match", id: exactMatch.id, name: exactMatch.name };
+        }
+        const queryTokens = query.split(" ");
+        const matches = roster
+          .map((person) => ({
+            id: person.id,
+            name: person.name,
+            score: scoreCachedName(normalizeSearchName(person.name), queryTokens),
+          }))
+          .filter((person) => person.score >= 0)
+          .sort((left, right) =>
+            right.score - left.score ||
+            left.name.length - right.name.length ||
+            left.name.localeCompare(right.name),
+          )
+          .slice(0, 8)
+          .map(({ id, name }) => ({ id, name }));
+        return matches.length
+          ? { status: "suggestions", matches }
+          : { status: "no_match" };
       }
 
       async function saveOfflineEvent(event) {
@@ -589,13 +777,24 @@
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
             const event = events[0];
             if (event.queuedBy !== currentUser.email) break;
-            const response = await apiCall("sync_offline_events", { events: [event] });
+            let response = null;
+            for (const delay of [0, 750, 2000, 4000]) {
+              if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+              if (!navigator.onLine || !currentUser || !googleIdToken) break;
+              response = await apiCall("sync_offline_events", { events: [event] });
+              if (!response || !response.success || !Array.isArray(response.results)) break;
+              const attemptResult = response.results[0];
+              if (!attemptResult || attemptResult.status !== "pending") break;
+            }
             if (!response || !response.success || !Array.isArray(response.results)) break;
             const eventResult = response.results[0];
             if (!eventResult || eventResult.status !== "complete") break;
             await removeOfflineEvent(event.eventId);
             const result = eventResult.result || {};
             if (event.eventId === targetEventId) targetResult = result;
+            if (event.type === "add_student" && result.success) {
+              await refreshRosterCache();
+            }
             if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
             else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
             events = await getOfflineEvents();
@@ -658,12 +857,6 @@
         if (currentActiveViewId && currentActiveViewId !== viewId)
           resetView(currentActiveViewId);
 
-        const container = document.getElementById("mainContainer");
-        container.style.animation = "none";
-        container.offsetHeight;
-        container.style.animation =
-          "viewEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards";
-
         if (viewId !== "adminSettingsView") {
           const lockEl = document.getElementById("adminSettingsLock");
           const formEl = document.getElementById("adminSettingsForm");
@@ -696,6 +889,17 @@
           const el = document.getElementById(id);
           if (el) el.style.display = id === viewId ? "block" : "none";
         });
+        const activeView = document.getElementById(viewId);
+        if (activeView && currentActiveViewId !== viewId) {
+          activeView.classList.remove("view-enter-forward", "view-enter-back");
+          activeView.offsetWidth;
+          activeView.classList.add(
+            pushHistory ? "view-enter-forward" : "view-enter-back",
+          );
+          window.setTimeout(() => {
+            activeView.classList.remove("view-enter-forward", "view-enter-back");
+          }, 420);
+        }
 
         const homeBtn = document.getElementById("homeBtn");
         const adminToolbarButton = document.getElementById("adminToolbarButton");
@@ -754,6 +958,7 @@
 
       window.addEventListener("online", async () => {
         await updateOfflineStatus();
+        await refreshRosterCache();
         const retryDelays = [0, 1000, 3000, 7000];
         for (const delay of retryDelays) {
           if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -775,6 +980,9 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
+        document.getElementById("searchNameInput").addEventListener("keydown", (event) => {
+          if (event.key === "Enter") executeSearch();
+        });
         if (navigator.onLine) initializeGoogleSignIn();
         await updateOfflineStatus();
 
@@ -812,6 +1020,7 @@
               localStorage.setItem("app_user", JSON.stringify(currentUser));
               setupUserProfileUI();
               checkDirectUrlScan();
+              await refreshRosterCache();
               await syncOfflineQueue();
             } else {
               logoutUser("❌ Unauthorized account.");
@@ -877,6 +1086,7 @@
             localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
             setupUserProfileUI();
             checkDirectUrlScan();
+            await refreshRosterCache();
             await syncOfflineQueue();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
@@ -1107,30 +1317,92 @@
       }
 
       async function processDirectAttendance(rawId) {
-        if (!navigator.onLine) {
-          showToast(translateText("searchRequiresInternet"), "info");
+        if (!currentUser || (navigator.onLine && !googleIdToken)) {
+          renderResult({
+            kind: "error",
+            title: "Sign-in required",
+            message: "offlineNeedsLogin",
+          });
           return;
         }
-        showLoader();
         try {
-          const res = await apiCall("scan", {
-            id: rawId,
-            email: currentUser ? currentUser.email : "",
+          const queuedEvent = await queueOfflineEvent({
+            type: "scan",
+            qrText: String(rawId),
           });
+          if (!navigator.onLine) {
+            renderResult({
+              kind: "queued",
+              title: "offlineQueuedTitle",
+              name: "",
+              message: "offlineScanQueued",
+            });
+            return;
+          }
+          showLoader();
+          const result = await syncOfflineQueue(queuedEvent.eventId);
           hideLoader();
-          if (res && (res.code === "AUTH_INVALID" || res.code === "AUTH_DENIED")) return;
-          renderResult(res);
+          if (result) renderResult(result);
+          else {
+            renderResult({
+              kind: "queued",
+              title: "offlineQueuedTitle",
+              name: "",
+              message: "offlineScanQueued",
+            });
+          }
         } catch (e) {
           hideLoader();
           renderResult({
             kind: "error",
-            title: "Connection Error",
-            message: "Failed to connect to server",
+            title: "Error",
+            message: "offlineStorageError",
           });
         }
       }
 
-      // Attend by Name Search with Visible Tech Loader
+      function renderNameSearchResults(result, isOffline) {
+        const results = document.getElementById("searchResults");
+        results.replaceChildren();
+        if (!result || result.status === "no_match" || result.status === "error") {
+          const empty = document.createElement("div");
+          empty.className = "search-empty";
+          empty.textContent = translateText("noSearchMatches");
+          results.appendChild(empty);
+          return;
+        }
+        if (isOffline) {
+          const note = document.createElement("div");
+          note.className = "search-suggestions-heading";
+          note.dataset.translationKey = "offlineSearchResults";
+          note.textContent = translateText("offlineSearchResults");
+          results.appendChild(note);
+        }
+        if (result.status === "exact_match") {
+          processDirectAttendance(result.id);
+          return;
+        }
+        if (result.status === "suggestions" && Array.isArray(result.matches)) {
+          const heading = document.createElement("div");
+          heading.className = "search-suggestions-heading";
+          heading.dataset.translationKey = "searchSuggestions";
+          heading.textContent = "💡 " + translateText("searchSuggestions");
+          results.appendChild(heading);
+          result.matches.forEach((item) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "suggestion-btn";
+            const icon = document.createElement("i");
+            icon.className = "fa-solid fa-user";
+            const label = document.createElement("span");
+            label.textContent = item.name;
+            button.append(icon, label);
+            button.onclick = () => processDirectAttendance(item.id);
+            results.appendChild(button);
+          });
+        }
+      }
+
       async function executeSearch() {
         var name = document.getElementById("searchNameInput").value.trim();
         var resDiv = document.getElementById("searchResults");
@@ -1138,52 +1410,53 @@
           showToast("⚠️ Please enter a name", "error");
           return;
         }
-        if (!navigator.onLine) {
-          showToast(translateText("searchRequiresInternet"), "info");
-          return;
-        }
-
         if (isNameSearchRunning) return;
         isNameSearchRunning = true;
         const searchButton = document.getElementById("btnSearch");
         searchButton.disabled = true;
-        showSearchLoader(resDiv);
         try {
-          const res = await apiCall("search", { name: name });
-          if (res && res.success === false) {
-            resDiv.replaceChildren();
-            showToast(res.message || "Error", "error");
-            return;
-          }
-          resDiv.replaceChildren();
-          if (res && res.status === "exact_match") {
-            processDirectAttendance(res.id);
-          } else if (
-            res &&
-            res.status === "suggestions" &&
-            Array.isArray(res.matches)
-          ) {
-            const heading = document.createElement("div");
-            heading.className = "search-suggestions-heading";
-            heading.textContent = "💡 " + translateText("Suggestions:");
-            resDiv.appendChild(heading);
-            res.matches.forEach((item) => {
-              var btn = document.createElement("button");
-              btn.className = "suggestion-btn";
-              const icon = document.createElement("i");
-              icon.className = "fa-solid fa-user";
-              const label = document.createElement("span");
-              label.textContent = item.name;
-              btn.append(icon, label);
-              btn.onclick = () => processDirectAttendance(item.id);
-              resDiv.appendChild(btn);
-            });
+          if (!navigator.onLine) {
+            showSearchLoader(resDiv);
+            const roster = await getCachedRoster();
+            if (!roster.length) {
+              resDiv.replaceChildren();
+              const empty = document.createElement("div");
+              empty.className = "search-empty";
+              empty.textContent = translateText("offlineSearchNoCache");
+              resDiv.appendChild(empty);
+              return;
+            }
+            renderNameSearchResults(searchCachedRoster(roster, name), true);
           } else {
-            showToast("❌ No matching results found", "error");
+            showSearchLoader(resDiv);
+            const response = await apiCall("search", { name: name });
+            if (response && response.success === false) {
+              resDiv.replaceChildren();
+              showToast(response.message || "Error", "error");
+              return;
+            }
+            renderNameSearchResults(response, false);
           }
         } catch (err) {
-          resDiv.innerHTML = "";
-          showToast("❌ Error during search", "error");
+          if (navigator.onLine) {
+            try {
+              const roster = await getCachedRoster();
+              if (roster.length) {
+                renderNameSearchResults(searchCachedRoster(roster, name), true);
+                return;
+              }
+            } catch (cacheError) {
+              showToast(translations[currentLang].offlineSearchCacheFailed, "info");
+            }
+          }
+          resDiv.replaceChildren();
+          const empty = document.createElement("div");
+          empty.className = "search-empty";
+          empty.textContent = navigator.onLine
+            ? "❌ Error during search"
+            : translateText("offlineSearchNoCache");
+          resDiv.appendChild(empty);
+          if (navigator.onLine) showToast("❌ Error during search", "error");
         } finally {
           isNameSearchRunning = false;
           searchButton.disabled = false;

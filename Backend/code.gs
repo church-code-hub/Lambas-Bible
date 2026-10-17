@@ -114,6 +114,16 @@ function doGet(e) {
   try {
     if (action === "get_settings")
       result = { success: true, settings: getPublicSettings_() };
+    else if (action === "get_roster") {
+      const roster = getRosterSnapshot_();
+      result = roster
+        ? { success: true, roster: roster }
+        : {
+            success: false,
+            code: "ROSTER_MISSING",
+            message: "شيت Roster غير موجود.",
+          };
+    }
     else if (action === "search")
       result = verifyOrSuggestName(params.name || "");
     else if (action === "get_admins")
@@ -158,6 +168,15 @@ function doPost(e) {
       result = syncOfflineEvents_(data.events, identity.email);
     } else if (action === "scan") {
       result = withScriptLock_(() => processScan(data.id, identity.email));
+    } else if (action === "get_roster") {
+      const roster = getRosterSnapshot_();
+      result = roster
+        ? { success: true, roster: roster }
+        : {
+            success: false,
+            code: "ROSTER_MISSING",
+            message: "شيت Roster غير موجود.",
+          };
     } else if (action === "search")
       result = verifyOrSuggestName(data.name || "");
     else if (action === "get_settings")
@@ -213,24 +232,20 @@ function responseJSON_(data) {
   );
 }
 
-function getOfflineEventsSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("Offline Events");
-  if (!sheet) {
-    sheet = ss.insertSheet("Offline Events");
-    sheet
-      .getRange(1, 1, 1, 5)
-      .setValues([
-        [
-          "Event ID",
-          "Status",
-          "Event Timestamp",
-          "Result JSON",
-          "Completed At",
-        ],
-      ]);
-  }
-  return sheet;
+const OFFLINE_EVENT_PROPERTY_PREFIX_ = "OFFLINE_EVENT_";
+
+function pruneOfflineEventProperties_(properties, now) {
+  const expirationTime = now - 7 * 24 * 60 * 60 * 1000;
+  const propertyValues = properties.getProperties();
+  Object.keys(propertyValues).forEach((key) => {
+    if (!key.startsWith(OFFLINE_EVENT_PROPERTY_PREFIX_)) return;
+    const record = JSON.parse(propertyValues[key]);
+    const recordedAt = Date.parse(record.timestamp);
+    if (!Number.isFinite(recordedAt)) {
+      throw new Error("Invalid offline event record timestamp.");
+    }
+    if (recordedAt < expirationTime) properties.deleteProperty(key);
+  });
 }
 
 function syncOfflineEvents_(events, adminEmail) {
@@ -243,6 +258,7 @@ function syncOfflineEvents_(events, adminEmail) {
   }
 
   const results = [];
+  let didPruneEventProperties = false;
   for (const event of events) {
     const eventId = String((event && event.eventId) || "");
     const timestamp = new Date((event && event.timestamp) || "");
@@ -276,22 +292,26 @@ function syncOfflineEvents_(events, adminEmail) {
       continue;
     }
 
+    const propertyKey = OFFLINE_EVENT_PROPERTY_PREFIX_ + eventId;
     const claim = withScriptLock_(() => {
-      const sheet = getOfflineEventsSheet_();
-      const lastRow = sheet.getLastRow();
-      const rows =
-        lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 5).getValues() : [];
-      const existingIndex = rows.findIndex((row) => String(row[0]) === eventId);
-      if (existingIndex !== -1) {
-        const row = rows[existingIndex];
+      const properties = PropertiesService.getScriptProperties();
+      if (!didPruneEventProperties) {
+        pruneOfflineEventProperties_(properties, now);
+        didPruneEventProperties = true;
+      }
+      const existingRecord = properties.getProperty(propertyKey);
+      if (existingRecord) {
+        const record = JSON.parse(existingRecord);
         return {
-          status: row[1] === "COMPLETE" ? "complete" : "pending",
-          rowNumber: existingIndex + 2,
-          result: row[3] ? JSON.parse(row[3]) : null,
+          status: record.status === "COMPLETE" ? "complete" : "pending",
+          result: record.result || null,
         };
       }
-      sheet.appendRow([eventId, "PENDING", timestamp, "", ""]);
-      return { status: "claimed", rowNumber: sheet.getLastRow() };
+      properties.setProperty(
+        propertyKey,
+        JSON.stringify({ status: "PENDING", timestamp: timestamp.toISOString() }),
+      );
+      return { status: "claimed" };
     });
 
     if (!claim || claim.success === false) {
@@ -342,12 +362,14 @@ function syncOfflineEvents_(events, adminEmail) {
     }
 
     const savedResult = withScriptLock_(() => {
-      const sheet = getOfflineEventsSheet_();
-      sheet
-        .getRange(claim.rowNumber, 2, 1, 4)
-        .setValues([
-          ["COMPLETE", timestamp, JSON.stringify(eventResult), new Date()],
-        ]);
+      PropertiesService.getScriptProperties().setProperty(
+        propertyKey,
+        JSON.stringify({
+          status: "COMPLETE",
+          timestamp: timestamp.toISOString(),
+          result: eventResult,
+        }),
+      );
       return true;
     });
     results.push({
@@ -1263,33 +1285,106 @@ function normalizeName_(name) {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function verifyOrSuggestName(inputName) {
-  if (!inputName) return { status: "error", message: "الاسم فارغ" };
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const rosterSheet = ss.getSheetByName("Roster");
-  if (!rosterSheet) return { status: "no_match" };
+function getRosterSnapshot_() {
+  const rosterSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
+  if (!rosterSheet) return null;
   const lastRow = rosterSheet.getLastRow();
   const data =
     lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 2).getValues() : [];
-  const cleanInput = normalizeName_(inputName);
-  let suggestions = [];
+  return data
+    .filter((row) => row[0] !== "" && row[0] !== null && row[1])
+    .map((row) => ({
+      id: String(row[0]).trim(),
+      name: String(row[1]).trim(),
+    }));
+}
 
-  for (let i = 0; i < data.length; i++) {
-    if (!data[i][0] || !data[i][1]) continue;
-    let rowId = data[i][0].toString().trim();
-    let rowName = data[i][1].toString().trim();
-    let cleanRow = normalizeName_(rowName);
-    if (cleanRow === cleanInput)
-      return { status: "exact_match", id: rowId, name: rowName };
-    if (cleanRow.includes(cleanInput) && suggestions.length < 5)
-      suggestions.push({ id: rowId, name: rowName });
+function editDistanceAtMostOne_(left, right) {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex++;
+      rightIndex++;
+      continue;
+    }
+    if (++edits > 1) return false;
+    if (left.length > right.length) leftIndex++;
+    else if (right.length > left.length) rightIndex++;
+    else {
+      leftIndex++;
+      rightIndex++;
+    }
   }
-  return suggestions.length > 0
-    ? { status: "suggestions", matches: suggestions }
+  if (leftIndex < left.length || rightIndex < right.length) edits++;
+  return edits <= 1;
+}
+
+function scoreNameMatch_(cleanName, queryTokens) {
+  const nameTokens = cleanName.split(" ");
+  let score = 0;
+  for (const queryToken of queryTokens) {
+    let bestScore = 0;
+    for (const nameToken of nameTokens) {
+      if (nameToken === queryToken) bestScore = Math.max(bestScore, 100);
+      else if (nameToken.startsWith(queryToken))
+        bestScore = Math.max(bestScore, 80);
+      else if (nameToken.includes(queryToken))
+        bestScore = Math.max(bestScore, 60);
+      else if (
+        queryToken.length >= 4 &&
+        editDistanceAtMostOne_(nameToken, queryToken)
+      )
+        bestScore = Math.max(bestScore, 40);
+    }
+    if (!bestScore) return -1;
+    score += bestScore;
+  }
+  return score;
+}
+
+function verifyOrSuggestName(inputName) {
+  const cleanInput = normalizeName_(inputName);
+  if (!cleanInput) return { status: "error", message: "الاسم فارغ" };
+  const data = getRosterSnapshot_() || [];
+  const exactMatch = data.find(
+    (person) => normalizeName_(person.name) === cleanInput,
+  );
+  if (exactMatch)
+    return {
+      status: "exact_match",
+      id: exactMatch.id,
+      name: exactMatch.name,
+    };
+
+  const queryTokens = cleanInput.split(" ");
+  const matches = data
+    .map((person) => ({
+      id: person.id,
+      name: person.name,
+      score: scoreNameMatch_(normalizeName_(person.name), queryTokens),
+    }))
+    .filter((person) => person.score >= 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.name.length - right.name.length ||
+        left.name.localeCompare(right.name),
+    )
+    .slice(0, 8)
+    .map(({ id, name }) => ({ id, name }));
+  return matches.length > 0
+    ? { status: "suggestions", matches: matches }
     : { status: "no_match" };
 }
 
