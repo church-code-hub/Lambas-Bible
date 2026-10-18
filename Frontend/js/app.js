@@ -11,6 +11,8 @@
       var isNameSearchRunning = false;
       var isCardSearchRunning = false;
       var isSyncingOfflineQueue = false;
+      var googleSignInInitialized = false;
+      var pendingSessionRestoreEmail = "";
       var offlineDatabasePromise = null;
       var verifiedPassword = "";
       var currentLoaderText = "";
@@ -546,7 +548,12 @@
           });
           if (!response.ok) throw new Error("HTTP " + response.status);
           const result = await response.json();
-          if (result.code === "AUTH_INVALID" || result.code === "AUTH_DENIED") {
+          if (result.code === "AUTH_INVALID" && action !== "check_auth") {
+            googleIdToken = "";
+            sessionStorage.removeItem("google_id_token");
+            if (currentUser) beginSessionRestore(currentUser.email);
+            else logoutUser(result.message || "❌ Unauthorized account.");
+          } else if (result.code === "AUTH_DENIED") {
             logoutUser(result.message || "❌ Unauthorized account.");
           }
           return result;
@@ -746,7 +753,9 @@
         const status = document.getElementById("syncStatus");
         const offlineOverlay = document.getElementById("offlineOverlay");
         offlineOverlay.style.display = navigator.onLine ? "none" : "block";
-        status.style.bottom = navigator.onLine ? "20px" : "12px";
+        status.style.top = navigator.onLine
+          ? "calc(72px + env(safe-area-inset-top, 0px))"
+          : `${Math.ceil(offlineOverlay.getBoundingClientRect().bottom + 8)}px`;
         try {
           const events = await getOfflineEvents();
           const count = events.length;
@@ -777,26 +786,43 @@
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
             const event = events[0];
             if (event.queuedBy !== currentUser.email) break;
+            const batch = [];
+            for (const candidate of events) {
+              if (
+                batch.length >= 20 ||
+                candidate.queuedBy !== currentUser.email ||
+                candidate.type !== event.type ||
+                (event.type !== "scan" && batch.length > 0)
+              ) break;
+              batch.push(candidate);
+            }
             let response = null;
             for (const delay of [0, 750, 2000, 4000]) {
               if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
               if (!navigator.onLine || !currentUser || !googleIdToken) break;
-              response = await apiCall("sync_offline_events", { events: [event] });
+              response = await apiCall("sync_offline_events", { events: batch });
               if (!response || !response.success || !Array.isArray(response.results)) break;
-              const attemptResult = response.results[0];
-              if (!attemptResult || attemptResult.status !== "pending") break;
+              if (!response.results.some((item) => item && item.status === "pending")) break;
             }
             if (!response || !response.success || !Array.isArray(response.results)) break;
-            const eventResult = response.results[0];
-            if (!eventResult || eventResult.status !== "complete") break;
-            await removeOfflineEvent(event.eventId);
-            const result = eventResult.result || {};
-            if (event.eventId === targetEventId) targetResult = result;
-            if (event.type === "add_student" && result.success) {
-              await refreshRosterCache();
+            let shouldStop = response.results.length !== batch.length;
+            for (let index = 0; index < response.results.length; index++) {
+              const eventResult = response.results[index];
+              if (!eventResult || eventResult.status !== "complete") {
+                shouldStop = true;
+                break;
+              }
+              const completedEvent = batch[index];
+              await removeOfflineEvent(completedEvent.eventId);
+              const result = eventResult.result || {};
+              if (completedEvent.eventId === targetEventId) targetResult = result;
+              if (completedEvent.type === "add_student" && result.success) {
+                await refreshRosterCache();
+              }
+              if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
+              else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
             }
-            if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
-            else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
+            if (shouldStop) break;
             events = await getOfflineEvents();
           }
         } catch (error) {
@@ -958,6 +984,11 @@
 
       window.addEventListener("online", async () => {
         await updateOfflineStatus();
+        initializeGoogleSignIn();
+        if (currentUser && !googleIdToken) {
+          beginSessionRestore(currentUser.email);
+          return;
+        }
         await refreshRosterCache();
         const retryDelays = [0, 1000, 3000, 7000];
         for (const delay of retryDelays) {
@@ -983,7 +1014,7 @@
         document.getElementById("searchNameInput").addEventListener("keydown", (event) => {
           if (event.key === "Enter") executeSearch();
         });
-        if (navigator.onLine) initializeGoogleSignIn();
+        const signInReady = navigator.onLine ? initializeGoogleSignIn() : false;
         await updateOfflineStatus();
 
         const savedUser = localStorage.getItem("app_user");
@@ -998,15 +1029,15 @@
               await updateOfflineStatus();
               return;
             }
-            if (!googleIdToken) {
+            if (!navigator.onLine) {
               currentUser = null;
               showView("loginView", false);
+              await updateOfflineStatus();
               return;
             }
-            if (!navigator.onLine) {
-              setupUserProfileUI();
-              checkDirectUrlScan();
-              await updateOfflineStatus();
+            if (!googleIdToken) {
+              if (signInReady) beginSessionRestore(currentUser.email);
+              else currentUser = null;
               return;
             }
             showLoader();
@@ -1014,7 +1045,11 @@
               email: currentUser.email,
             });
             hideLoader();
-            if (authRes && authRes.authorized) {
+            if (
+              authRes &&
+              authRes.authorized &&
+              String(authRes.email || "").toLowerCase().trim() === currentUser.email.toLowerCase().trim()
+            ) {
               if (authRes.adminName) currentUser.name = authRes.adminName;
               localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email.toLowerCase().trim());
               localStorage.setItem("app_user", JSON.stringify(currentUser));
@@ -1022,13 +1057,22 @@
               checkDirectUrlScan();
               await refreshRosterCache();
               await syncOfflineQueue();
-            } else {
+            } else if (authRes && authRes.code === "AUTH_INVALID" && signInReady) {
+              googleIdToken = "";
+              sessionStorage.removeItem("google_id_token");
+              beginSessionRestore(currentUser.email);
+            } else if (authRes && authRes.authorized) {
+              logoutUser("Please sign in again.");
+            } else if (authRes && authRes.success && !authRes.authorized) {
               logoutUser("❌ Unauthorized account.");
+            } else {
+              currentUser = null;
+              showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
             }
           } catch (e) {
             hideLoader();
             currentUser = null;
-            showView("loginView", false);
+            showLoginError("Connection error.");
           }
         } else {
           showView("loginView", false);
@@ -1036,20 +1080,21 @@
       });
 
       function initializeGoogleSignIn() {
+        if (googleSignInInitialized) return true;
         const clientId = APP_CONFIG.googleClientId;
         const button = document.getElementById("g_id_signin");
         if (!clientId || !button) {
           showLoginError("Application is not configured.");
-          return;
+          return false;
         }
         if (!window.google || !google.accounts || !google.accounts.id) {
           showLoginError("Google sign-in could not be loaded.");
-          return;
+          return false;
         }
         google.accounts.id.initialize({
           client_id: clientId,
           callback: handleCredentialResponse,
-          auto_select: false,
+          auto_select: true,
         });
         google.accounts.id.renderButton(button, {
           type: "standard",
@@ -1059,6 +1104,31 @@
           shape: "rectangular",
           logo_alignment: "left",
         });
+        googleSignInInitialized = true;
+        return true;
+      }
+
+      function beginSessionRestore(email) {
+        if (!navigator.onLine || !window.google || !google.accounts || !google.accounts.id) {
+          currentUser = null;
+          hideLoader();
+          showView("loginView", false);
+          return;
+        }
+        pendingSessionRestoreEmail = String(email || "").toLowerCase().trim();
+        showLoader();
+        google.accounts.id.prompt((notification) => {
+          const unavailable =
+            (notification.isNotDisplayed && notification.isNotDisplayed()) ||
+            (notification.isSkippedMoment && notification.isSkippedMoment()) ||
+            (notification.isDismissedMoment && notification.isDismissedMoment());
+          if (unavailable && pendingSessionRestoreEmail) {
+            pendingSessionRestoreEmail = "";
+            currentUser = null;
+            hideLoader();
+            showView("loginView", false);
+          }
+        });
       }
 
       async function handleCredentialResponse(response) {
@@ -1067,13 +1137,24 @@
           showLoginError("Could not read Google account data");
           return;
         }
+        const expectedEmail = pendingSessionRestoreEmail;
+        pendingSessionRestoreEmail = "";
+        if (expectedEmail && payload.email.toLowerCase().trim() !== expectedEmail) {
+          currentUser = null;
+          showView("loginView", false);
+          return;
+        }
 
         googleIdToken = response.credential;
         showLoader();
         try {
           const authRes = await apiCall("check_auth", { email: payload.email });
           hideLoader();
-          if (authRes && authRes.authorized) {
+          if (
+            authRes &&
+            authRes.authorized &&
+            String(authRes.email || "").toLowerCase().trim() === payload.email.toLowerCase().trim()
+          ) {
             currentUser = {
               email: payload.email.toLowerCase().trim(),
               name: authRes.adminName || payload.name || payload.email,
@@ -1096,6 +1177,8 @@
             googleIdToken = "";
             sessionStorage.removeItem("google_id_token");
             showLoginError("Please sign in again.");
+          } else if (authRes && authRes.authorized) {
+            logoutUser("Please sign in again.");
           } else if (authRes && authRes.success === false) {
             showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
           } else {
@@ -1108,6 +1191,7 @@
           googleIdToken = "";
           sessionStorage.removeItem("google_id_token");
           hideLoader();
+          currentUser = null;
           showLoginError("Connection error.");
         }
       }
@@ -1124,6 +1208,7 @@
         localStorage.removeItem("app_user");
         localStorage.removeItem(OFFLINE_SESSION_KEY);
         sessionStorage.removeItem("google_id_token");
+        pendingSessionRestoreEmail = "";
         googleIdToken = "";
         currentUser = null;
         verifiedPassword = "";
@@ -1542,26 +1627,28 @@
         };
         document.getElementById("previewStudentName").innerText = studentName;
 
-        let fetchUrl = driveUrl;
-        if (driveUrl.includes("drive.google.com")) {
-          let matchId = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-          if (matchId && matchId[1])
-            fetchUrl = "https://lh3.googleusercontent.com/d/" + matchId[1];
-        }
+        const fetchUrl = resolveHighQualityDriveImageUrl(driveUrl);
 
         document.getElementById("previewCardImg").src = fetchUrl;
         showView("cardPreviewView");
       }
 
+      function resolveHighQualityDriveImageUrl(driveUrl) {
+        if (!driveUrl) return driveUrl;
+        const matchId =
+          (driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+            driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)) ||
+          (driveUrl.match(/id=([a-zA-Z0-9_-]+)/) && driveUrl.match(/id=([a-zA-Z0-9_-]+)/));
+        if (matchId && matchId[1]) {
+          return "https://lh3.googleusercontent.com/d/" + matchId[1] + "?authuser=0&sz=w2000";
+        }
+        return driveUrl;
+      }
+
       async function shareCurrentCardImage() {
         showLoader("Preparing image for sharing...");
         try {
-          let fetchUrl = activePreviewCard.driveUrl;
-          if (fetchUrl.includes("drive.google.com")) {
-            let matchId = fetchUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-            if (matchId && matchId[1])
-              fetchUrl = "https://lh3.googleusercontent.com/d/" + matchId[1];
-          }
+          let fetchUrl = resolveHighQualityDriveImageUrl(activePreviewCard.driveUrl);
 
           const response = await fetch(fetchUrl, { mode: "cors" });
           if (!response.ok) throw new Error("Card image could not be loaded");
@@ -1598,7 +1685,7 @@
           hideLoader();
           if (e.name === "AbortError") return;
           if (e.message && e.message.includes("البطاقة")) showToast(e.message, "error");
-          else window.open(activePreviewCard.driveUrl, "_blank", "noopener");
+          else window.open(resolveHighQualityDriveImageUrl(activePreviewCard.driveUrl), "_blank", "noopener");
         }
       }
 

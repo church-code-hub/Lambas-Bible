@@ -275,7 +275,7 @@ function syncOfflineEvents_(events, adminEmail) {
         code: "OFFLINE_ACCOUNT_MISMATCH",
         message: "سجّل الدخول بالحساب الذي حفظ هذا الإجراء لمزامنته.",
       });
-      continue;
+      break;
     }
     if (
       !/^[A-Za-z0-9_-]{16,80}$/.test(eventId) ||
@@ -289,7 +289,7 @@ function syncOfflineEvents_(events, adminEmail) {
         code: "INVALID_OFFLINE_EVENT",
         message: "تعذر مزامنة حدث قديم أو غير صالح.",
       });
-      continue;
+      break;
     }
 
     const propertyKey = OFFLINE_EVENT_PROPERTY_PREFIX_ + eventId;
@@ -320,7 +320,7 @@ function syncOfflineEvents_(events, adminEmail) {
         status: "pending",
         code: "SERVER_BUSY",
       });
-      continue;
+      break;
     }
     if (claim.status === "complete") {
       results.push({
@@ -332,7 +332,7 @@ function syncOfflineEvents_(events, adminEmail) {
     }
     if (claim.status === "pending") {
       results.push({ eventId: eventId, status: "pending" });
-      continue;
+      break;
     }
 
     let eventResult;
@@ -1538,8 +1538,11 @@ function generateAllCardsFromRoster(targetStudentId) {
         continue;
 
       const encryptedToken = encryptId(studentId);
+      const qrSizePx = 1000;
       const qrApiUrl =
-        "https://api.qrserver.com/v1/create-qr-code/?size=350x350&format=png&margin=16&ecc=M&data=" +
+        "https://api.qrserver.com/v1/create-qr-code/?size=" +
+        qrSizePx + "x" + qrSizePx +
+        "&format=png&margin=2&ecc=H&data=" +
         encodeURIComponent(encryptedToken);
       const qrBlob = UrlFetchApp.fetch(qrApiUrl)
         .getBlob()
@@ -1552,14 +1555,29 @@ function generateAllCardsFromRoster(targetStudentId) {
       const presentation = SlidesApp.openById(tempFile.getId());
       const slide = presentation.getSlides()[0];
       slide.getPageElements().forEach((el) => el.remove());
-      slide.insertImage(templateImageBlob, 0, -20, 400, 600);
-      slide.insertImage(qrBlob, 120, 300, 160, 160);
+      slide.insertImage(templateImageBlob, 0, -20, 430, 650);
+      const qrX = 120;
+      const qrY = 255;
+      const qrW = 210;
+      const qrH = 210;
+      slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
+      const qrFrame = slide.insertShape(
+        SlidesApp.ShapeType.RECTANGLE,
+        qrX - 8,
+        qrY - 8,
+        qrW + 16,
+        qrH + 16,
+      );
+      qrFrame.getFill().setSolidFill("#FFFFFF");
+      qrFrame.getBorder().setTransparent();
+      qrFrame.setZIndex(1);
+      slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
       const textBox = slide.insertTextBox(
         studentName.toString().trim(),
-        65,
-        469,
-        240,
-        30,
+        58,
+        488,
+        260,
+        44,
       );
       textBox
         .getText()
@@ -1568,7 +1586,7 @@ function generateAllCardsFromRoster(targetStudentId) {
       textBox
         .getText()
         .getTextStyle()
-        .setFontSize(25)
+        .setFontSize(28)
         .setBold(true)
         .setForegroundColor("#3e1e04")
         .setFontFamily("Segoe UI");

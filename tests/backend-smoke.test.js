@@ -342,6 +342,43 @@ test("does not apply an offline event twice when the client retries sync", () =>
   assert.equal(applyCount, 1);
 });
 
+test("stops an offline batch when an earlier event is still pending", () => {
+  const { context, scriptPropertiesStore } = createBackendContext();
+  let applyCount = 0;
+  context.saveStudentAndGenerateCard_ = () => {
+    applyCount += 1;
+    return { success: true };
+  };
+  const timestamp = new Date().toISOString();
+  scriptPropertiesStore.setProperty(
+    "OFFLINE_EVENT_pending-event-1234",
+    JSON.stringify({ status: "PENDING", timestamp }),
+  );
+  const events = [
+    {
+      eventId: "pending-event-1234",
+      type: "add_student",
+      name: "Already processing",
+      queuedBy: "admin@example.com",
+      timestamp,
+    },
+    {
+      eventId: "later-event-123456",
+      type: "add_student",
+      name: "Must wait",
+      queuedBy: "admin@example.com",
+      timestamp,
+    },
+  ];
+
+  const result = context.syncOfflineEvents_(events, "admin@example.com");
+
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].eventId, events[0].eventId);
+  assert.equal(result.results[0].status, "pending");
+  assert.equal(applyCount, 0);
+});
+
 test("syncs offline check-in and check-out through the scan flow without an offline sheet", () => {
   const { context, rosterSheet } = createBackendContext([
     ["ID", "Name", "Card URL"],
