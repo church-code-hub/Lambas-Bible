@@ -466,6 +466,7 @@ body::after {
 /* True Frosted Glass Containers */
 .container {
   max-width: min(500px, calc(100vw - 24px));
+  height: max-content;
   width: auto; /* shrink-wrap to content up to max-width */
   /* Only limit height when content would overflow the viewport */
   max-height: calc(100vh - 140px);
