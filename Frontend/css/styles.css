@@ -467,13 +467,11 @@ body::after {
 .container {
   max-width: min(500px, calc(100vw - 24px));
   height: max-content;
-  width: auto; /* shrink-wrap to content up to max-width */
-  /* Only limit height when content would overflow the viewport */
-  max-height: calc(100vh - 140px);
+  width: auto;
   overflow-y: auto;
   background: var(--card-bg);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
   padding: 24px;
   border-radius: 28px;
   box-shadow: var(--shadow);
