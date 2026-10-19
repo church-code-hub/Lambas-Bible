@@ -7,14 +7,14 @@
           #09203f 100%
         );
         --app-bar-bg: rgba(15, 23, 42, 0.55);
-        --card-bg: transparent;
+        --card-bg: rgba(30, 41, 59, 0.42);
         --card-border: rgba(255, 255, 255, 0.18);
         --text-main: #f8fafc;
         --text-sub: #94a3b8;
         --accent-gold: #f59e0b;
         --accent-gold-hover: #d97706;
         --input-bg: rgba(15, 23, 42, 0.35);
-        --chip-bg: transparent;
+        --chip-bg: rgba(255, 255, 255, 0.08);
         --chip-border: rgba(255, 255, 255, 0.16);
         --glass-surface: rgba(255, 255, 255, 0.035);
         --glass-edge: rgba(255, 255, 255, 0.52);
@@ -30,14 +30,14 @@
           #fef3c7 100%
         );
         --app-bar-bg: rgba(255, 255, 255, 0.6);
-        --card-bg: transparent;
+        --card-bg: rgba(255, 255, 255, 0.52);
         --card-border: rgba(217, 119, 6, 0.28);
         --text-main: #0f172a;
         --text-sub: #64748b;
         --accent-gold: #d97706;
         --accent-gold-hover: #b45309;
         --input-bg: rgba(255, 255, 255, 0.7);
-        --chip-bg: transparent;
+        --chip-bg: rgba(0, 0, 0, 0.05);
         --chip-border: rgba(0, 0, 0, 0.12);
         --glass-surface: rgba(255, 255, 255, 0.16);
         --glass-edge: rgba(15, 23, 42, 0.3);
@@ -191,8 +191,8 @@
 
       .icon-btn {
         background: var(--glass-surface);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
         border: 1.5px solid var(--glass-edge);
         color: var(--accent-gold);
         width: 40px;
@@ -290,8 +290,8 @@
         right: 0;
         bottom: 0;
         background: rgba(255, 255, 255, 0.035);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
         z-index: 500;
         border-radius: 28px;
         border: 1.5px solid var(--glass-edge);
@@ -313,8 +313,8 @@
         border-radius: 22px;
         background: var(--glass-surface);
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.24), 0 18px 44px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(30px);
+        -webkit-backdrop-filter: blur(30px);
       }
 
       .loader-overlay > * {
@@ -370,8 +370,8 @@
         padding: 20px;
         margin-top: 10px;
         background: var(--glass-surface);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         border: 1.5px solid var(--glass-edge);
         border-radius: 18px;
       }
@@ -436,8 +436,8 @@
         max-height: 85vh;
         overflow-y: auto;
         background: var(--card-bg);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(40px);
+        -webkit-backdrop-filter: blur(40px);
         padding: 24px;
         border-radius: 28px;
         box-shadow: var(--shadow);
@@ -488,7 +488,7 @@
         align-items: center;
         justify-content: space-between;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(20px);
         border: 1px solid var(--chip-border);
         padding: 12px 16px;
         border-radius: 18px;
@@ -556,8 +556,8 @@
         gap: 12px;
         min-height: 125px;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
         border: 1.5px solid rgba(255, 255, 255, 0.3);
         border-radius: 22px;
         color: var(--text-main);
@@ -575,7 +575,7 @@
         transform: translateY(-4px) scale(1.02);
         box-shadow: 0 15px 35px rgba(245, 158, 11, 0.25);
         border-color: var(--accent-gold);
-        background: transparent;
+        background: rgba(255, 255, 255, 0.12);
       }
       .tile:active {
         transform: scale(0.95);
@@ -604,8 +604,8 @@
         border: 1.5px solid var(--glass-edge);
         border-radius: 16px;
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 18px rgba(245, 158, 11, 0.12);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
         text-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
       }
       .tile:hover .ico {
@@ -613,11 +613,11 @@
       }
 
       .tile.primary {
-        background: transparent;
+        background: rgba(245, 158, 11, 0.1);
         border: 1.5px solid rgba(245, 158, 11, 0.65);
         color: var(--text-main);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
       }
       .tile.primary .ico > i {
         background: transparent;
@@ -707,8 +707,8 @@
         border: 1.5px solid var(--glass-edge);
         border-radius: 10px;
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 14px rgba(245, 158, 11, 0.14);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
         text-shadow: 0 0 10px rgba(245, 158, 11, 0.42);
         vertical-align: middle;
       }
@@ -789,7 +789,7 @@
         font-weight: 700;
         margin-bottom: 12px;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(15px);
         padding: 14px;
         border-radius: 16px;
         border: 1px dashed var(--accent-gold);
@@ -802,7 +802,7 @@
         display: block;
         font-weight: 600;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(15px);
         color: var(--text-main);
         text-align: center;
         margin-bottom: 14px;
@@ -857,7 +857,7 @@
         padding: 14px;
         margin: 8px 0;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(15px);
         border: 1px solid var(--card-border);
         border-radius: 14px;
         cursor: pointer;
@@ -898,7 +898,7 @@
         font-size: 12px;
         color: var(--text-main);
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(12px);
         border: 1px solid var(--card-border);
         border-radius: 12px;
         cursor: pointer;
@@ -922,7 +922,7 @@
         align-items: center;
         justify-content: space-between;
         background: var(--chip-bg);
-        backdrop-filter: blur(6px);
+        backdrop-filter: blur(15px);
         border: 1px solid var(--card-border);
         padding: 10px 14px;
         border-radius: 14px;
