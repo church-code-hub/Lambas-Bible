@@ -7,15 +7,17 @@
           #09203f 100%
         );
         --app-bar-bg: rgba(15, 23, 42, 0.55);
-        --card-bg: rgba(30, 41, 59, 0.42);
+        --card-bg: transparent;
         --card-border: rgba(255, 255, 255, 0.18);
         --text-main: #f8fafc;
         --text-sub: #94a3b8;
         --accent-gold: #f59e0b;
         --accent-gold-hover: #d97706;
         --input-bg: rgba(15, 23, 42, 0.35);
-        --chip-bg: rgba(255, 255, 255, 0.08);
+        --chip-bg: transparent;
         --chip-border: rgba(255, 255, 255, 0.16);
+        --glass-surface: rgba(255, 255, 255, 0.035);
+        --glass-edge: rgba(255, 255, 255, 0.52);
         --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
       }
 
@@ -28,15 +30,17 @@
           #fef3c7 100%
         );
         --app-bar-bg: rgba(255, 255, 255, 0.6);
-        --card-bg: rgba(255, 255, 255, 0.52);
+        --card-bg: transparent;
         --card-border: rgba(217, 119, 6, 0.28);
         --text-main: #0f172a;
         --text-sub: #64748b;
         --accent-gold: #d97706;
         --accent-gold-hover: #b45309;
         --input-bg: rgba(255, 255, 255, 0.7);
-        --chip-bg: rgba(0, 0, 0, 0.05);
+        --chip-bg: transparent;
         --chip-border: rgba(0, 0, 0, 0.12);
+        --glass-surface: rgba(255, 255, 255, 0.16);
+        --glass-edge: rgba(15, 23, 42, 0.3);
         --shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
       }
 
@@ -186,10 +190,10 @@
       }
 
       .icon-btn {
-        background: var(--chip-bg);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        border: 1px solid var(--chip-border);
+        background: var(--glass-surface);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1.5px solid var(--glass-edge);
         color: var(--accent-gold);
         width: 40px;
         height: 40px;
@@ -199,7 +203,7 @@
         justify-content: center;
         cursor: pointer;
         font-size: 15px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.2), 0 8px 20px rgba(0, 0, 0, 0.14);
         transition:
           transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
           filter 0.25s;
@@ -285,18 +289,37 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(15, 23, 42, 0.65);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+        background: rgba(255, 255, 255, 0.035);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         z-index: 500;
         border-radius: 28px;
-        border: 1px solid rgba(255, 255, 255, 0.38);
+        border: 1.5px solid var(--glass-edge);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.18);
         flex-direction: column;
         justify-content: center;
         align-items: center;
         color: var(--accent-gold);
         font-weight: 700;
         animation: fadeIn 0.2s ease;
+      }
+
+      .loader-overlay::before {
+        content: "";
+        position: absolute;
+        width: min(82%, 300px);
+        height: 148px;
+        border: 1.5px solid var(--glass-edge);
+        border-radius: 22px;
+        background: var(--glass-surface);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.24), 0 18px 44px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+
+      .loader-overlay > * {
+        position: relative;
+        z-index: 1;
       }
 
       @keyframes fadeIn {
@@ -306,16 +329,24 @@
 
       .tech-loader {
         position: relative;
-        width: 48px;
-        height: 48px;
-        margin-bottom: 12px;
+        width: 56px;
+        height: 56px;
+        margin-bottom: 14px;
+      }
+      .tech-loader::before {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        border: 1px solid var(--glass-edge);
+        border-radius: 50%;
+        box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.08);
       }
       .tech-loader div {
         box-sizing: border-box;
         position: absolute;
         width: 100%;
         height: 100%;
-        border: 4px solid transparent;
+        border: 3px solid transparent;
         border-top-color: var(--accent-gold);
         border-radius: 50%;
         filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.65));
@@ -338,11 +369,11 @@
         align-items: center;
         padding: 20px;
         margin-top: 10px;
-        background: var(--chip-bg);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.32);
-        border-radius: 16px;
+        background: var(--glass-surface);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1.5px solid var(--glass-edge);
+        border-radius: 18px;
       }
 
       .search-loading-label {
@@ -405,8 +436,8 @@
         max-height: 85vh;
         overflow-y: auto;
         background: var(--card-bg);
-        backdrop-filter: blur(40px);
-        -webkit-backdrop-filter: blur(40px);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         padding: 24px;
         border-radius: 28px;
         box-shadow: var(--shadow);
@@ -457,7 +488,7 @@
         align-items: center;
         justify-content: space-between;
         background: var(--chip-bg);
-        backdrop-filter: blur(20px);
+        backdrop-filter: blur(6px);
         border: 1px solid var(--chip-border);
         padding: 12px 16px;
         border-radius: 18px;
@@ -525,8 +556,8 @@
         gap: 12px;
         min-height: 125px;
         background: var(--chip-bg);
-        backdrop-filter: blur(25px);
-        -webkit-backdrop-filter: blur(25px);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         border: 1.5px solid rgba(255, 255, 255, 0.3);
         border-radius: 22px;
         color: var(--text-main);
@@ -544,7 +575,7 @@
         transform: translateY(-4px) scale(1.02);
         box-shadow: 0 15px 35px rgba(245, 158, 11, 0.25);
         border-color: var(--accent-gold);
-        background: rgba(255, 255, 255, 0.12);
+        background: transparent;
       }
       .tile:active {
         transform: scale(0.95);
@@ -569,12 +600,12 @@
         height: 52px;
         display: grid;
         place-items: center;
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.45);
+        background: transparent;
+        border: 1.5px solid var(--glass-edge);
         border-radius: 16px;
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 18px rgba(245, 158, 11, 0.12);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         text-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
       }
       .tile:hover .ico {
@@ -582,15 +613,15 @@
       }
 
       .tile.primary {
-        background: rgba(245, 158, 11, 0.1);
+        background: transparent;
         border: 1.5px solid rgba(245, 158, 11, 0.65);
         color: var(--text-main);
-        backdrop-filter: blur(28px);
-        -webkit-backdrop-filter: blur(28px);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
       }
       .tile.primary .ico > i {
-        background: rgba(245, 158, 11, 0.14);
-        border-color: rgba(245, 158, 11, 0.78);
+        background: transparent;
+        border-color: var(--glass-edge);
         color: var(--accent-gold);
       }
 
@@ -672,12 +703,12 @@
         height: 1.8em;
         place-items: center;
         color: var(--accent-gold);
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.42);
+        background: transparent;
+        border: 1.5px solid var(--glass-edge);
         border-radius: 10px;
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 14px rgba(245, 158, 11, 0.14);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         text-shadow: 0 0 10px rgba(245, 158, 11, 0.42);
         vertical-align: middle;
       }
@@ -687,9 +718,9 @@
       .home-btn > i,
       .logout-btn > i,
       h2 > i {
-        -webkit-text-fill-color: rgba(245, 158, 11, 0.28);
-        -webkit-text-stroke: 0.8px var(--accent-gold);
-        filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.38));
+        -webkit-text-fill-color: currentColor;
+        -webkit-text-stroke: 0;
+        filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.3));
       }
       .btn.secondary:hover {
         border-color: var(--accent-gold);
@@ -758,7 +789,7 @@
         font-weight: 700;
         margin-bottom: 12px;
         background: var(--chip-bg);
-        backdrop-filter: blur(15px);
+        backdrop-filter: blur(6px);
         padding: 14px;
         border-radius: 16px;
         border: 1px dashed var(--accent-gold);
@@ -771,7 +802,7 @@
         display: block;
         font-weight: 600;
         background: var(--chip-bg);
-        backdrop-filter: blur(15px);
+        backdrop-filter: blur(6px);
         color: var(--text-main);
         text-align: center;
         margin-bottom: 14px;
@@ -826,7 +857,7 @@
         padding: 14px;
         margin: 8px 0;
         background: var(--chip-bg);
-        backdrop-filter: blur(15px);
+        backdrop-filter: blur(6px);
         border: 1px solid var(--card-border);
         border-radius: 14px;
         cursor: pointer;
@@ -867,7 +898,7 @@
         font-size: 12px;
         color: var(--text-main);
         background: var(--chip-bg);
-        backdrop-filter: blur(12px);
+        backdrop-filter: blur(6px);
         border: 1px solid var(--card-border);
         border-radius: 12px;
         cursor: pointer;
@@ -891,7 +922,7 @@
         align-items: center;
         justify-content: space-between;
         background: var(--chip-bg);
-        backdrop-filter: blur(15px);
+        backdrop-filter: blur(6px);
         border: 1px solid var(--card-border);
         padding: 10px 14px;
         border-radius: 14px;
