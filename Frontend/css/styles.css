@@ -1,23 +1,24 @@
       :root {
         --bg-gradient: linear-gradient(
           135deg,
-          #0f172a 0%,
-          #311043 35%,
-          #1e1b4b 70%,
-          #09203f 100%
+          #070b14 0%,
+          #17101f 35%,
+          #101522 70%,
+          #07121d 100%
         );
-        --app-bar-bg: rgba(15, 23, 42, 0.55);
-        --card-bg: rgba(30, 41, 59, 0.42);
+        --app-bar-bg: rgba(7, 11, 20, 0.76);
+        --card-bg: rgba(12, 18, 30, 0.78);
         --card-border: rgba(255, 255, 255, 0.18);
         --text-main: #f8fafc;
         --text-sub: #94a3b8;
         --accent-gold: #f59e0b;
         --accent-gold-hover: #d97706;
         --input-bg: rgba(15, 23, 42, 0.35);
-        --chip-bg: rgba(255, 255, 255, 0.08);
+        --chip-bg: rgba(255, 255, 255, 0.045);
         --chip-border: rgba(255, 255, 255, 0.16);
-        --glass-surface: rgba(255, 255, 255, 0.035);
+        --glass-surface: rgba(8, 13, 23, 0.48);
         --glass-edge: rgba(255, 255, 255, 0.52);
+        --loader-backdrop: rgba(3, 7, 15, 0.84);
         --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
       }
 
@@ -41,6 +42,7 @@
         --chip-border: rgba(0, 0, 0, 0.12);
         --glass-surface: rgba(255, 255, 255, 0.16);
         --glass-edge: rgba(15, 23, 42, 0.3);
+        --loader-backdrop: rgba(15, 23, 42, 0.58);
         --shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
       }
 
@@ -284,14 +286,15 @@
       /* Tech Loader Animation */
       .loader-overlay {
         display: none;
-        position: absolute;
+        --loader-height: min(calc(85vh - 50px), calc(100dvh - 150px));
+        position: sticky;
         top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.035);
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
+        width: 100%;
+        height: var(--loader-height);
+        margin-bottom: calc(-1 * var(--loader-height));
+        background: var(--loader-backdrop);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
         z-index: 500;
         border-radius: 28px;
         border: 1.5px solid var(--glass-edge);
@@ -311,7 +314,7 @@
         height: 148px;
         border: 1.5px solid var(--glass-edge);
         border-radius: 22px;
-        background: var(--glass-surface);
+        background: var(--card-bg);
         box-shadow: inset 0 1px rgba(255, 255, 255, 0.24), 0 18px 44px rgba(0, 0, 0, 0.2);
         backdrop-filter: blur(30px);
         -webkit-backdrop-filter: blur(30px);
@@ -703,13 +706,12 @@
         height: 1.8em;
         place-items: center;
         color: var(--accent-gold);
-        background: transparent;
-        border: 1.5px solid var(--glass-edge);
-        border-radius: 10px;
-        box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 14px rgba(245, 158, 11, 0.14);
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
-        text-shadow: 0 0 10px rgba(245, 158, 11, 0.42);
+        background: none;
+        border: 0;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
         vertical-align: middle;
       }
       .icon-btn > i,
