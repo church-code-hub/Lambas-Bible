@@ -275,7 +275,7 @@ function syncOfflineEvents_(events, adminEmail) {
         code: "OFFLINE_ACCOUNT_MISMATCH",
         message: "سجّل الدخول بالحساب الذي حفظ هذا الإجراء لمزامنته.",
       });
-      break;
+      continue;
     }
     if (
       !/^[A-Za-z0-9_-]{16,80}$/.test(eventId) ||
@@ -289,7 +289,7 @@ function syncOfflineEvents_(events, adminEmail) {
         code: "INVALID_OFFLINE_EVENT",
         message: "تعذر مزامنة حدث قديم أو غير صالح.",
       });
-      break;
+      continue;
     }
 
     const propertyKey = OFFLINE_EVENT_PROPERTY_PREFIX_ + eventId;
@@ -1542,7 +1542,7 @@ function generateAllCardsFromRoster(targetStudentId) {
       const qrApiUrl =
         "https://api.qrserver.com/v1/create-qr-code/?size=" +
         qrSizePx + "x" + qrSizePx +
-        "&format=png&margin=2&ecc=H&data=" +
+        "&format=png&margin=16&ecc=M&data=" +
         encodeURIComponent(encryptedToken);
       const qrBlob = UrlFetchApp.fetch(qrApiUrl)
         .getBlob()

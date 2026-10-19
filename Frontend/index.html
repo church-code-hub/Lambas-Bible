@@ -18,7 +18,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=14" />
+    <link rel="stylesheet" href="./css/styles.css?v=15" />
   </head>
   <body data-theme="dark">
     <div id="toastContainer" class="toast-container"></div>
@@ -209,6 +209,7 @@
           placeholder="اكتب الاسم هنا..."
           data-i18n-placeholder="searchPlaceholder"
           autocomplete="off"
+          enterkeyhint="search"
         />
         <button
           class="btn"
@@ -237,6 +238,7 @@
           placeholder="اكتب اسم المخدوم للبحث..."
           data-i18n-placeholder="sharePlaceholder"
           autocomplete="off"
+          enterkeyhint="search"
         />
         <button
           class="btn"
@@ -316,6 +318,7 @@
           placeholder="اسم المخدوم ثلاثي..."
           data-i18n-placeholder="studentNamePlaceholder"
           autocomplete="off"
+          enterkeyhint="done"
         />
         <label class="attendance-choice" for="attendNewStudent">
           <input type="checkbox" id="attendNewStudent" checked />
@@ -346,6 +349,7 @@
             id="adminGatePassword"
             placeholder="ادخل كلمة المرور"
             data-i18n-placeholder="passwordPlaceholder"
+            enterkeyhint="go"
           />
           <button
             class="btn"
@@ -423,12 +427,12 @@
             "
           >
             <input
-              type="text"
               id="newAdminEmail"
               type="email"
               placeholder="البريد الإلكتروني للخادم الجديد"
               data-i18n-placeholder="newAdminEmailPlaceholder"
               style="margin-bottom: 8px"
+              enterkeyhint="next"
             />
             <input
               type="text"
@@ -436,6 +440,7 @@
               placeholder="اسم الخادم"
               data-i18n-placeholder="newAdminNamePlaceholder"
               style="margin-bottom: 8px"
+              enterkeyhint="done"
             />
             <button class="btn secondary" onclick="addNewAdmin()">
               ➕ <span data-i18n="addAdminBtn">إضافة خادم جديد</span>
@@ -464,6 +469,7 @@
             id="scheduleGatePassword"
             placeholder="ادخل كلمة المرور"
             data-i18n-placeholder="passwordPlaceholder"
+            enterkeyhint="go"
           />
           <button
             class="btn"
@@ -600,6 +606,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js?v=14"></script>
+    <script src="./js/app.js?v=15"></script>
   </body>
 </html>

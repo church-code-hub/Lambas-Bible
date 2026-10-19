@@ -5,7 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const backendSource = fs.readFileSync(
-  path.join(__dirname, "..", "Backend", "code.gs"),
+  path.join(__dirname, "..", "Backend", "Code.js"),
   "utf8",
 );
 

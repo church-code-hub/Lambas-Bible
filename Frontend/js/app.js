@@ -1011,8 +1011,28 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
-        document.getElementById("searchNameInput").addEventListener("keydown", (event) => {
-          if (event.key === "Enter") executeSearch();
+        const enterActions = {
+          searchNameInput: executeSearch,
+          shareNameInput: executeCardSearch,
+          newStudentName: submitNewStudent,
+          adminGatePassword: unlockAdminSettings,
+          cfgAdminName: updateMyName,
+          cfgNewPassword: saveAdminSettings,
+          newAdminEmail: () => document.getElementById("newAdminNameInput").focus(),
+          newAdminNameInput: addNewAdmin,
+          scheduleGatePassword: unlockScheduleSettings,
+          cfgStartTime: saveScheduleSettings,
+          cfgEndTime: saveScheduleSettings,
+          cfgAcceptedDelay: saveScheduleSettings,
+        };
+        Object.entries(enterActions).forEach(([fieldId, action]) => {
+          const field = document.getElementById(fieldId);
+          if (!field) return;
+          field.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || event.isComposing) return;
+            event.preventDefault();
+            action();
+          });
         });
         const signInReady = navigator.onLine ? initializeGoogleSignIn() : false;
         await updateOfflineStatus();
