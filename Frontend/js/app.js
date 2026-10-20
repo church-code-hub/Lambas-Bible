@@ -581,6 +581,10 @@
           const body = document.body;
           const btn = document.getElementById("themeToggleBtn");
           body.setAttribute("data-theme", mode);
+          body.classList.toggle("theme-light", mode === "light");
+          body.classList.toggle("theme-dark", mode === "dark");
+          document.documentElement.classList.toggle("theme-light", mode === "light");
+          document.documentElement.classList.toggle("theme-dark", mode === "dark");
           btn.classList.remove("theme-icon-change");
           btn.offsetWidth;
           if (mode === "dark") btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
@@ -1129,14 +1133,19 @@
       function showSearchLoader(container) {
         const wrapper = document.createElement("div");
         wrapper.className = "search-loading";
-        const spinner = document.createElement("div");
-        spinner.className = "tech-loader";
-        spinner.append(document.createElement("div"), document.createElement("div"));
+        wrapper.setAttribute("role", "status");
+        wrapper.setAttribute("aria-live", "polite");
+        const bars = document.createElement("div");
+        bars.className = "loader-bars";
+        bars.setAttribute("aria-hidden", "true");
+        for (let index = 0; index < 5; index++) {
+          bars.appendChild(document.createElement("span"));
+        }
         const label = document.createElement("div");
         label.className = "search-loading-label";
         label.setAttribute("data-i18n", "searching");
         label.textContent = translations[currentLang].searching;
-        wrapper.append(spinner, label);
+        wrapper.append(bars, label);
         container.replaceChildren(wrapper);
       }
 
