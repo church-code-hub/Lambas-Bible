@@ -4,7 +4,11 @@
       const OFFLINE_SESSION_KEY = "app_offline_session_email";
 
       var currentUser = null;
-      var googleIdToken = sessionStorage.getItem("google_id_token") || "";
+      var googleIdToken =
+        localStorage.getItem("google_id_token") ||
+        sessionStorage.getItem("google_id_token") ||
+        "";
+      if (googleIdToken) localStorage.setItem("google_id_token", googleIdToken);
       var html5QrCode = null;
       var isScannerRunning = false;
       var isScannerStarting = false;
@@ -24,6 +28,7 @@
       var currentActiveViewId = "loginView";
       var attendanceReportTab = "attendance";
       var attendanceReportRequestId = 0;
+      var followupReportPeople = [];
       var currentAttendeesRequestId = 0;
       var currentAttendeesSnapshot = "";
       var currentAttendeesRefreshTimer = 0;
@@ -33,6 +38,11 @@
       var appearanceTransitionTimeout = 0;
       var appearanceTransitionGeneration = 0;
       var currentLang = localStorage.getItem("app_lang") || "ar";
-      var currentThemeMode = localStorage.getItem("app_theme") || "dark";
+      var currentThemeMode =
+        localStorage.getItem("app_theme") ||
+        (window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark");
 
       var activePreviewCard = { fileId: "", driveUrl: "", name: "" };

@@ -1,6 +1,12 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
+        const hasSavedUser = Boolean(localStorage.getItem("app_user"));
+        if (hasSavedUser) {
+          setStartupStatus(translations[currentLang].checkingSavedSignIn);
+        } else {
+          window.setTimeout(dismissStartupScreen, 1050);
+        }
         initializeNumericPasswords();
         const enterActions = {
           searchNameInput: executeSearch,
@@ -25,7 +31,9 @@
             action();
           });
         });
-        const signInReady = navigator.onLine ? initializeGoogleSignIn() : false;
+        const signInReady = navigator.onLine
+          ? initializeGoogleSignIn(!hasSavedUser || !googleIdToken)
+          : false;
         await updateOfflineStatus();
 
         const savedUser = localStorage.getItem("app_user");
@@ -43,15 +51,20 @@
             if (!navigator.onLine) {
               currentUser = null;
               showView("loginView", false);
+              dismissStartupScreen();
               await updateOfflineStatus();
               return;
             }
             if (!googleIdToken) {
               if (signInReady) beginSessionRestore(currentUser.email);
-              else currentUser = null;
+              else {
+                currentUser = null;
+                showView("loginView", false);
+                dismissStartupScreen();
+              }
               return;
             }
-            showLoader();
+            showLoader("Checking your saved sign-in...");
             const authRes = await apiCall("check_auth", {
               email: currentUser.email,
             });
@@ -70,6 +83,7 @@
               await refreshRosterCache();
             } else if (authRes && authRes.code === "AUTH_INVALID" && signInReady) {
               googleIdToken = "";
+              localStorage.removeItem("google_id_token");
               sessionStorage.removeItem("google_id_token");
               beginSessionRestore(currentUser.email);
             } else if (authRes && authRes.authorized) {
@@ -79,27 +93,44 @@
             } else {
               currentUser = null;
               showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
+              dismissStartupScreen();
             }
           } catch (e) {
             hideLoader();
             currentUser = null;
             showLoginError("Connection error.");
+            dismissStartupScreen();
           }
         } else {
           showView("loginView", false);
         }
       });
 
-      function initializeGoogleSignIn() {
+      function dismissStartupScreen() {
+        const startupScreen = document.getElementById("startupScreen");
+        if (!startupScreen) return;
+        startupScreen.classList.add("is-exiting");
+        window.setTimeout(() => {
+          startupScreen.hidden = true;
+          startupScreen.setAttribute("aria-hidden", "true");
+        }, 280);
+      }
+
+      function setStartupStatus(message) {
+        const status = document.getElementById("startupStatus");
+        if (status) status.textContent = message;
+      }
+
+      function initializeGoogleSignIn(showErrors = true) {
         if (googleSignInInitialized) return true;
         const clientId = APP_CONFIG.googleClientId;
         const button = document.getElementById("g_id_signin");
         if (!clientId || !button) {
-          showLoginError("Application is not configured.");
+          if (showErrors) showLoginError("Application is not configured.");
           return false;
         }
         if (!window.google || !google.accounts || !google.accounts.id) {
-          showLoginError("Google sign-in could not be loaded.");
+          if (showErrors) showLoginError("Google sign-in could not be loaded.");
           return false;
         }
         google.accounts.id.initialize({
@@ -124,10 +155,11 @@
           currentUser = null;
           hideLoader();
           showView("loginView", false);
+          dismissStartupScreen();
           return;
         }
         pendingSessionRestoreEmail = String(email || "").toLowerCase().trim();
-        showLoader();
+        showLoader("Restoring your saved sign-in...");
         google.accounts.id.prompt((notification) => {
           const unavailable =
             (notification.isNotDisplayed && notification.isNotDisplayed()) ||
@@ -138,6 +170,7 @@
             currentUser = null;
             hideLoader();
             showView("loginView", false);
+            dismissStartupScreen();
           }
         });
       }
@@ -153,11 +186,12 @@
         if (expectedEmail && payload.email.toLowerCase().trim() !== expectedEmail) {
           currentUser = null;
           showView("loginView", false);
+          dismissStartupScreen();
           return;
         }
 
         googleIdToken = response.credential;
-        showLoader();
+        showLoader("Verifying your Google account...");
         try {
           const authRes = await apiCall("check_auth", { email: payload.email });
           hideLoader();
@@ -175,6 +209,7 @@
               isOwner: authRes.isOwner === true,
             };
             sessionStorage.setItem("google_id_token", googleIdToken);
+            localStorage.setItem("google_id_token", googleIdToken);
             localStorage.setItem("app_user", JSON.stringify(currentUser));
             localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
             setupUserProfileUI();
@@ -182,10 +217,12 @@
             await refreshRosterCache();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
+            localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
             showLoginError("Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.");
           } else if (authRes && authRes.code === "AUTH_REQUIRED") {
             googleIdToken = "";
+            localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
             showLoginError("Please sign in again.");
           } else if (authRes && authRes.authorized) {
@@ -194,12 +231,14 @@
             showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
           } else {
             googleIdToken = "";
+            localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
             const checkedEmail = authRes && authRes.email ? authRes.email : payload.email;
             showLoginError("❌ Sorry, email is not authorized.\n" + translateText("Email not listed in Admins: ") + checkedEmail);
           }
         } catch (e) {
           googleIdToken = "";
+          localStorage.removeItem("google_id_token");
           sessionStorage.removeItem("google_id_token");
           hideLoader();
           currentUser = null;
@@ -213,11 +252,13 @@
         document.getElementById("uEmail").innerText = currentUser.email;
         document.getElementById("uAvatar").src = currentUser.picture;
         showView("dashboardView");
+        dismissStartupScreen();
       }
 
       function logoutUser(msg) {
         localStorage.removeItem("app_user");
         localStorage.removeItem(OFFLINE_SESSION_KEY);
+        localStorage.removeItem("google_id_token");
         sessionStorage.removeItem("google_id_token");
         pendingSessionRestoreEmail = "";
         googleIdToken = "";
@@ -234,6 +275,7 @@
         errDiv.innerText = translateText(msg);
         errDiv.style.display = "block";
         showView("loginView", false);
+        dismissStartupScreen();
       }
 
       function checkDirectUrlScan() {
@@ -246,7 +288,7 @@
         window.open(GOOGLE_SHEET_URL, "_blank");
       }
       function showLoader(text) {
-        currentLoaderText = text || translations[currentLang].loading;
+        currentLoaderText = text || translations[currentLang].loadingData;
         document.getElementById("loaderText").innerText = translateText(
           currentLoaderText,
         );

@@ -93,7 +93,7 @@ function createBackendContext(rosterRows = [["ID", "Name", "Card URL"]]) {
   context.isAttendanceTimeAllowed = () => false;
   context.generateAllCardsFromRoster = (id) => ({
     success: true,
-    cards: [{ driveUrl: `https://drive.google.com/file/d/card-${id}` }],
+    cards: [{ id, driveUrl: `https://drive.google.com/file/d/card-${id}` }],
   });
 
   return {
@@ -147,6 +147,31 @@ test("allocates the next ID after a successful unique attendee insert", () => {
   assert.equal(result.success, true);
   assert.equal(result.id, 9);
   assert.equal(rosterSheet.rows.at(-1)[1], "Bob");
+});
+
+test("retries a missing servant card and reuses an existing card URL", () => {
+  const { context } = createBackendContext([
+    ["ID", "Name", "Card URL"],
+    [7, "Alice", "https://drive.google.com/file/d/card-7"],
+    [8, "Bob", ""],
+  ]);
+  let generatedFor = "";
+  context.generateAllCardsFromRoster = (id) => {
+    generatedFor = String(id);
+    return {
+      success: true,
+      cards: [{ id, driveUrl: `https://drive.google.com/file/d/card-${id}` }],
+    };
+  };
+
+  const existing = context.generateStudentCard_(7);
+  const retried = context.generateStudentCard_(8);
+
+  assert.equal(existing.success, true);
+  assert.equal(existing.driveUrl, "https://drive.google.com/file/d/card-7");
+  assert.equal(retried.success, true);
+  assert.equal(retried.driveUrl, "https://drive.google.com/file/d/card-8");
+  assert.equal(generatedFor, "8");
 });
 
 test("updates only the matching date and attendee in the attendance matrix", () => {

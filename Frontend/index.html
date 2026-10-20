@@ -9,6 +9,16 @@
     <title>Lambas Bible</title>
 
     <script src="./js/config.js"></script>
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("app_theme");
+        const systemTheme = window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+        document.documentElement.dataset.theme = savedTheme || systemTheme;
+      })();
+    </script>
     <script src="https://accounts.google.com/gsi/client" defer></script>
     <link
       rel="stylesheet"
@@ -17,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=33" />
+    <link rel="stylesheet" href="./css/styles.css?v=36" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -26,6 +36,19 @@
       <span class="ambient-blob ambient-blob-green"></span>
       <span class="ambient-blob ambient-blob-violet"></span>
     </div>
+    <section id="startupScreen" class="startup-screen" role="status" aria-label="Lambas Bible" aria-hidden="false">
+      <div class="startup-content">
+        <div class="startup-mark">
+          <span class="startup-gold-orbit" aria-hidden="true"></span>
+          <img src="Assets/icons/icon-192.png" alt="" />
+        </div>
+        <h1>Lambas Bible</h1>
+        <span class="startup-gold-rule" aria-hidden="true"></span>
+        <div class="startup-progress" aria-hidden="true"></div>
+        <p id="startupStatus" class="startup-status" data-i18n="startupLoading">Loading Lambas Bible...</p>
+        <p class="startup-producer">Made by Church Code Hub</p>
+      </div>
+    </section>
     <div id="toastContainer" class="toast-container"></div>
     <header class="top-app-bar">
       <div class="brand">
@@ -95,7 +118,7 @@
           <span></span>
           <span></span>
         </div>
-        <div id="loaderText" data-i18n="loading">جاري معالجة الطلب...</div>
+        <div id="loaderText" data-i18n="loadingData">جارٍ تحميل البيانات...</div>
       </div>
 
       <!-- 0. Login View -->
@@ -227,7 +250,7 @@
 
       <div id="attendanceReportView" style="display: none">
         <h2 id="attendanceReportTitle" data-i18n="attendanceReports">تقارير الحضور</h2>
-        <div class="report-tabs" role="tablist" aria-labelledby="attendanceReportTitle">
+        <div class="report-tabs" data-active-tab="attendance" role="tablist" aria-labelledby="attendanceReportTitle">
           <button id="attendanceTabButton" class="report-tab is-active" data-online-only type="button" role="tab"
             aria-selected="true" aria-controls="attendanceTabPanel" onclick="selectAttendanceReportTab('attendance')"
             data-i18n="attendanceTab">الحضور</button>
@@ -240,26 +263,38 @@
           <select id="attendanceReportDate" class="date-picker" data-online-only onchange="loadAttendanceReport()">
             <option value="" data-i18n="attendanceDatesLoading">جارٍ تحميل التواريخ...</option>
           </select>
-          <input
-            type="text"
-            id="attendancePersonQuery"
-            placeholder="ابحث عن اسم في هذا اليوم"
-            data-i18n-placeholder="attendancePersonPlaceholder"
-          />
-          <button class="btn secondary" data-online-only onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
-            البحث في هذا اليوم
-          </button>
-          <button class="btn" data-online-only onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
-            إنشاء تبويب لهذا اليوم
-          </button>
+          <div class="attendance-report-controls">
+            <input
+              type="text"
+              id="attendancePersonQuery"
+              placeholder="ابحث عن اسم في هذا اليوم"
+              data-i18n-placeholder="attendancePersonPlaceholder"
+            />
+            <button class="btn secondary attendance-search-button" data-online-only type="button" onclick="loadAttendanceReport()" data-i18n-title="searchAttendanceBtn" data-i18n-aria-label="searchAttendanceBtn" aria-label="البحث في هذا اليوم">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="searchAttendanceBtn">بحث</span>
+            </button>
+            <button class="btn attendance-sheet-button" data-online-only type="button" onclick="createAttendanceReportSheet()" data-i18n-title="createDailySheetBtn" data-i18n-aria-label="createDailySheetBtn" aria-label="إنشاء تبويب لهذا اليوم">
+              <i class="fa-solid fa-table-cells" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="createDailySheetBtn">إنشاء تبويب لهذا اليوم</span>
+            </button>
+          </div>
           <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
           <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
         </section>
         <section id="followupTabPanel" role="tabpanel" aria-labelledby="followupTabButton" hidden>
           <p class="report-note" data-i18n="followupsNote">أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.</p>
-          <button class="btn secondary" data-online-only onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
-            تحديث القائمة
-          </button>
+          <div class="followup-search-controls">
+            <input id="followupPersonQuery" type="search" data-i18n-placeholder="followupSearchPlaceholder" placeholder="ابحث في قائمة الافتقاد" oninput="filterFollowups()" onkeydown="if(event.key === 'Enter'){event.preventDefault();filterFollowups();}" />
+            <button class="btn secondary followup-search-button" data-online-only type="button" onclick="filterFollowups()" data-i18n-title="searchFollowupsBtn" data-i18n-aria-label="searchFollowupsBtn" aria-label="بحث">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="searchFollowupsBtn">بحث</span>
+            </button>
+            <button class="btn secondary followup-refresh-button" data-online-only type="button" onclick="loadFollowups()" data-i18n-title="refreshFollowupsBtn" data-i18n-aria-label="refreshFollowupsBtn" aria-label="تحديث القائمة">
+              <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="refreshFollowupsBtn">تحديث القائمة</span>
+            </button>
+          </div>
           <div id="followupResults" class="report-list" aria-live="polite"></div>
         </section>
       </div>
@@ -761,13 +796,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=33"></script>
-    <script src="./js/app-i18n.js?v=33"></script>
-    <script src="./js/app-core.js?v=33"></script>
-    <script src="./js/app-offline.js?v=33"></script>
-    <script src="./js/app-views.js?v=33"></script>
-    <script src="./js/app-auth.js?v=33"></script>
-    <script src="./js/app-scanner-search.js?v=33"></script>
-    <script src="./js/app-cards-admin.js?v=33"></script>
+    <script src="./js/app-state.js?v=36"></script>
+    <script src="./js/app-i18n.js?v=36"></script>
+    <script src="./js/app-core.js?v=36"></script>
+    <script src="./js/app-offline.js?v=36"></script>
+    <script src="./js/app-views.js?v=36"></script>
+    <script src="./js/app-auth.js?v=36"></script>
+    <script src="./js/app-scanner-search.js?v=36"></script>
+    <script src="./js/app-cards-admin.js?v=36"></script>
   </body>
 </html>

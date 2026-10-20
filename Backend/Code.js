@@ -227,6 +227,8 @@ function doPost(e) {
       result = saveStudentAndGenerateCard_(data.name, identity.email, {
         attendIfOpen: data.attendIfOpen !== false,
       });
+    else if (action === "generate_student_card")
+      result = generateStudentCard_(data.id);
     else if (action === "get_admins")
       result = { success: true, admins: getAdminsData() };
     else if (action === "add_admin")
@@ -2082,16 +2084,54 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
 
   if (!reservation.success) return reservation;
   const cardRes = generateAllCardsFromRoster(reservation.id);
-  const cardUrl =
-    cardRes && cardRes.cards && cardRes.cards[0]
-      ? cardRes.cards[0].driveUrl
-      : "";
+  const generatedCard = cardRes && Array.isArray(cardRes.cards)
+    ? cardRes.cards.find((card) => String(card.id) === String(reservation.id))
+    : null;
+  const cardUrl = generatedCard ? generatedCard.driveUrl : "";
   return {
     ...reservation,
     driveUrl: cardUrl,
     cardGenerationFailed: !cardUrl,
     code: cardUrl ? "STUDENT_CREATED" : "STUDENT_CREATED_CARD_FAILED",
   };
+}
+
+function generateStudentCard_(studentId) {
+  const normalizedId = String(studentId || "").trim();
+  const rosterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
+  if (!normalizedId || !rosterSheet || rosterSheet.getLastRow() < 2) {
+    return {
+      success: false,
+      code: "STUDENT_NOT_FOUND",
+      message: "لم يتم العثور على المخدوم.",
+    };
+  }
+
+  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 3).getValues();
+  const student = rows.find((row) => String(row[0]) === normalizedId);
+  if (!student) {
+    return {
+      success: false,
+      code: "STUDENT_NOT_FOUND",
+      message: "لم يتم العثور على المخدوم.",
+    };
+  }
+  if (String(student[2] || "").includes("drive.google.com")) {
+    return { success: true, id: student[0], driveUrl: student[2] };
+  }
+
+  const cardResult = generateAllCardsFromRoster(student[0]);
+  const generatedCard = cardResult && Array.isArray(cardResult.cards)
+    ? cardResult.cards.find((card) => String(card.id) === normalizedId)
+    : null;
+  if (!generatedCard || !generatedCard.driveUrl) {
+    return {
+      success: false,
+      code: "CARD_GENERATION_FAILED",
+      message: "تعذر إنشاء بطاقة المخدوم. حاول مرة أخرى.",
+    };
+  }
+  return { success: true, id: student[0], driveUrl: generatedCard.driveUrl };
 }
 
 function generateAllCardsFromRoster(targetStudentId) {
@@ -2130,7 +2170,11 @@ function generateAllCardsFromRoster(targetStudentId) {
         qrSizePx + "x" + qrSizePx +
         "&format=png&margin=16&ecc=M&data=" +
         encodeURIComponent(encryptedToken);
-      const qrBlob = UrlFetchApp.fetch(qrApiUrl)
+      const qrResponse = UrlFetchApp.fetch(qrApiUrl, { muteHttpExceptions: true });
+      if (qrResponse.getResponseCode() !== 200) {
+        throw new Error("QR image service returned HTTP " + qrResponse.getResponseCode());
+      }
+      const qrBlob = qrResponse
         .getBlob()
         .setName(studentName + ".png");
 
@@ -2138,59 +2182,62 @@ function generateAllCardsFromRoster(targetStudentId) {
         "Temp_" + studentId,
         folder,
       );
-      const presentation = SlidesApp.openById(tempFile.getId());
-      const slide = presentation.getSlides()[0];
-      slide.getPageElements().forEach((el) => el.remove());
-      slide.insertImage(templateImageBlob, 0, -20, 430, 650);
-      const qrX = 120;
-      const qrY = 255;
-      const qrW = 210;
-      const qrH = 210;
-      slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
-      const qrFrame = slide.insertShape(
-        SlidesApp.ShapeType.RECTANGLE,
-        qrX - 8,
-        qrY - 8,
-        qrW + 16,
-        qrH + 16,
-      );
-      qrFrame.getFill().setSolidFill("#FFFFFF");
-      qrFrame.getBorder().setTransparent();
-      qrFrame.setZIndex(1);
-      slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
-      const textBox = slide.insertTextBox(
-        studentName.toString().trim(),
-        58,
-        488,
-        260,
-        44,
-      );
-      textBox
-        .getText()
-        .getParagraphStyle()
-        .setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
-      textBox
-        .getText()
-        .getTextStyle()
-        .setFontSize(28)
-        .setBold(true)
-        .setForegroundColor("#3e1e04")
-        .setFontFamily("Segoe UI");
-      presentation.saveAndClose();
+      try {
+        const presentation = SlidesApp.openById(tempFile.getId());
+        const slide = presentation.getSlides()[0];
+        slide.getPageElements().forEach((el) => el.remove());
+        slide.insertImage(templateImageBlob, 0, -20, 430, 650);
+        const qrX = 120;
+        const qrY = 255;
+        const qrW = 210;
+        const qrH = 210;
+        slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
+        const qrFrame = slide.insertShape(
+          SlidesApp.ShapeType.RECTANGLE,
+          qrX - 8,
+          qrY - 8,
+          qrW + 16,
+          qrH + 16,
+        );
+        qrFrame.getFill().setSolidFill("#FFFFFF");
+        qrFrame.getBorder().setTransparent();
+        qrFrame.setZIndex(1);
+        slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
+        const textBox = slide.insertTextBox(
+          studentName.toString().trim(),
+          58,
+          488,
+          260,
+          44,
+        );
+        textBox
+          .getText()
+          .getParagraphStyle()
+          .setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
+        textBox
+          .getText()
+          .getTextStyle()
+          .setFontSize(28)
+          .setBold(true)
+          .setForegroundColor("#3e1e04")
+          .setFontFamily("Segoe UI");
+        presentation.saveAndClose();
 
-      const exportUrl =
-        "https://docs.google.com/presentation/d/" +
-        presentation.getId() +
-        "/export/png?id=" +
-        presentation.getId() +
-        "&pageid=" +
-        slide.getObjectId();
-      const response = UrlFetchApp.fetch(exportUrl, {
-        headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
-        muteHttpExceptions: true,
-      });
+        const exportUrl =
+          "https://docs.google.com/presentation/d/" +
+          presentation.getId() +
+          "/export/png?id=" +
+          presentation.getId() +
+          "&pageid=" +
+          slide.getObjectId();
+        const response = UrlFetchApp.fetch(exportUrl, {
+          headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+          muteHttpExceptions: true,
+        });
 
-      if (response.getResponseCode() === 200) {
+        if (response.getResponseCode() !== 200) {
+          throw new Error("Slides card export returned HTTP " + response.getResponseCode());
+        }
         const finalFile = folder.createFile(
           response.getBlob().setName(studentName + ".png"),
         );
@@ -2205,11 +2252,13 @@ function generateAllCardsFromRoster(targetStudentId) {
           name: studentName,
           driveUrl: driveUrl,
         });
+      } finally {
+        tempFile.setTrashed(true);
       }
-      tempFile.setTrashed(true);
     }
     return { success: true, cards: generatedCards };
   } catch (e) {
+    console.error("Card generation failed:", e);
     return {
       success: false,
       code: "CARD_GENERATION_FAILED",

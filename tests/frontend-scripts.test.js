@@ -56,6 +56,62 @@ test("split classic scripts retain shared state and inline-handler functions", (
   assert.equal(vm.runInContext("typeof saveScheduleSettings", browserContext), "function");
 });
 
+test("attendance report dates exclude future values and identify today", () => {
+  const browserContext = vm.createContext({
+    window: { addEventListener() {} },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    updateOfflineStatus() {},
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-views.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+
+  const result = vm.runInContext(`(() => {
+    currentLang = "en";
+    const today = "2026-10-20";
+    return {
+      dates: getPastAttendanceDates(
+        ["2026-10-22", "2026-10-19", "2026-10-20", "2026-02-30"],
+        today,
+      ),
+      todayLabel: formatAttendanceDateOption(today, today),
+    };
+  })()`, browserContext);
+
+  assert.deepEqual(Array.from(result.dates), ["2026-10-19", "2026-10-20"]);
+  assert.match(result.todayLabel, /^Today · /);
+});
+
+test("restores the Google sign-in token from local storage", () => {
+  const storedValues = new Map([["google_id_token", "saved-token"]]);
+  const browserContext = vm.createContext({
+    window: {
+      LAMBAS_CONFIG: {},
+      matchMedia: () => ({ matches: true }),
+    },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: {
+      getItem: (key) => storedValues.get(key) || null,
+      setItem: (key, value) => storedValues.set(key, value),
+    },
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(frontendRoot, "js", "app-state.js"), "utf8"),
+    browserContext,
+    { filename: "app-state.js" },
+  );
+
+  assert.equal(vm.runInContext("googleIdToken", browserContext), "saved-token");
+  assert.equal(vm.runInContext("currentThemeMode", browserContext), "light");
+});
+
 test("offline name lookup and selected sync batches preserve queue order", () => {
   const browserContext = vm.createContext({
     window: {},

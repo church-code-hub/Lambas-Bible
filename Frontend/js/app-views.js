@@ -29,6 +29,20 @@
         container.replaceChildren(wrapper);
       }
 
+      function showReportSkeleton(container, rows = 3) {
+        const skeleton = document.createElement("div");
+        skeleton.className = "report-loading";
+        skeleton.setAttribute("role", "status");
+        skeleton.setAttribute("aria-label", translations[currentLang].loadingReport);
+        for (let index = 0; index < rows; index++) {
+          const row = document.createElement("div");
+          row.className = "report-skeleton-row";
+          row.innerHTML = '<span></span><span></span>';
+          skeleton.appendChild(row);
+        }
+        container.replaceChildren(skeleton);
+      }
+
       function showView(viewId, pushHistory = true) {
         hideLoader();
         const viewChanged = currentActiveViewId !== viewId;
@@ -128,7 +142,7 @@
         window.scrollTo({ top: 0, behavior: "smooth" });
 
         if (viewId === "attendanceReportView" && viewChanged) {
-          selectAttendanceReportTab(attendanceReportTab);
+          selectAttendanceReportTab(attendanceReportTab, true);
         }
         if (viewId === "currentAttendeesView" && viewChanged) {
           loadCurrentAttendees();
@@ -152,6 +166,30 @@
           String(date.getMonth() + 1).padStart(2, "0"),
           String(date.getDate()).padStart(2, "0"),
         ].join("-");
+      }
+
+      function getPastAttendanceDates(dates, today = localDateInputValue(new Date())) {
+        return dates
+          .filter((date) => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return false;
+            const [year, month, day] = date.split("-").map(Number);
+            const parsed = new Date(year, month - 1, day);
+            return parsed.getFullYear() === year &&
+              parsed.getMonth() === month - 1 &&
+              parsed.getDate() === day;
+          })
+          .sort();
+      }
+
+      function formatAttendanceDateOption(date, today) {
+        const [year, month, day] = date.split("-").map(Number);
+        const formattedDate = new Date(year, month - 1, day, 12).toLocaleDateString(
+          currentLang === "ar" ? "ar" : "en",
+          { year: "numeric", month: "short", day: "numeric" },
+        );
+        return date === today
+          ? `${translations[currentLang].today} · ${formattedDate}`
+          : formattedDate;
       }
 
       function openAttendanceReport(tab = "attendance") {
@@ -226,7 +264,7 @@
         const requestId = ++currentAttendeesRequestId;
         const mainContainer = document.getElementById("mainContainer");
         const scrollPosition = mainContainer.scrollTop;
-        if (showLoading) showLoader();
+        if (showLoading) showLoader("Loading current attendance...");
         try {
           const result = await apiCall("get_current_attendees");
           if (showLoading) hideLoader();
@@ -380,21 +418,26 @@
         reason.focus();
       }
 
-      function selectAttendanceReportTab(tab) {
+      function selectAttendanceReportTab(tab, forceReload = false) {
         attendanceReportTab = tab === "followups" ? "followups" : "attendance";
         const attendancePanel = document.getElementById("attendanceTabPanel");
         const followupPanel = document.getElementById("followupTabPanel");
         const attendanceButton = document.getElementById("attendanceTabButton");
         const followupButton = document.getElementById("followupTabButton");
+        const tabs = document.querySelector(".report-tabs");
         const isFollowups = attendanceReportTab === "followups";
+        tabs.dataset.activeTab = attendanceReportTab;
         attendancePanel.hidden = isFollowups;
         followupPanel.hidden = !isFollowups;
+        const activePanel = isFollowups ? followupPanel : attendancePanel;
+        activePanel.classList.remove("report-panel-enter");
+        window.requestAnimationFrame(() => activePanel.classList.add("report-panel-enter"));
         attendanceButton.classList.toggle("is-active", !isFollowups);
         followupButton.classList.toggle("is-active", isFollowups);
         attendanceButton.setAttribute("aria-selected", String(!isFollowups));
         followupButton.setAttribute("aria-selected", String(isFollowups));
         if (isFollowups) loadFollowups();
-        else if (document.getElementById("attendanceReportDate").options.length <= 1) {
+        else if (forceReload || document.getElementById("attendanceReportDate").options.length <= 1) {
           loadAttendanceReportDates();
         }
       }
@@ -409,7 +452,7 @@
         loadingOption.value = "";
         loadingOption.textContent = translations[currentLang].attendanceDatesLoading;
         select.replaceChildren(loadingOption);
-        document.getElementById("attendanceReportResults").replaceChildren();
+        showReportSkeleton(document.getElementById("attendanceReportResults"));
         document.getElementById("attendanceSearchResult").replaceChildren();
         try {
           const result = await apiCall("get_attendance_dates");
@@ -422,24 +465,24 @@
             throw new Error(result && result.message ? result.message : translations[currentLang].attendanceDatesFailed);
           }
           select.replaceChildren();
-          if (!result.dates.length) {
+          const today = localDateInputValue(new Date());
+          const dates = getPastAttendanceDates(result.dates, today);
+          if (!dates.length) {
             const emptyOption = document.createElement("option");
             emptyOption.value = "";
             emptyOption.textContent = translations[currentLang].attendanceDatesEmpty;
             select.appendChild(emptyOption);
+            document.getElementById("attendanceReportResults").replaceChildren();
             return;
           }
-          result.dates.forEach((date) => {
+          dates.forEach((date) => {
             const option = document.createElement("option");
             option.value = date;
-            const [year, month, day] = date.split("-").map(Number);
-            option.textContent = new Date(year, month - 1, day, 12).toLocaleDateString(
-              currentLang === "ar" ? "ar" : "en",
-              { year: "numeric", month: "short", day: "numeric" },
-            );
+            option.textContent = formatAttendanceDateOption(date, today);
             select.appendChild(option);
           });
-          select.value = result.dates[result.dates.length - 1];
+          select.value = dates[dates.length - 1];
+          delete select.dataset.busy;
           select.disabled = false;
           await loadAttendanceReport();
         } catch (error) {
@@ -461,57 +504,77 @@
       async function loadFollowups() {
         const requestId = ++attendanceReportRequestId;
         const container = document.getElementById("followupResults");
-        container.replaceChildren();
-        showLoader();
+        showReportSkeleton(container);
         try {
           const result = await apiCall("get_followups");
-          hideLoader();
           if (
             requestId !== attendanceReportRequestId ||
             currentActiveViewId !== "attendanceReportView" ||
             attendanceReportTab !== "followups"
           ) return;
           if (!result || !result.success) throw new Error(result && result.message);
-          if (!result.followups.length) {
-            const empty = document.createElement("p");
-            empty.className = "search-empty";
-            empty.textContent = translations[currentLang].noFollowups;
-            container.appendChild(empty);
-            return;
-          }
-          const panel = document.createElement("section");
-          panel.className = "report-panel";
-          const heading = document.createElement("div");
-          heading.className = "report-panel-heading";
-          heading.textContent = translations[currentLang].followupsTitle;
-          panel.appendChild(heading);
-          result.followups.forEach((person) => {
-            const item = document.createElement("article");
-            item.className = "attendance-person-card followup-person-card";
-            const details = document.createElement("div");
-            const name = document.createElement("strong");
-            name.textContent = person.name;
-            const note = document.createElement("small");
-            note.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
-            note.textContent = `${person.missedMeetings} · ${person.lastMissed}`;
-            details.append(name, note);
-            const completeButton = document.createElement("button");
-            completeButton.type = "button";
-            completeButton.className = "btn secondary";
-            completeButton.dataset.onlineOnly = "";
-            completeButton.style.cssText = "width:auto;margin:0;padding:8px 10px;";
-            completeButton.textContent = translations[currentLang].markFollowupComplete;
-            completeButton.addEventListener("click", () => completeAttendanceFollowup(person.id));
-            item.append(details, completeButton);
-            panel.appendChild(item);
-          });
-          container.appendChild(panel);
+          followupReportPeople = Array.isArray(result.followups) ? result.followups : [];
+          renderFollowupResults();
           updateOnlineOnlyControls();
         } catch (error) {
-          hideLoader();
           if (requestId !== attendanceReportRequestId) return;
+          container.replaceChildren();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         }
+      }
+
+      function filterFollowups() {
+        renderFollowupResults();
+      }
+
+      function renderFollowupResults() {
+        const container = document.getElementById("followupResults");
+        const query = document.getElementById("followupPersonQuery").value.trim().toLocaleLowerCase();
+        const people = followupReportPeople.filter((person) =>
+          String(person.name || "").toLocaleLowerCase().includes(query),
+        );
+        if (!people.length) {
+          const empty = document.createElement("p");
+          empty.className = "search-empty";
+          if (query && followupReportPeople.length) {
+            empty.textContent = translations[currentLang].followupNoMatches;
+          } else if (!query) {
+            empty.textContent = translations[currentLang].noFollowups;
+          } else {
+            return;
+          }
+          container.replaceChildren(empty);
+          return;
+        }
+        container.replaceChildren();
+        const panel = document.createElement("section");
+        panel.className = "report-panel";
+        const heading = document.createElement("div");
+        heading.className = "report-panel-heading";
+        heading.textContent = translations[currentLang].followupsTitle;
+        panel.appendChild(heading);
+        people.forEach((person) => {
+          const item = document.createElement("article");
+          item.className = "attendance-person-card followup-person-card";
+          const details = document.createElement("div");
+          const name = document.createElement("strong");
+          name.textContent = person.name;
+          const note = document.createElement("small");
+          note.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
+          note.textContent = `${person.missedMeetings} · ${person.lastMissed}`;
+          details.append(name, note);
+          const completeButton = document.createElement("button");
+          completeButton.type = "button";
+          completeButton.className = "btn secondary";
+          completeButton.dataset.onlineOnly = "";
+          completeButton.style.cssText = "width:auto;margin:0;padding:8px 10px;";
+          completeButton.textContent = translations[currentLang].markFollowupComplete;
+          completeButton.addEventListener("click", () => completeAttendanceFollowup(person.id));
+          item.append(details, completeButton);
+          panel.appendChild(item);
+        });
+        container.appendChild(panel);
+        updateOnlineOnlyControls();
       }
 
       async function completeAttendanceFollowup(id) {
@@ -628,13 +691,13 @@
           showToast(translations[currentLang].attendancePersonPlaceholder, "info");
           return;
         }
-        showLoader();
+        showReportSkeleton(document.getElementById("attendanceReportResults"));
+        document.getElementById("attendanceSearchResult").replaceChildren();
         try {
           const result = await apiCall(
             createSheet ? "create_daily_attendance_report" : "get_attendance_day",
             { date: date, name: query },
           );
-          hideLoader();
           if (
             requestId !== attendanceReportRequestId ||
             currentActiveViewId !== "attendanceReportView" ||
@@ -643,8 +706,8 @@
           if (!result || !result.success) throw new Error(result && result.message);
           renderAttendanceReport(result, query, createSheet);
         } catch (error) {
-          hideLoader();
           if (requestId !== attendanceReportRequestId) return;
+          document.getElementById("attendanceReportResults").replaceChildren();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         }
       }
@@ -655,7 +718,7 @@
 
       async function checkoutAttendance(id) {
         if (!window.confirm(translations[currentLang].confirmAttendanceCheckout)) return;
-        showLoader();
+        showLoader("Recording attendance check-out...");
         try {
           const result = await apiCall("checkout_attendance", { id: id });
           hideLoader();
@@ -674,7 +737,7 @@
       async function cancelAttendanceCheckin(id) {
         if (!currentUser) return;
         if (!window.confirm(translations[currentLang].confirmCancelCheckin)) return;
-        showLoader();
+        showLoader("Cancelling attendance check-in...");
         try {
           const result = await apiCall("cancel_checkin", { id: id });
           hideLoader();

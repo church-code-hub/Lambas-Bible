@@ -99,6 +99,12 @@
           if (currentLoaderText && document.getElementById("loader").style.display === "flex") {
             document.getElementById("loaderText").innerText = translateText(currentLoaderText);
           }
+          const startupStatus = document.getElementById("startupStatus");
+          if (startupStatus && !document.getElementById("startupScreen").hidden) {
+            startupStatus.textContent = localStorage.getItem("app_user")
+              ? translations[lang].checkingSavedSignIn
+              : translations[lang].startupLoading;
+          }
           const loginError = document.getElementById("loginError");
           if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
           if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
@@ -124,6 +130,7 @@
           localStorage.setItem("app_theme", mode);
           const body = document.body;
           body.setAttribute("data-theme", mode);
+          document.documentElement.setAttribute("data-theme", mode);
           body.classList.toggle("theme-light", mode === "light");
           body.classList.toggle("theme-dark", mode === "dark");
           document.documentElement.classList.toggle("theme-light", mode === "light");
@@ -149,7 +156,7 @@
           requestId: "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         };
         const controller = new AbortController();
-        const timeoutMs = ["add_student", "sync_offline_events"].includes(action) ? 180000 : 30000;
+        const timeoutMs = ["add_student", "generate_student_card", "sync_offline_events"].includes(action) ? 180000 : 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
           const response = await fetch(API_URL, {
@@ -163,6 +170,7 @@
           const result = await response.json();
           if (result.code === "AUTH_INVALID" && action !== "check_auth") {
             googleIdToken = "";
+            localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
             if (currentUser) beginSessionRestore(currentUser.email);
             else logoutUser(result.message || "❌ Unauthorized account.");

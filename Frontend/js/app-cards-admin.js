@@ -127,6 +127,15 @@
               ? translateText("card generation failed")
               : translateText("Servant created successfully!");
             resultContainer.appendChild(status);
+            if (res.cardGenerationFailed && res.id) {
+              const retryButton = document.createElement("button");
+              retryButton.type = "button";
+              retryButton.className = "btn secondary card-generation-retry";
+              retryButton.dataset.onlineOnly = "";
+              retryButton.textContent = translations[currentLang].retryCardGeneration;
+              retryButton.addEventListener("click", () => retryServantCard(res.id, retryButton, status));
+              resultContainer.appendChild(retryButton);
+            }
             if (res.driveUrl) {
               const link = document.createElement("a");
               link.href = res.driveUrl;
@@ -154,6 +163,35 @@
           hideLoader();
           submitButton.disabled = false;
           submitButton.removeAttribute("aria-busy");
+        }
+      }
+
+      async function retryServantCard(id, button, status) {
+        button.disabled = true;
+        showLoader("Generating the servant card...");
+        try {
+          const result = await apiCall("generate_student_card", { id: id });
+          if (!result || !result.success || !result.driveUrl) {
+            throw new Error(result && result.message ? result.message : translations[currentLang].cardGenerationFailed);
+          }
+          status.textContent = translateText("Servant created successfully!");
+          status.dataset.message = "Servant created successfully!";
+          const link = document.createElement("a");
+          link.href = result.driveUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.className = "btn";
+          link.style.marginTop = "10px";
+          link.innerHTML = '<i class="fa-solid fa-folder-open" aria-hidden="true"></i> ';
+          link.dataset.message = "Open Card in Drive";
+          link.append(document.createTextNode(translateText(link.dataset.message)));
+          button.replaceWith(link);
+          showToast(translations[currentLang].cardGenerationComplete, "success");
+        } catch (error) {
+          button.disabled = false;
+          showToast(error.message || translations[currentLang].cardGenerationFailed, "error");
+        } finally {
+          hideLoader();
         }
       }
 
