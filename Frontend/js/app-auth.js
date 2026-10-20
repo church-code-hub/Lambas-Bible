@@ -258,17 +258,17 @@
         currentUser = null;
         verifiedPassword = "";
         stopLiveScanner();
-        if (msg) showLoginError(msg, true);
-        showView("loginView", false, true);
+        if (msg) showLoginError(msg);
+        showView("loginView", false);
         dismissStartupScreen();
       }
 
-      function showLoginError(msg, bypassRequestLock = false) {
+      function showLoginError(msg) {
         var errDiv = document.getElementById("loginError");
         errDiv.dataset.message = msg;
         errDiv.innerText = translateText(msg);
         errDiv.style.display = "block";
-        showView("loginView", false, bypassRequestLock);
+        showView("loginView", false);
         dismissStartupScreen();
       }
 

@@ -66,14 +66,18 @@ test("request loaders cover the view and prevent navigation until requests settl
   const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
 
-  assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*fixed/);
-  assert.match(styles, /\.loader-overlay\s*\{[^}]*height:\s*100dvh/);
-  assert.match(views, /activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*absolute/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*inset:\s*0/);
+  assert.match(styles, /\.container\.is-loading\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.doesNotMatch(views, /function showView\([^)]*\)\s*\{\s*if\s*\(/);
   assert.match(core, /activeApiRequestCount\+\+/);
   assert.match(core, /activeApiRequestCount = Math\.max\(0, activeApiRequestCount - 1\)/);
   assert.match(html, /onclick="updateCurrentAttendees\(\)"/);
   assert.match(html, /id="offlineSyncProgressLane"/);
   assert.match(views, /showCurrentAttendeesSkeleton\(\)/);
+  assert.match(styles, /\.current-attendees-search\s*\{[^}]*background:/);
 });
 
 test("toast animation duration follows its configured visible duration", () => {

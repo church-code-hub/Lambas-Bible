@@ -73,15 +73,7 @@
         container.replaceChildren(skeleton);
       }
 
-      function showView(viewId, pushHistory = true, bypassRequestLock = false) {
-        if (
-          !bypassRequestLock &&
-          viewId !== currentActiveViewId &&
-          (activeApiRequestCount > 0 || isSyncingOfflineQueue)
-        ) {
-          showToast(translations[currentLang].requestInProgress, "info");
-          return false;
-        }
+      function showView(viewId, pushHistory = true) {
         hideLoader();
         const viewChanged = currentActiveViewId !== viewId;
         if (currentActiveViewId && currentActiveViewId !== viewId)

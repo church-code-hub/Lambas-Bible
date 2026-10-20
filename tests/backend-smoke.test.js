@@ -215,8 +215,10 @@ test("generates a card with one QR image and no QR frame", () => {
   const templateBlob = {};
   const exportBlob = { setName(name) { this.name = name; return this; } };
   const insertedImages = [];
+  let insertedTextBoxGeometry = null;
+  let insertedTextBoxFontSize = null;
   const textStyle = {
-    setFontSize() { return this; },
+    setFontSize(size) { insertedTextBoxFontSize = size; return this; },
     setBold() { return this; },
     setForegroundColor() { return this; },
     setFontFamily() { return this; },
@@ -232,7 +234,10 @@ test("generates a card with one QR image and no QR frame", () => {
     insertImage(blob, ...geometry) {
       insertedImages.push({ blob, geometry });
     },
-    insertTextBox: () => textBox,
+    insertTextBox: (_text, ...geometry) => {
+      insertedTextBoxGeometry = geometry;
+      return textBox;
+    },
     getObjectId: () => "slide-1",
   };
   const presentation = {
@@ -277,7 +282,10 @@ test("generates a card with one QR image and no QR frame", () => {
   assert.equal(insertedImages.length, 2);
   assert.equal(insertedImages[0].blob, templateBlob);
   assert.equal(insertedImages[1].blob, qrBlob);
-  assert.deepEqual(Array.from(insertedImages[1].geometry), [120, 255, 210, 210]);
+  assert.deepEqual(Array.from(insertedImages[0].geometry), [0, -20, 400, 600]);
+  assert.deepEqual(Array.from(insertedImages[1].geometry), [120, 300, 160, 160]);
+  assert.deepEqual(Array.from(insertedTextBoxGeometry), [65, 469, 240, 30]);
+  assert.equal(insertedTextBoxFontSize, 25);
   assert.equal(qrBlob.name, "Alice.png");
 });
 

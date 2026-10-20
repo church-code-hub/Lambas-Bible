@@ -2348,18 +2348,18 @@ function generateAllCardsFromRoster(targetStudentId) {
         const presentation = SlidesApp.openById(tempFile.getId());
         const slide = presentation.getSlides()[0];
         slide.getPageElements().forEach((el) => el.remove());
-        slide.insertImage(templateImageBlob, 0, -20, 430, 650);
+        slide.insertImage(templateImageBlob, 0, -20, 400, 600);
         const qrX = 120;
-        const qrY = 255;
-        const qrW = 210;
-        const qrH = 210;
+        const qrY = 300;
+        const qrW = 160;
+        const qrH = 160;
         slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
         const textBox = slide.insertTextBox(
           studentName.toString().trim(),
-          58,
-          488,
-          260,
-          44,
+          65,
+          469,
+          240,
+          30,
         );
         textBox
           .getText()
@@ -2368,7 +2368,7 @@ function generateAllCardsFromRoster(targetStudentId) {
         textBox
           .getText()
           .getTextStyle()
-          .setFontSize(28)
+          .setFontSize(25)
           .setBold(true)
           .setForegroundColor("#3e1e04")
           .setFontFamily("Segoe UI");
