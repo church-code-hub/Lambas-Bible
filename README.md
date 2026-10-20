@@ -41,7 +41,7 @@ Multiple online devices can use the app at once. Attendance, roster ID allocatio
 
 The dashboard's **Current Attendees** view is available for the configured meeting window, from meeting start until one hour after the scheduled end. It refreshes while open, offers regular check-out only during the configured checkout window, and allows any authorized user to cancel an active check-in. Authorized users can record an emergency check-out during the management window by entering a reason; the check-out follows the same attendance update path and its reason is retained in the `Emergency Check-out` audit sheet. Follow-up is available as a tab in Attendance Reports and lists only people with at least one recorded attendance who missed three or more consecutive meeting dates. Language and theme preferences are available in the password-free App Settings view after sign-in.
 
-The saved-actions view lists failed sync events for review and retry. The progress bar appears only while a user-triggered sync is running; each processed event also produces a timed toast.
+The saved-actions view groups queued events by action type and shows attendee names from the device's saved roster when available. Review the new-attendee check-in choice, then sync an individual event or the next consecutive group of the same type. To preserve attendance order, an event cannot skip earlier queued events. The progress bar appears only while a user-triggered sync is running; each processed event also produces a timed toast.
 
 The QR decoder is bundled locally for offline camera scanning. Google sign-in and Font Awesome still load externally. Offline sync does not create or use an `Offline Events` spreadsheet tab.
 

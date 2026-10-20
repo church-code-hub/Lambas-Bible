@@ -78,6 +78,16 @@
           });
           const addStatus = document.querySelector("#addResult [data-message]");
           if (addStatus) addStatus.textContent = translateText(addStatus.dataset.message);
+          const queuedAddStatus = document.querySelector("#addResult .offline-add-queued-result");
+          if (queuedAddStatus) {
+            queuedAddStatus.textContent = [
+              queuedAddStatus.dataset.personName,
+              translations[lang].offlineAddQueued,
+              queuedAddStatus.dataset.attendIfOpen === "true"
+                ? translations[lang].offlineAttendYes
+                : translations[lang].offlineAttendNo,
+            ].join(" · ");
+          }
           const addLink = document.querySelector("#addResult a[data-message]");
           if (addLink) addLink.lastChild.textContent = translateText(addLink.dataset.message);
           if (currentLoaderText && document.getElementById("loader").style.display === "flex") {
@@ -158,4 +168,3 @@
           clearTimeout(timeoutId);
         }
       }
-

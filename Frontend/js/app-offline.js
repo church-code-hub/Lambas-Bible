@@ -27,6 +27,33 @@
         });
       }
 
+      function findCachedPersonName(roster, id) {
+        const cleanId = String(id || "").trim();
+        if (!cleanId) return "";
+        const person = roster.find((entry) => String(entry.id).trim() === cleanId);
+        return person ? String(person.name || "") : "";
+      }
+
+      async function getCachedPersonName(id) {
+        return findCachedPersonName(await getCachedRoster(), id);
+      }
+
+      async function hydrateOfflinePersonNames(events) {
+        const scansMissingName = events.filter(
+          (event) => event.type === "scan" && !event.personName && event.qrText,
+        );
+        if (!scansMissingName.length) return events;
+        try {
+          const roster = await getCachedRoster();
+          scansMissingName.forEach((event) => {
+            event.personName = findCachedPersonName(roster, event.qrText);
+          });
+        } catch (error) {
+          console.warn("Could not match queued attendance IDs to the saved roster.", error);
+        }
+        return events;
+      }
+
       async function saveCachedRoster(roster) {
         const database = await openOfflineDatabase();
         await new Promise((resolve, reject) => {
@@ -175,8 +202,17 @@
 
       async function queueOfflineEvent(event) {
         if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a previously authenticated session.");
+        let personName = event.personName || "";
+        if (event.type === "scan" && !personName) {
+          try {
+            personName = await getCachedPersonName(event.qrText);
+          } catch (error) {
+            console.warn("Could not find the scanned ID in the saved roster.", error);
+          }
+        }
         const queuedEvent = {
           ...event,
+          ...(personName ? { personName } : {}),
           eventId: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
           queuedBy: currentUser.email,
@@ -259,9 +295,7 @@
           const heading = document.createElement("div");
           heading.className = "sync-progress-event";
           const title = document.createElement("strong");
-          title.textContent = event.type === "add_student"
-            ? translations[currentLang].offlineEventAdd + ": " + event.name
-            : translations[currentLang].offlineEventScan;
+          title.textContent = offlineEventDescription(event);
           const status = document.createElement("span");
           status.className = "sync-progress-status";
           status.dataset.i18n = "offlineSyncProgressWaiting";
@@ -275,7 +309,7 @@
           retryButton.dataset.onlineOnly = "";
           retryButton.textContent = translations[currentLang].offlineRetry;
           retryButton.hidden = true;
-          retryButton.addEventListener("click", () => syncOfflineQueue());
+          retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId, true));
           heading.append(title, status);
           item.append(heading, message, retryButton);
           entries.set(event.eventId, { event, item, status, message, retryButton, finished: false });
@@ -325,28 +359,59 @@
         });
       }
 
-      async function syncOfflineQueue(targetEventId = "", showProgress = false) {
+      function offlineEventDescription(event) {
+        if (event.type === "add_student") {
+          const attendanceChoice = event.attendIfOpen
+            ? translations[currentLang].offlineAttendYes
+            : translations[currentLang].offlineAttendNo;
+          return `${translations[currentLang].offlineEventAdd}: ${event.name} · ${attendanceChoice}`;
+        }
+        const person = event.personName || `${translations[currentLang].offlineUnknownPerson} (${event.qrText || "?"})`;
+        return `${translations[currentLang].offlineEventScan}: ${person}`;
+      }
+
+      function getOfflineSyncBatch(events, targetEventId, groupType, accountEmail) {
+        if (!events.length || events[0].queuedBy !== accountEmail) return null;
+        const first = events[0];
+        if (targetEventId) {
+          return first.eventId === targetEventId ? [first] : null;
+        }
+        if (groupType && first.type !== groupType) return null;
+        const batch = [];
+        for (const event of events) {
+          if (
+            batch.length >= 20 ||
+            event.queuedBy !== accountEmail ||
+            event.type !== first.type
+          ) break;
+          batch.push(event);
+        }
+        return batch;
+      }
+
+      async function syncOfflineQueue(targetEventId = "", showProgress = false, groupType = "") {
         if (isSyncingOfflineQueue || !navigator.onLine || !currentUser || !googleIdToken) return null;
         isSyncingOfflineQueue = true;
         let targetResult = null;
         let progress = null;
         await updateOfflineStatus();
         try {
-          let events = await getOfflineEvents();
-          progress = showProgress ? createOfflineSyncProgress(events) : null;
+          let events = await hydrateOfflinePersonNames(await getOfflineEvents());
+          const selectedBatch = getOfflineSyncBatch(events, targetEventId, groupType, currentUser.email);
+          if ((targetEventId || groupType) && !selectedBatch) {
+            showToast(translations[currentLang].offlineSyncOrderBlocked, "info");
+            return null;
+          }
+          const progressEvents = targetEventId || groupType ? selectedBatch : events;
+          progress = showProgress ? createOfflineSyncProgress(progressEvents) : null;
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
-            const event = events[0];
-            if (event.queuedBy !== currentUser.email) break;
-            const batch = [];
-            for (const candidate of events) {
-              if (
-                batch.length >= 20 ||
-                candidate.queuedBy !== currentUser.email ||
-                candidate.type !== event.type ||
-                (event.type !== "scan" && batch.length > 0)
-              ) break;
-              batch.push(candidate);
-            }
+            const batch = getOfflineSyncBatch(
+              events,
+              targetEventId,
+              groupType,
+              currentUser.email,
+            );
+            if (!batch) break;
             batch.forEach((candidate) => updateOfflineSyncProgress(progress, candidate.eventId, "Syncing"));
             let response = null;
             for (const delay of [0, 750, 2000, 4000]) {
@@ -412,9 +477,7 @@
               if (completedEvent.type === "add_student" && result.success) {
                 await refreshRosterCache();
               }
-              const eventTitle = completedEvent.type === "add_student"
-                ? `${translations[currentLang].offlineEventAdd}: ${completedEvent.name}`
-                : translations[currentLang].offlineEventScan;
+              const eventTitle = offlineEventDescription(completedEvent);
               const eventMessage = [eventTitle, result.title, result.name, result.message]
                 .filter((part) => typeof part === "string" && part.trim())
                 .join(" · ");
@@ -445,6 +508,7 @@
               }
             }
             if (shouldStop) break;
+            if (targetEventId || groupType) break;
             events = await getOfflineEvents();
           }
           if (progress) {
@@ -508,55 +572,83 @@
         const syncButton = document.getElementById("syncOfflineEventsButton");
         if (!container || !syncButton) return;
         try {
-          const events = await getOfflineEvents();
+          const events = await hydrateOfflinePersonNames(await getOfflineEvents());
           container.replaceChildren();
-          const failedEvents = events.filter((event) => event.lastSyncError);
-          if (!failedEvents.length) {
+          const eventGroups = new Map();
+          events.forEach((event) => {
+            const group = eventGroups.get(event.type) || [];
+            group.push(event);
+            eventGroups.set(event.type, group);
+          });
+          if (!events.length) {
             const empty = document.createElement("p");
             empty.className = "search-empty";
-            empty.textContent = events.length
-              ? translations[currentLang].noSyncFailures
-              : translations[currentLang].noOfflineEvents;
+            empty.textContent = translations[currentLang].noOfflineEvents;
             container.appendChild(empty);
           }
-          failedEvents.forEach((event) => {
-            const item = document.createElement("div");
-            item.className = "admin-item";
-            const details = document.createElement("div");
-            const title = document.createElement("strong");
-            title.textContent = event.type === "add_student"
-              ? translations[currentLang].offlineEventAdd + ": " + event.name
+          for (const [type, groupEvents] of eventGroups) {
+            const groupPanel = document.createElement("section");
+            groupPanel.className = "report-panel offline-event-group";
+            const heading = document.createElement("div");
+            heading.className = "report-panel-heading";
+            const groupTitle = document.createElement("strong");
+            groupTitle.textContent = type === "add_student"
+              ? translations[currentLang].offlineEventAdd
               : translations[currentLang].offlineEventScan;
-            const metadata = document.createElement("small");
-            metadata.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
-            metadata.textContent = `${new Date(event.timestamp).toLocaleString(currentLang === "ar" ? "ar" : "en")} · ${event.queuedBy || ""}`;
-            details.append(title, metadata);
-            if (event.lastSyncError) {
-              const error = document.createElement("small");
-              error.className = "offline-event-error";
-              error.textContent = `${translations[currentLang].offlineEventFailed}: ${event.lastSyncError}`;
-              details.appendChild(error);
-            }
-            const actions = document.createElement("div");
-            actions.className = "offline-event-actions";
-            if (event.lastSyncError) {
+            const groupSync = document.createElement("button");
+            groupSync.type = "button";
+            groupSync.className = "btn secondary offline-group-sync";
+            groupSync.dataset.onlineOnly = "";
+            groupSync.textContent = translations[currentLang].offlineSyncGroup;
+            groupSync.disabled = !events.length ||
+              events[0].type !== type ||
+              events[0].queuedBy !== currentUser?.email;
+            groupSync.addEventListener("click", () => syncOfflineQueue("", true, type));
+            heading.append(groupTitle, groupSync);
+            groupPanel.appendChild(heading);
+            for (const event of groupEvents) {
+              const item = document.createElement("article");
+              item.className = "attendance-person-card offline-event-card";
+              const details = document.createElement("div");
+              const title = document.createElement("strong");
+              title.textContent = offlineEventDescription(event);
+              const metadata = document.createElement("small");
+              metadata.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
+              metadata.textContent = `${new Date(event.timestamp).toLocaleString(currentLang === "ar" ? "ar" : "en")} · ${event.queuedBy || ""}`;
+              details.append(title, metadata);
+              const status = document.createElement("small");
+              status.className = event.lastSyncError
+                ? "offline-event-error"
+                : "offline-event-pending";
+              status.textContent = event.lastSyncError
+                ? `${translations[currentLang].offlineEventFailed}: ${event.lastSyncError}`
+                : translations[currentLang].offlineEventWaiting;
+              details.appendChild(status);
+              const actions = document.createElement("div");
+              actions.className = "offline-event-actions";
               const retryButton = document.createElement("button");
               retryButton.type = "button";
               retryButton.className = "btn secondary";
               retryButton.dataset.onlineOnly = "";
-              retryButton.textContent = translations[currentLang].offlineRetry;
-              retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId));
+              retryButton.textContent = event.lastSyncError
+                ? translations[currentLang].offlineRetry
+                : translations[currentLang].offlineSyncEvent;
+              retryButton.disabled = !events.length ||
+                events[0].eventId !== event.eventId ||
+                event.queuedBy !== currentUser?.email;
+              retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId, true));
               actions.appendChild(retryButton);
+              const deleteButton = document.createElement("button");
+              deleteButton.type = "button";
+              deleteButton.className = "admin-del-btn";
+              deleteButton.textContent = translations[currentLang].deleteOfflineEventBtn;
+              deleteButton.addEventListener("click", () => deleteQueuedOfflineEvent(event.eventId));
+              actions.appendChild(deleteButton);
+              item.append(details, actions);
+              groupPanel.appendChild(item);
             }
-            const deleteButton = document.createElement("button");
-            deleteButton.type = "button";
-            deleteButton.className = "admin-del-btn";
-            deleteButton.textContent = translations[currentLang].deleteOfflineEventBtn;
-            deleteButton.addEventListener("click", () => deleteQueuedOfflineEvent(event.eventId));
-            actions.appendChild(deleteButton);
-            item.append(details, actions);
-            container.appendChild(item);
-          });
+            container.appendChild(groupPanel);
+          }
           updateOnlineOnlyControls();
           syncButton.disabled = !events.length || !navigator.onLine || !currentUser || !googleIdToken || isSyncingOfflineQueue;
         } catch (error) {
@@ -597,4 +689,3 @@
         } catch (e) {}
         return text;
       }
-

@@ -121,8 +121,13 @@
         }
         try {
           if (!navigator.onLine) {
-            await queueOfflineEvent({ type: "scan", qrText: id });
-            renderResult({ kind: "queued", title: "offlineQueuedTitle", name: "", message: "offlineScanQueued" });
+            const queuedEvent = await queueOfflineEvent({ type: "scan", qrText: id });
+            renderResult({
+              kind: "queued",
+              title: "offlineQueuedTitle",
+              name: queuedEvent.personName || "",
+              message: "offlineScanQueued",
+            });
             return;
           }
           showLoader();
@@ -136,7 +141,7 @@
         }
       }
 
-      async function processDirectAttendance(rawId, fromNameSearch = false) {
+      async function processDirectAttendance(rawId, fromNameSearch = false, personName = "") {
         if (!currentUser || (navigator.onLine && !googleIdToken)) {
           renderResult({
             kind: "error",
@@ -147,14 +152,15 @@
         }
         try {
           if (!navigator.onLine) {
-            await queueOfflineEvent({
+            const queuedEvent = await queueOfflineEvent({
               type: "scan",
               qrText: String(rawId),
+              personName: personName,
             });
             renderResult({
               kind: "queued",
               title: "offlineQueuedTitle",
-              name: "",
+              name: queuedEvent.personName || "",
               message: "offlineScanQueued",
             }, fromNameSearch);
             return;
@@ -194,7 +200,7 @@
           results.appendChild(note);
         }
         if (result.status === "exact_match") {
-          processDirectAttendance(result.id, true);
+          processDirectAttendance(result.id, true, result.name || "");
           return;
         }
         if (result.status === "suggestions" && Array.isArray(result.matches)) {
@@ -212,7 +218,7 @@
             const label = document.createElement("span");
             label.textContent = item.name;
             button.append(icon, label);
-            button.onclick = () => processDirectAttendance(item.id, true);
+            button.onclick = () => processDirectAttendance(item.id, true, item.name);
             results.appendChild(button);
           });
         }
@@ -361,4 +367,3 @@
           }
         }
       }
-

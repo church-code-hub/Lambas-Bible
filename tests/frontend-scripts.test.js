@@ -55,3 +55,50 @@ test("split classic scripts retain shared state and inline-handler functions", (
   assert.equal(vm.runInContext("typeof openAppSettings", browserContext), "function");
   assert.equal(vm.runInContext("typeof saveScheduleSettings", browserContext), "function");
 });
+
+test("offline name lookup and selected sync batches preserve queue order", () => {
+  const browserContext = vm.createContext({
+    window: {},
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  vm.runInContext("currentLang = 'en'", browserContext);
+
+  const result = vm.runInContext(`(() => {
+    const account = "admin@example.com";
+    const queue = [
+      { eventId: "scan-1", type: "scan", queuedBy: account },
+      { eventId: "scan-2", type: "scan", queuedBy: account },
+      { eventId: "add-1", type: "add_student", queuedBy: account },
+      { eventId: "scan-3", type: "scan", queuedBy: account },
+    ];
+    return {
+      foundName: findCachedPersonName([{ id: "001", name: "Attendee One" }], "001"),
+      missingName: findCachedPersonName([{ id: "1", name: "Attendee One" }], "unknown"),
+      individualLater: getOfflineSyncBatch(queue, "scan-2", "", account),
+      individualFirst: getOfflineSyncBatch(queue, "scan-1", "", account),
+      scanGroup: getOfflineSyncBatch(queue, "", "scan", account),
+      addGroupBlocked: getOfflineSyncBatch(queue, "", "add_student", account),
+      addDescription: offlineEventDescription({
+        type: "add_student", name: "New Attendee", attendIfOpen: false,
+      }),
+    };
+  })()`, browserContext);
+
+  assert.equal(result.foundName, "Attendee One");
+  assert.equal(result.missingName, "");
+  assert.equal(result.individualLater, null);
+  assert.deepEqual(Array.from(result.individualFirst, (event) => event.eventId), ["scan-1"]);
+  assert.deepEqual(Array.from(result.scanGroup, (event) => event.eventId), ["scan-1", "scan-2"]);
+  assert.equal(result.addGroupBlocked, null);
+  assert.match(result.addDescription, /New Attendee/);
+  assert.match(result.addDescription, /Do not mark attendance/);
+});

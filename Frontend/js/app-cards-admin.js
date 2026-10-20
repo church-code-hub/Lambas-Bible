@@ -91,8 +91,16 @@
           const resultContainer = document.getElementById("addResult");
           resultContainer.replaceChildren();
           const status = document.createElement("p");
-          status.dataset.message = "offlineAddQueued";
-          status.textContent = translations[currentLang].offlineAddQueued;
+          status.className = "offline-add-queued-result";
+          status.dataset.personName = name;
+          status.dataset.attendIfOpen = String(attendIfOpen);
+          status.textContent = [
+            name,
+            translations[currentLang].offlineAddQueued,
+            attendIfOpen
+              ? translations[currentLang].offlineAttendYes
+              : translations[currentLang].offlineAttendNo,
+          ].join(" · ");
           resultContainer.appendChild(status);
           document.getElementById("newStudentName").value = "";
           showToast(translations[currentLang].offlineAddQueued, "info");

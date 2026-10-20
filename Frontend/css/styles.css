@@ -888,6 +888,13 @@
         font-size: 12px;
       }
 
+      .offline-event-pending {
+        display: block;
+        margin-top: 5px;
+        color: var(--accent-gold);
+        font-size: 12px;
+      }
+
       .report-note {
         margin: 8px 0;
         color: var(--text-sub);
