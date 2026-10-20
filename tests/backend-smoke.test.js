@@ -446,6 +446,56 @@ test("allows authorized users to use the check-in cancellation API", () => {
   assert.equal(cancellationCount, 2);
 });
 
+test("requires a numeric password of at least eight digits when changing settings", () => {
+  const { context } = createBackendContext();
+  const save = (newPassword) => context.saveSettings(
+    "current-password",
+    "18:00",
+    "20:00",
+    0,
+    newPassword,
+    [0],
+  );
+
+  assert.equal(save("1234abcd").code, "PASSWORD_DIGITS_ONLY");
+  assert.equal(save("1234567").code, "PASSWORD_TOO_SHORT");
+});
+
+test("filters card searches by sharing state and sorts matches by most recent update", () => {
+  const { context } = createBackendContext([
+    ["ID", "Name", "Card URL"],
+    ["1", "Ada One", "https://drive.google.com/file/d/card-old/view"],
+    ["2", "Ada Two", "https://drive.google.com/file/d/card-new/view"],
+    ["3", "Ada Three", "https://drive.google.com/file/d/card-unshared/view"],
+  ]);
+  const cards = {
+    "card-old": { folder: "active", updatedAt: "2025-01-01T00:00:00Z" },
+    "card-new": { folder: "active", updatedAt: "2025-03-01T00:00:00Z" },
+    "card-unshared": { folder: "new", updatedAt: "2025-02-01T00:00:00Z" },
+  };
+  context.DriveApp = {
+    getFileById: (id) => ({
+      getLastUpdated: () => new Date(cards[id].updatedAt),
+      getParents: () => {
+        let read = false;
+        return {
+          hasNext: () => !read,
+          next: () => {
+            read = true;
+            return { getId: () => cards[id].folder === "new" ? "test-new-folder" : "active-folder" };
+          },
+        };
+      },
+    }),
+  };
+
+  const shared = context.searchCardForShare("Ada", "shared");
+  const unshared = context.searchCardForShare("Ada", "unshared");
+
+  assert.deepEqual(Array.from(shared.matches, (match) => match.fileId), ["card-new", "card-old"]);
+  assert.deepEqual(Array.from(unshared.matches, (match) => match.fileId), ["card-unshared"]);
+});
+
 test("verifies token audience and caches successful Google token checks", () => {
   const { context, tokenResponses, getTokenFetchCount } = createBackendContext();
   const clientId = "test-client-id.apps.googleusercontent.com";

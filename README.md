@@ -7,10 +7,17 @@ QR attendance Progressive Web App for a church community. The frontend is static
 ## Repository Layout
 
 ```text
-Backend/code.gs                 Apps Script API and business logic
+Backend/Code.js                 Apps Script API and business logic
 Frontend/index.html             PWA entry point
 Frontend/css/styles.css         Application styles
-Frontend/js/app.js              Browser logic
+Frontend/js/app-state.js        Shared browser state and configuration
+Frontend/js/app-i18n.js         Translations and text mapping
+Frontend/js/app-core.js         Theme, API, and appearance helpers
+Frontend/js/app-offline.js      Offline database, queue, and synchronization
+Frontend/js/app-views.js        Navigation, attendance views, and reports
+Frontend/js/app-auth.js         Sign-in and session restoration
+Frontend/js/app-scanner-search.js QR scanner and attendee search
+Frontend/js/app-cards-admin.js  Card sharing and administrative settings
 Frontend/js/config.example.js   Safe template for local frontend configuration
 Frontend/manifest.json          PWA metadata
 Frontend/sw.js                  Service worker
@@ -22,8 +29,9 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 
 1. Copy `Frontend/js/config.example.js` to `Frontend/js/config.js` and enter the deployment's Apps Script `/exec` URL, Google OAuth client ID, and spreadsheet URL. `config.js` is ignored by Git.
 2. Host the contents of `Frontend/` over HTTPS, or use localhost for development. Camera access, service workers, and PWA installation require a secure context.
-3. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
-4. Run the checks with `node --test tests/*.test.js`.
+3. The frontend JavaScript is loaded as ordered classic scripts so existing inline UI handlers and shared application state continue to work.
+4. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
+5. Run the checks with `node --test tests/*.test.js`.
 
 After one successful online load, a previously authenticated user can scan QR cards, search the saved roster by name, and queue new attendees while offline. The roster is downloaded to that device after an authorized online sign-in; offline search uses that saved snapshot and may not include recent roster changes. Name matching ranks exact and word matches first, then supports partial names and one-character typos. Selecting a name queues the same attendance scan used by QR check-in/check-out. Scans are synced in timestamp order when connectivity returns and the same authorized account is available. Events and the roster snapshot are stored in IndexedDB on that device; the backend uses Script Properties for retry protection and prunes records older than seven days during a subsequent sync. A fresh login, card operations, and management actions still require a connection. Offline device clocks are not a tamper-proof time source; the backend rejects events more than seven days old or more than five minutes in the future. Keep devices physically controlled and review synced timestamps.
 
@@ -51,13 +59,13 @@ After the first successful workflow run, GitHub Pages provides the app URL, norm
 
 ## Apps Script Setup
 
-Deploy `Backend/code.gs` as a Google Apps Script web app. In the Apps Script project, add these Script Properties before enabling the deployment:
+Deploy `Backend/Code.js` as a Google Apps Script web app. In the Apps Script project, add these Script Properties before enabling the deployment:
 
 | Property                    | Purpose                                                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `GOOGLE_CLIENT_ID`          | Must match the OAuth client ID in local `Frontend/js/config.js`                                              |
 | `QR_SECRET_KEY`             | Private QR obfuscation key; preserve the existing value to keep already-issued QR cards readable             |
-| `INITIAL_SETTINGS_PASSWORD` | Strong initial settings password, at least 12 characters; used only when the Settings sheet is first created |
+| `INITIAL_SETTINGS_PASSWORD` | Strong initial settings password, at least 12 digits; used only when the Settings sheet is first created |
 | `ACTIVE_CARDS_FOLDER_ID`    | Drive folder for shared/active cards                                                                         |
 | `NEW_CARDS_FOLDER_ID`       | Drive folder for new/unshared cards                                                                          |
 | `CARD_TEMPLATE_IMAGE_ID`    | Drive image used as the card background                                                                      |

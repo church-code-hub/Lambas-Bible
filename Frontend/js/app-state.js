@@ -1,0 +1,32 @@
+      const APP_CONFIG = window.LAMBAS_CONFIG || {};
+      const API_URL = APP_CONFIG.apiUrl || "";
+      const GOOGLE_SHEET_URL = APP_CONFIG.googleSheetUrl || "";
+      const OFFLINE_SESSION_KEY = "app_offline_session_email";
+
+      var currentUser = null;
+      var googleIdToken = sessionStorage.getItem("google_id_token") || "";
+      var html5QrCode = null;
+      var isScannerRunning = false;
+      var isScannerStarting = false;
+      var scannerStartGeneration = 0;
+      var qrLibraryPromise = null;
+      var isProcessingScan = false;
+      var isNameSearchRunning = false;
+      var isCardSearchRunning = false;
+      var isSyncingOfflineQueue = false;
+      var googleSignInInitialized = false;
+      var pendingSessionRestoreEmail = "";
+      var offlineDatabasePromise = null;
+      var verifiedPassword = "";
+      var currentLoaderText = "";
+      var currentActiveViewId = "loginView";
+      var attendanceReportTab = "attendance";
+      var attendanceReportRequestId = 0;
+      var currentAttendeesRequestId = 0;
+      var currentAttendeesRefreshTimer = 0;
+      var appearanceTransitionTimeout = 0;
+      var currentLang = localStorage.getItem("app_lang") || "ar";
+      var currentThemeMode = localStorage.getItem("app_theme") || "dark";
+
+      var activePreviewCard = { fileId: "", driveUrl: "", name: "" };
+

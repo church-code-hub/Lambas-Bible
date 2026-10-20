@@ -1,9 +1,16 @@
-const CACHE_NAME = "lambas-bible-shell-v23";
+const CACHE_NAME = "lambas-bible-shell-v25";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=23",
-  "./js/app.js?v=23",
+  "./css/styles.css?v=25",
+  "./js/app-state.js?v=25",
+  "./js/app-i18n.js?v=25",
+  "./js/app-core.js?v=25",
+  "./js/app-offline.js?v=25",
+  "./js/app-views.js?v=25",
+  "./js/app-auth.js?v=25",
+  "./js/app-scanner-search.js?v=25",
+  "./js/app-cards-admin.js?v=25",
   "./js/config.example.js",
   "./manifest.json",
   "./Assets/icons/PWA-ICON-192.png",

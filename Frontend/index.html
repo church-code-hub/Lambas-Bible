@@ -17,7 +17,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=23" />
+    <link rel="stylesheet" href="./css/styles.css?v=25" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -40,6 +40,7 @@
         <button
           class="icon-btn sync-now-btn"
           id="syncNowToolbarButton"
+          data-online-only
           onclick="syncFromToolbar()"
           title="مزامنة الآن"
           data-i18n-title="syncNow"
@@ -54,6 +55,7 @@
         <button
           class="icon-btn"
           id="adminToolbarButton"
+          data-online-only
           onclick="openAdminSettings()"
           title=" إدارة الخدام"
           data-i18n-title="adminTooltip"
@@ -158,11 +160,11 @@
             <span class="ico"><i class="fa-solid fa-magnifying-glass"></i></span
             ><span data-i18n="searchName">تحضير بالاسم</span>
           </button>
-          <button class="tile" onclick="showView('cardShareView')">
+          <button class="tile" data-online-only onclick="showView('cardShareView')">
             <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
             ><span data-i18n="shareCard">مشاركة كارت QR</span>
           </button>
-          <button class="tile" onclick="openSheet()">
+          <button class="tile" data-online-only onclick="openSheet()">
             <span class="ico"><i class="fa-solid fa-table"></i></span
             ><span data-i18n="openSheet">فتح الشيت</span>
           </button>
@@ -170,15 +172,15 @@
             <span class="ico"><i class="fa-solid fa-user-plus"></i></span
             ><span data-i18n="addStudent">إضافة مخدوم</span>
           </button>
-          <button class="tile" onclick="openScheduleSettings()">
+          <button class="tile" data-online-only onclick="openScheduleSettings()">
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
-          <button class="tile" onclick="openAttendanceReport()">
+          <button class="tile" data-online-only onclick="openAttendanceReport()">
             <span class="ico"><i class="fa-solid fa-calendar-check"></i></span
             ><span data-i18n="attendanceReports">تقارير الحضور</span>
           </button>
-          <button class="tile" onclick="openCurrentAttendeesView()">
+          <button class="tile" data-online-only onclick="openCurrentAttendeesView()">
             <span class="ico"><i class="fa-solid fa-people-group"></i></span
             ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
           </button>
@@ -216,7 +218,7 @@
 
       <div id="currentAttendeesView" style="display: none">
         <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
-        <button class="btn secondary" type="button" onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
+        <button class="btn secondary" type="button" data-online-only onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
           تحديث الحضور
         </button>
         <div id="currentAttendeesAvailability" class="attendance-window-note" aria-live="polite"></div>
@@ -226,16 +228,16 @@
       <div id="attendanceReportView" style="display: none">
         <h2 id="attendanceReportTitle" data-i18n="attendanceReports">تقارير الحضور</h2>
         <div class="report-tabs" role="tablist" aria-labelledby="attendanceReportTitle">
-          <button id="attendanceTabButton" class="report-tab is-active" type="button" role="tab"
+          <button id="attendanceTabButton" class="report-tab is-active" data-online-only type="button" role="tab"
             aria-selected="true" aria-controls="attendanceTabPanel" onclick="selectAttendanceReportTab('attendance')"
             data-i18n="attendanceTab">الحضور</button>
-          <button id="followupTabButton" class="report-tab" type="button" role="tab"
+          <button id="followupTabButton" class="report-tab" data-online-only type="button" role="tab"
             aria-selected="false" aria-controls="followupTabPanel" onclick="selectAttendanceReportTab('followups')"
             data-i18n="followupsTitle">الافتقاد</button>
         </div>
         <section id="attendanceTabPanel" role="tabpanel" aria-labelledby="attendanceTabButton">
           <label class="date-picker-label" for="attendanceReportDate" data-i18n="attendanceDateLabel">تاريخ الاجتماع</label>
-          <select id="attendanceReportDate" class="date-picker" onchange="loadAttendanceReport()">
+          <select id="attendanceReportDate" class="date-picker" data-online-only onchange="loadAttendanceReport()">
             <option value="" data-i18n="attendanceDatesLoading">جارٍ تحميل التواريخ...</option>
           </select>
           <input
@@ -244,10 +246,10 @@
             placeholder="ابحث عن اسم في هذا اليوم"
             data-i18n-placeholder="attendancePersonPlaceholder"
           />
-          <button class="btn secondary" onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
+          <button class="btn secondary" data-online-only onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
             البحث في هذا اليوم
           </button>
-          <button class="btn" onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
+          <button class="btn" data-online-only onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
             إنشاء تبويب لهذا اليوم
           </button>
           <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
@@ -255,7 +257,7 @@
         </section>
         <section id="followupTabPanel" role="tabpanel" aria-labelledby="followupTabButton" hidden>
           <p class="report-note" data-i18n="followupsNote">أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.</p>
-          <button class="btn secondary" onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
+          <button class="btn secondary" data-online-only onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
             تحديث القائمة
           </button>
           <div id="followupResults" class="report-list" aria-live="polite"></div>
@@ -344,8 +346,15 @@
           autocomplete="off"
           enterkeyhint="search"
         />
+        <label class="date-picker-label" for="cardShareFilter" data-i18n="cardShareFilterLabel">حالة المشاركة</label>
+        <select id="cardShareFilter" class="date-picker">
+          <option value="all" data-i18n="cardShareFilterAll">الكل</option>
+          <option value="shared" data-i18n="alreadyShared">تمت مشاركته</option>
+          <option value="unshared" data-i18n="notShared">لم تتم مشاركته</option>
+        </select>
         <button
           class="btn"
+          data-online-only
           onclick="executeCardSearch()"
           data-i18n="searchCardBtn"
         >
@@ -391,11 +400,11 @@
             "
           />
         </div>
-        <button class="btn" onclick="shareCurrentCardImage()">
+        <button class="btn" data-online-only onclick="shareCurrentCardImage()">
           <i class="fa-solid fa-share-nodes"></i>
           <span data-i18n="sendCopyBtn">📤 مشاركة الصورة (Send a Copy)</span>
         </button>
-        <button class="btn secondary" onclick="openCurrentCardDrive()">
+        <button class="btn secondary" data-online-only onclick="openCurrentCardDrive()">
           <i class="fa-solid fa-folder-open"></i>
           <span data-i18n="openDriveBtn">فتح في Google Drive</span>
         </button>
@@ -406,6 +415,10 @@
         >
           <i class="fa-solid fa-arrow-right"></i>
           <span data-i18n="backBtn">رجوع</span>
+        </button>
+        <button class="btn secondary" onclick="showView('cardShareView'); document.getElementById('shareNameInput').focus()">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="searchAnotherPerson">البحث عن شخص آخر</span>
         </button>
       </div>
 
@@ -451,12 +464,19 @@
           <input
             type="password"
             id="adminGatePassword"
+            class="numeric-password"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
             placeholder="ادخل كلمة المرور"
             data-i18n-placeholder="passwordPlaceholder"
             enterkeyhint="go"
           />
+          <button class="password-visibility-btn" type="button" data-password-toggle="adminGatePassword"
+            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
           <button
             class="btn"
+            data-online-only
             onclick="unlockAdminSettings()"
             data-i18n="enterBtn"
           >
@@ -483,6 +503,7 @@
           />
           <button
             class="btn secondary"
+            data-online-only
             onclick="updateMyName()"
             style="margin-bottom: 16px"
           >
@@ -502,11 +523,17 @@
           <input
             type="password"
             id="cfgNewPassword"
+            class="numeric-password"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="new-password"
             minlength="8"
             placeholder="اتركها فارغة للإبقاء على الحالية"
             data-i18n-placeholder="newPasswordPlaceholder"
             style="margin-bottom: 16px"
           />
+          <button class="password-visibility-btn" type="button" data-password-toggle="cfgNewPassword"
+            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
 
           <h3
             style="
@@ -546,13 +573,14 @@
               style="margin-bottom: 8px"
               enterkeyhint="done"
             />
-            <button class="btn secondary" onclick="addNewAdmin()">
+            <button class="btn secondary" data-online-only onclick="addNewAdmin()">
               ➕ <span data-i18n="addAdminBtn">إضافة خادم جديد</span>
             </button>
           </div>
 
           <button
             class="btn"
+            data-online-only
             onclick="saveAdminSettings()"
             data-i18n="saveChangesBtn"
           >
@@ -571,12 +599,19 @@
           <input
             type="password"
             id="scheduleGatePassword"
+            class="numeric-password"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
             placeholder="ادخل كلمة المرور"
             data-i18n-placeholder="passwordPlaceholder"
             enterkeyhint="go"
           />
+          <button class="password-visibility-btn" type="button" data-password-toggle="scheduleGatePassword"
+            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
           <button
             class="btn"
+            data-online-only
             onclick="unlockScheduleSettings()"
             data-i18n="enterBtn"
           >
@@ -689,6 +724,7 @@
 
           <button
             class="btn"
+            data-online-only
             onclick="saveScheduleSettings()"
             data-i18n="saveScheduleBtn"
           >
@@ -707,9 +743,20 @@
           <i class="fa-solid fa-qrcode"></i>
           <span data-i18n="scanAnother">مسح آخر</span>
         </button>
+        <button class="btn secondary" id="searchAnotherFromResult" hidden onclick="showView('searchView')">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="searchAnotherPerson">البحث عن شخص آخر</span>
+        </button>
       </div>
     </div>
 
-    <script src="./js/app.js?v=23"></script>
+    <script src="./js/app-state.js?v=25"></script>
+    <script src="./js/app-i18n.js?v=25"></script>
+    <script src="./js/app-core.js?v=25"></script>
+    <script src="./js/app-offline.js?v=25"></script>
+    <script src="./js/app-views.js?v=25"></script>
+    <script src="./js/app-auth.js?v=25"></script>
+    <script src="./js/app-scanner-search.js?v=25"></script>
+    <script src="./js/app-cards-admin.js?v=25"></script>
   </body>
 </html>

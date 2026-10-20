@@ -236,7 +236,7 @@ function doPost(e) {
         updateAdminProfile(identity.email, data.name, data.password),
       );
     else if (action === "search_card_share")
-      result = searchCardForShare(data.name);
+      result = searchCardForShare(data.name, data.filter);
     else if (action === "share_move_card")
       result = withScriptLock_(() => shareAndMoveCard(data.fileId));
   } catch (err) {
@@ -821,11 +821,19 @@ function saveSettings(
       };
     }
     const delay = Number(acceptedDelay);
-    if (newPassword && String(newPassword).trim().length < 8) {
+    const cleanNewPassword = String(newPassword || "").trim();
+    if (cleanNewPassword && !/^\d+$/.test(cleanNewPassword)) {
+      return {
+        success: false,
+        code: "PASSWORD_DIGITS_ONLY",
+        message: "يجب أن تتكون كلمة المرور من أرقام فقط.",
+      };
+    }
+    if (cleanNewPassword && cleanNewPassword.length < 8) {
       return {
         success: false,
         code: "PASSWORD_TOO_SHORT",
-        message: "يجب أن تتكون كلمة المرور الجديدة من 8 أحرف على الأقل.",
+        message: "يجب أن تتكون كلمة المرور الجديدة من 8 أرقام على الأقل.",
       };
     }
     const days = Array.isArray(allowedDays)
@@ -888,8 +896,10 @@ function saveSettings(
 // =========================================================================
 // 📁 Card Sharing & Migration
 // =========================================================================
-function searchCardForShare(name) {
-  if (!name) return { status: "error", message: "الاسم فارغ" };
+function searchCardForShare(name, shareFilter) {
+  if (!name || !normalizeName_(name)) {
+    return { status: "error", message: "الاسم فارغ" };
+  }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rosterSheet = ss.getSheetByName("Roster");
   if (!rosterSheet) return { status: "no_match" };
@@ -898,45 +908,57 @@ function searchCardForShare(name) {
   const data =
     lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
   const cleanInput = normalizeName_(name);
+  const filter = ["shared", "unshared"].includes(shareFilter)
+    ? shareFilter
+    : "all";
+  const candidates = data
+    .filter((row) => row[0] && row[1] && normalizeName_(row[1]).includes(cleanInput))
+    .slice(-100)
+    .reverse();
   let matches = [];
 
-  for (let i = 0; i < data.length && matches.length < 5; i++) {
-    if (!data[i][0] || !data[i][1]) continue;
-    let rowId = data[i][0].toString().trim();
-    let rowName = data[i][1].toString().trim();
-    let rowUrl = data[i][2] ? data[i][2].toString().trim() : "";
-
-    if (normalizeName_(rowName).includes(cleanInput)) {
-      let isNew = false;
-      let fileId = "";
-      if (rowUrl) {
-        let matchId = rowUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-        if (matchId && matchId[1]) {
-          fileId = matchId[1];
+  for (let i = 0; i < candidates.length; i++) {
+    let rowId = candidates[i][0].toString().trim();
+    let rowName = candidates[i][1].toString().trim();
+    let rowUrl = candidates[i][2] ? candidates[i][2].toString().trim() : "";
+    let isNew = false;
+    let fileId = "";
+    let updatedAt = 0;
+    if (rowUrl) {
+      let matchId = rowUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (matchId && matchId[1]) {
+        fileId = matchId[1];
+        try {
+          let file = DriveApp.getFileById(fileId);
           try {
-            let file = DriveApp.getFileById(fileId);
-            let parents = file.getParents();
-            while (parents.hasNext()) {
-              if (
-                parents.next().getId() ===
-                getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID")
-              ) {
-                isNew = true;
-                break;
-              }
-            }
+            updatedAt = file.getLastUpdated().getTime();
           } catch (e) {}
-        }
+          let parents = file.getParents();
+          while (parents.hasNext()) {
+            if (
+              parents.next().getId() ===
+              getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID")
+            ) {
+              isNew = true;
+              break;
+            }
+          }
+        } catch (e) {}
       }
-      matches.push({
-        id: rowId,
-        name: rowName,
-        driveUrl: rowUrl,
-        fileId: fileId,
-        isNew: isNew,
-      });
     }
+    if (filter === "shared" && isNew) continue;
+    if (filter === "unshared" && !isNew) continue;
+    matches.push({
+      id: rowId,
+      name: rowName,
+      driveUrl: rowUrl,
+      fileId: fileId,
+      isNew: isNew,
+      updatedAt: updatedAt,
+    });
   }
+  matches.sort((left, right) => right.updatedAt - left.updatedAt);
+  matches = matches.slice(0, 20);
   return matches.length > 0
     ? { status: "success", matches: matches }
     : { status: "no_match" };

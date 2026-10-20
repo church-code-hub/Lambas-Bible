@@ -13,6 +13,6 @@ jobs:
         with:
           node-version: 20
       - run: node --test tests/*.test.js
-      - run: node --check Frontend/js/app.js
+      - run: for file in Frontend/js/app-*.js; do node --check "$file"; done
       - run: node --check Frontend/sw.js
-      - run: node --check < Backend/code.gs
+      - run: node --check Backend/Code.js

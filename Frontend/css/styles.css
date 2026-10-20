@@ -95,6 +95,9 @@
         padding: 0;
         -webkit-font-smoothing: antialiased;
       }
+      [hidden] {
+        display: none !important;
+      }
 
       html,
       body {
@@ -213,7 +216,6 @@
         height: 36px;
         border-radius: 10px;
         object-fit: cover;
-        border: 1px solid var(--icon-glass-edge);
         box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.52), 0 4px 12px rgba(0, 0, 0, 0.3);
       }
 
@@ -244,6 +246,13 @@
       }
       .icon-btn[hidden] {
         display: none;
+      }
+      .icon-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+        filter: grayscale(0.7);
+        transform: none;
+        box-shadow: none;
       }
       .sync-now-btn {
         width: auto;
@@ -340,6 +349,30 @@
         transform: translateY(-1px);
       }
 
+      .password-visibility-btn {
+        width: auto;
+        min-width: 72px;
+        margin: -4px 0 12px;
+        padding: 6px 12px;
+        border: 1px solid var(--chip-border);
+        border-radius: 10px;
+        background: var(--chip-bg);
+        color: var(--text-sub);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .password-visibility-btn:hover {
+        color: var(--accent-gold);
+        border-color: var(--accent-gold);
+      }
+      .card-result {
+        width: 100%;
+      }
+      .search-again-button {
+        margin-top: 12px;
+      }
+
       .toast-container {
         position: fixed;
         top: 75px;
@@ -410,13 +443,14 @@
         width: auto;
         height: auto;
         margin: 0;
+        background-color: var(--loader-backdrop);
         background:
           var(--loader-gradient),
           linear-gradient(var(--glass-surface), var(--glass-surface)),
           var(--bg-gradient);
         background-size: 100% 100%;
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+        backdrop-filter: blur(28px) saturate(145%);
+        -webkit-backdrop-filter: blur(28px) saturate(145%);
         z-index: 20;
         border-radius: inherit;
         border: 1px solid var(--glass-edge);
@@ -428,12 +462,18 @@
         padding: 24px;
         color: var(--accent-gold);
         font-weight: 700;
+        text-align: center;
+        overflow: auto;
+        overscroll-behavior: contain;
+        isolation: isolate;
         animation: fadeIn 0.2s ease;
       }
 
       .loader-overlay > * {
         position: relative;
         z-index: 1;
+        max-width: 100%;
+        overflow-wrap: anywhere;
       }
 
       @keyframes fadeIn {
@@ -943,6 +983,28 @@
         }
       }
 
+      body.appearance-transitioning #mainContainer {
+        animation: appearanceRefresh 0.42s ease both;
+      }
+      @keyframes appearanceRefresh {
+        0% { opacity: 0.72; filter: blur(2px); }
+        100% { opacity: 1; filter: blur(0); }
+      }
+      .view-enter-forward {
+        animation: enterForward 0.34s ease-out both;
+      }
+      .view-enter-back {
+        animation: enterBack 0.34s ease-out both;
+      }
+      @keyframes enterForward {
+        from { opacity: 0; transform: translateX(18px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes enterBack {
+        from { opacity: 0; transform: translateX(-18px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
       .container::-webkit-scrollbar {
         width: 5px;
       }
@@ -1164,9 +1226,19 @@
       .btn:active {
         transform: scale(0.96);
       }
+      button:disabled,
+      select:disabled,
+      input:disabled {
+        cursor: not-allowed !important;
+        opacity: 0.48 !important;
+        filter: saturate(0.45);
+        color: var(--text-sub) !important;
+        border-color: var(--chip-border) !important;
+        background: var(--chip-bg) !important;
+        box-shadow: none !important;
+        pointer-events: none;
+      }
       .btn:disabled {
-        cursor: wait;
-        opacity: 0.65;
         transform: none;
       }
       .btn.secondary {
