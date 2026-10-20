@@ -31,6 +31,7 @@
       var currentAttendeesWindowRequestId = 0;
       var currentAttendeesWindowOpen = false;
       var appearanceTransitionTimeout = 0;
+      var appearanceTransitionGeneration = 0;
       var currentLang = localStorage.getItem("app_lang") || "ar";
       var currentThemeMode = localStorage.getItem("app_theme") || "dark";
 

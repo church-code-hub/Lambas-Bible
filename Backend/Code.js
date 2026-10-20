@@ -118,7 +118,10 @@ function doGet(e) {
     else if (action === "get_roster") {
       const roster = getRosterSnapshot_();
       result = roster
-        ? { success: true, roster: roster }
+        ? { success: true, roster: roster.map((person) => ({
+            ...person,
+            qrId: encryptId(person.id),
+          })) }
         : {
             success: false,
             code: "ROSTER_MISSING",
@@ -193,7 +196,10 @@ function doPost(e) {
     } else if (action === "get_roster") {
       const roster = getRosterSnapshot_();
       result = roster
-        ? { success: true, roster: roster }
+        ? { success: true, roster: roster.map((person) => ({
+            ...person,
+            qrId: encryptId(person.id),
+          })) }
         : {
             success: false,
             code: "ROSTER_MISSING",

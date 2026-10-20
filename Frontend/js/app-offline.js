@@ -37,19 +37,17 @@
       function findCachedPersonName(roster, id) {
         const cleanId = String(id || "").trim();
         if (!cleanId) return "";
-        const person = roster.find((entry) => String(entry.id).trim() === cleanId);
+        const person = roster.find((entry) =>
+          String(entry.id).trim() === cleanId ||
+          String(entry.qrId || "").trim() === cleanId,
+        );
         return person ? String(person.name || "") : "";
       }
 
       async function getCachedPersonName(id) {
         const cleanId = String(id || "").trim();
         if (!cleanId) return "";
-        const database = await openOfflineDatabase();
-        return new Promise((resolve, reject) => {
-          const request = database.transaction("roster", "readonly").objectStore("roster").get(cleanId);
-          request.onsuccess = () => resolve(String(request.result?.name || ""));
-          request.onerror = () => reject(request.error || new Error("Could not read saved attendee"));
-        });
+        return findCachedPersonName(await getCachedRoster(), cleanId);
       }
 
       async function hydrateOfflinePersonNames(events) {
@@ -95,6 +93,7 @@
           ).map((person) => ({
             id: String(person.id).trim(),
             name: String(person.name),
+            qrId: String(person.qrId || "").trim(),
           }));
           await saveCachedRoster(roster);
           return true;
@@ -460,17 +459,25 @@
               currentUser.email,
             );
             if (!batch) break;
-            batch.forEach((candidate) => updateOfflineSyncProgress(progress, candidate.eventId, "Syncing"));
+            const requestBatch = showProgress ? batch.slice(0, 1) : batch;
+            requestBatch.forEach((candidate) => updateOfflineSyncProgress(progress, candidate.eventId, "Syncing"));
+            if (showProgress) {
+              await new Promise((resolve) => {
+                if (window.requestAnimationFrame) window.requestAnimationFrame(resolve);
+                else window.setTimeout(resolve, 0);
+              });
+            }
+            const resultStartedAt = Date.now();
             let response = null;
             for (const delay of [0, 750, 2000, 4000]) {
               if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
               if (!navigator.onLine || !currentUser || !googleIdToken) break;
-              response = await apiCall("sync_offline_events", { events: batch });
+              response = await apiCall("sync_offline_events", { events: requestBatch });
               if (!response || !response.success || !Array.isArray(response.results)) break;
               if (!response.results.some((item) => item && item.status === "pending")) break;
             }
             if (!response || !response.success || !Array.isArray(response.results)) {
-              for (const candidate of batch) {
+              for (const candidate of requestBatch) {
                 await saveOfflineSyncFailure(
                   candidate,
                   translations[currentLang].offlineSyncProgressNoResult,
@@ -482,31 +489,42 @@
                   translations[currentLang].offlineSyncProgressNoResult,
                 );
               }
+              if (showProgress) {
+                showToast(
+                  translations[currentLang].offlineSyncProgressNoResult,
+                  "error",
+                  3000,
+                );
+                await new Promise((resolve) =>
+                  setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
+                );
+              }
               break;
             }
-            let shouldStop = response.results.length !== batch.length;
-            for (let index = 0; index < batch.length; index++) {
+            let shouldStop = response.results.length !== requestBatch.length;
+            for (let index = 0; index < requestBatch.length; index++) {
               const eventResult = response.results[index];
               if (!eventResult || eventResult.status !== "complete") {
                 const failureMessage = eventResult && eventResult.message
                   ? eventResult.message
                   : translations[currentLang].offlineSyncProgressNoResult;
-                await saveOfflineSyncFailure(batch[index], failureMessage);
+                await saveOfflineSyncFailure(requestBatch[index], failureMessage);
                 updateOfflineSyncProgress(
                   progress,
-                  batch[index].eventId,
+                  requestBatch[index].eventId,
                   "Failed",
                   failureMessage,
                 );
-                showToast(
-                  failureMessage,
-                  "error",
-                  4500,
-                );
+                showToast(failureMessage, "error", showProgress ? 3000 : 4500);
+                if (showProgress) {
+                  await new Promise((resolve) =>
+                    setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
+                  );
+                }
                 shouldStop = true;
                 break;
               }
-              const completedEvent = batch[index];
+              const completedEvent = requestBatch[index];
               const result = eventResult.result || {};
               const failed = result.success === false || result.kind === "error";
               if (failed) {
@@ -532,15 +550,20 @@
               showToast(
                 eventMessage || translations[currentLang].offlineSyncFailed,
                 failed ? "error" : result.cardGenerationFailed ? "info" : "success",
-                4500,
+                showProgress ? 3000 : 4500,
               );
+              if (showProgress) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
+                );
+              }
               if (failed) {
                 shouldStop = true;
                 break;
               }
             }
             if (shouldStop) {
-              for (const candidate of batch) {
+              for (const candidate of requestBatch) {
                 const entry = progress && progress.entries.get(candidate.eventId);
                 if (!entry || entry.finished) continue;
                 await saveOfflineSyncFailure(
@@ -556,7 +579,7 @@
               }
             }
             if (shouldStop) break;
-            if (targetEventId || groupType) break;
+            if (targetEventId || (groupType && !showProgress)) break;
             events = await getOfflineEvents();
           }
           if (progress) {

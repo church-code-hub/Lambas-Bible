@@ -81,11 +81,12 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
       { eventId: "scan-3", type: "scan", queuedBy: account },
     ];
     const roster = [
-      { id: "001", name: "Attendee One" },
+      { id: "001", name: "Attendee One", qrId: "encrypted-001" },
       { id: "002", name: "Attendee Two" },
     ];
     return {
       foundName: findCachedPersonName([{ id: "001", name: "Attendee One" }], "001"),
+      foundQrName: findCachedPersonName(roster, "encrypted-001"),
       missingName: findCachedPersonName([{ id: "1", name: "Attendee One" }], "unknown"),
       exactCachedSearch: searchCachedRoster(roster, "Attendee One"),
       fuzzyCachedSearch: searchCachedRoster(roster, "Attendee On"),
@@ -100,6 +101,7 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
   })()`, browserContext);
 
   assert.equal(result.foundName, "Attendee One");
+  assert.equal(result.foundQrName, "Attendee One");
   assert.equal(result.missingName, "");
   assert.equal(result.exactCachedSearch.status, "exact_match");
   assert.equal(result.exactCachedSearch.id, "001");

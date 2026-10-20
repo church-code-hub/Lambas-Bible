@@ -85,13 +85,16 @@
         const activeView = document.getElementById(viewId);
         if (activeView && currentActiveViewId !== viewId) {
           activeView.classList.remove("view-enter-forward", "view-enter-back");
-          activeView.offsetWidth;
-          activeView.classList.add(
-            pushHistory ? "view-enter-forward" : "view-enter-back",
-          );
-          window.setTimeout(() => {
-            activeView.classList.remove("view-enter-forward", "view-enter-back");
-          }, 420);
+          const enterClass = pushHistory
+            ? "view-enter-forward"
+            : "view-enter-back";
+          window.requestAnimationFrame(() => {
+            if (currentActiveViewId !== viewId || activeView.style.display === "none") return;
+            activeView.classList.add(enterClass);
+            window.setTimeout(() => {
+              activeView.classList.remove("view-enter-forward", "view-enter-back");
+            }, 200);
+          });
         }
 
         const homeBtn = document.getElementById("homeBtn");
@@ -527,6 +530,16 @@
         const searchResult = document.getElementById("attendanceSearchResult");
         list.replaceChildren();
         searchResult.replaceChildren();
+        const resultPanel = query || (created && report.report)
+          ? document.createElement("section")
+          : null;
+        if (resultPanel) {
+          resultPanel.className = "report-panel";
+          const heading = document.createElement("div");
+          heading.className = "report-panel-heading";
+          heading.textContent = translations[currentLang].attendanceSearchResults;
+          resultPanel.appendChild(heading);
+        }
 
         const summary = document.createElement("p");
         summary.className = "report-panel-heading";
@@ -558,14 +571,14 @@
             const empty = document.createElement("p");
             empty.className = "search-empty";
             empty.textContent = translations[currentLang].attendanceNoMatches;
-            searchResult.appendChild(empty);
+            resultPanel.appendChild(empty);
           }
           report.matches.forEach((person) => {
             const item = document.createElement("div");
             item.className = "attendance-report-match";
             item.textContent = `${person.name} · ${person.attended ? translations[currentLang].attended : translations[currentLang].absent}`;
             item.appendChild(createAttendanceActions(person, report.date, report.checkoutOpen));
-            searchResult.appendChild(item);
+            resultPanel.appendChild(item);
           });
         }
         if (created && report.report) {
@@ -575,11 +588,12 @@
           link.target = "_blank";
           link.rel = "noopener noreferrer";
           link.textContent = translations[currentLang].dailySheetCreated;
-          searchResult.appendChild(link);
+          resultPanel.appendChild(link);
         }
         if (query) {
-          addSearchAgainButton(searchResult, document.getElementById("attendancePersonQuery"));
+          addSearchAgainButton(resultPanel, document.getElementById("attendancePersonQuery"));
         }
+        if (resultPanel) searchResult.appendChild(resultPanel);
       }
 
       function createAttendanceActions(person, reportDate, checkoutOpen = false) {

@@ -1010,17 +1010,17 @@
       }
 
       body.appearance-transitioning #mainContainer {
-        animation: appearanceRefresh 0.42s ease both;
+        animation: appearanceRefresh 0.16s ease both;
       }
       @keyframes appearanceRefresh {
-        0% { opacity: 0.72; filter: blur(2px); }
-        100% { opacity: 1; filter: blur(0); }
+        0% { opacity: 0.88; }
+        100% { opacity: 1; }
       }
       .view-enter-forward {
-        animation: enterForward 0.34s ease-out both;
+        animation: enterForward 0.18s ease-out both;
       }
       .view-enter-back {
-        animation: enterBack 0.34s ease-out both;
+        animation: enterBack 0.18s ease-out both;
       }
       @keyframes enterForward {
         from { opacity: 0; transform: translateX(18px); }

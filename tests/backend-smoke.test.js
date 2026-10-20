@@ -553,6 +553,40 @@ test("check_auth returns the email verified from the ID token", () => {
   assert.equal(result.adminName, "Test Admin");
 });
 
+test("cached roster includes the original QR token while retaining its attendee ID", () => {
+  const { context, tokenResponses } = createBackendContext([
+    ["ID", "Name", "Card URL"],
+    ["001", "Attendee One", ""],
+  ]);
+  tokenResponses.set("roster-token", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: "admin@example.com",
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  context.encryptId = (id) => `encrypted:${id}`;
+  context.isEmailAllowed = () => true;
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+
+  const result = context.doPost({
+    postData: {
+      contents: JSON.stringify({ action: "get_roster", idToken: "roster-token" }),
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(
+    Array.from(result.roster, (person) => [person.id, person.qrId]),
+    [["001", "encrypted:001"]],
+  );
+});
+
 test("evaluates the meeting schedule against the captured event timestamp", () => {
   const { context } = createBackendContext();
   const eventTime = new Date(2026, 9, 18, 11, 0, 0);

@@ -6,15 +6,17 @@
           update();
           return;
         }
+        const transitionGeneration = ++appearanceTransitionGeneration;
         window.clearTimeout(appearanceTransitionTimeout);
         document.body.classList.remove("appearance-transitioning");
-        document.body.offsetWidth;
-        document.body.classList.add("appearance-transitioning");
-        document.body.offsetWidth;
         update();
-        appearanceTransitionTimeout = window.setTimeout(() => {
-          document.body.classList.remove("appearance-transitioning");
-        }, 420);
+        window.requestAnimationFrame(() => {
+          if (transitionGeneration !== appearanceTransitionGeneration) return;
+          document.body.classList.add("appearance-transitioning");
+          appearanceTransitionTimeout = window.setTimeout(() => {
+            document.body.classList.remove("appearance-transitioning");
+          }, 180);
+        });
       }
 
       function setLanguage(lang) {
