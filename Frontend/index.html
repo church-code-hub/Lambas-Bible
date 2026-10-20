@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=36" />
+    <link rel="stylesheet" href="./css/styles.css?v=37" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -40,14 +40,16 @@
       <div class="startup-content">
         <div class="startup-mark">
           <span class="startup-gold-orbit" aria-hidden="true"></span>
+          <span class="startup-gold-spark startup-gold-spark-one" aria-hidden="true"></span>
+          <span class="startup-gold-spark startup-gold-spark-two" aria-hidden="true"></span>
           <img src="Assets/icons/icon-192.png" alt="" />
         </div>
         <h1>Lambas Bible</h1>
         <span class="startup-gold-rule" aria-hidden="true"></span>
         <div class="startup-progress" aria-hidden="true"></div>
         <p id="startupStatus" class="startup-status" data-i18n="startupLoading">Loading Lambas Bible...</p>
-        <p class="startup-producer">Made by Church Code Hub</p>
       </div>
+      <p class="startup-producer">Made by Church Code Hub</p>
     </section>
     <div id="toastContainer" class="toast-container"></div>
     <header class="top-app-bar">
@@ -263,6 +265,14 @@
           <select id="attendanceReportDate" class="date-picker" data-online-only onchange="loadAttendanceReport()">
             <option value="" data-i18n="attendanceDatesLoading">جارٍ تحميل التواريخ...</option>
           </select>
+          <div class="attendance-filter-controls">
+            <label for="attendanceStatusFilter" data-i18n="attendanceStatusFilterLabel">Show</label>
+            <select id="attendanceStatusFilter" class="attendance-filter-select" onchange="filterAttendanceReport()">
+              <option value="all" data-i18n="attendanceFilterAll">Everyone</option>
+              <option value="attended" data-i18n="attendanceFilterAttended">Attended</option>
+              <option value="absent" data-i18n="attendanceFilterAbsent">Not attended</option>
+            </select>
+          </div>
           <div class="attendance-report-controls">
             <input
               type="text"
@@ -275,7 +285,9 @@
               <span class="compact-control-label" data-i18n="searchAttendanceBtn">بحث</span>
             </button>
             <button class="btn attendance-sheet-button" data-online-only type="button" onclick="createAttendanceReportSheet()" data-i18n-title="createDailySheetBtn" data-i18n-aria-label="createDailySheetBtn" aria-label="إنشاء تبويب لهذا اليوم">
-              <i class="fa-solid fa-table-cells" aria-hidden="true"></i>
+              <svg class="google-sheets-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V8h4.2L13 3.8ZM7 11v8h10v-8H7Zm1.5 1.5h2v2h-2v-2Zm4 0h3v2h-3v-2Zm-4 3.5h2v1.5h-2V16Zm4 0h3v1.5h-3V16Z"/>
+              </svg>
               <span class="compact-control-label" data-i18n="createDailySheetBtn">إنشاء تبويب لهذا اليوم</span>
             </button>
           </div>
@@ -298,6 +310,26 @@
           <div id="followupResults" class="report-list" aria-live="polite"></div>
         </section>
       </div>
+
+      <dialog id="attendanceSheetResultDialog" class="attendance-sheet-dialog" aria-labelledby="attendanceSheetResultTitle">
+        <div class="attendance-sheet-dialog-content">
+          <button class="attendance-sheet-dialog-close" type="button" onclick="closeAttendanceSheetResult()" aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+          <div class="attendance-sheet-success-icon" aria-hidden="true">
+            <svg class="google-sheets-icon" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V8h4.2L13 3.8ZM7 11v8h10v-8H7Zm1.5 1.5h2v2h-2v-2Zm4 0h3v2h-3v-2Zm-4 3.5h2v1.5h-2V16Zm4 0h3v1.5h-3V16Z"/>
+            </svg>
+          </div>
+          <h2 id="attendanceSheetResultTitle" data-i18n="attendanceSheetSuccessTitle">Attendance sheet ready</h2>
+          <p id="attendanceSheetResultMessage" class="report-note"></p>
+          <a id="attendanceSheetOpenLink" class="btn attendance-sheet-open-link" target="_blank" rel="noopener noreferrer">
+            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+            <span data-i18n="openAttendanceSheet">Open Google Sheet</span>
+          </a>
+          <button class="btn secondary attendance-sheet-done-button" type="button" onclick="closeAttendanceSheetResult()" data-i18n="done">Done</button>
+        </div>
+      </dialog>
 
       <div id="offlineQueueView" style="display: none">
         <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
@@ -796,13 +828,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=36"></script>
-    <script src="./js/app-i18n.js?v=36"></script>
-    <script src="./js/app-core.js?v=36"></script>
-    <script src="./js/app-offline.js?v=36"></script>
-    <script src="./js/app-views.js?v=36"></script>
-    <script src="./js/app-auth.js?v=36"></script>
-    <script src="./js/app-scanner-search.js?v=36"></script>
-    <script src="./js/app-cards-admin.js?v=36"></script>
+    <script src="./js/app-state.js?v=37"></script>
+    <script src="./js/app-i18n.js?v=37"></script>
+    <script src="./js/app-core.js?v=37"></script>
+    <script src="./js/app-offline.js?v=37"></script>
+    <script src="./js/app-views.js?v=37"></script>
+    <script src="./js/app-auth.js?v=37"></script>
+    <script src="./js/app-scanner-search.js?v=37"></script>
+    <script src="./js/app-cards-admin.js?v=37"></script>
   </body>
 </html>

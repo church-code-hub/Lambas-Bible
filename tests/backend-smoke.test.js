@@ -174,6 +174,19 @@ test("retries a missing servant card and reuses an existing card URL", () => {
   assert.equal(generatedFor, "8");
 });
 
+test("retains the configured card template and folder property names", () => {
+  for (const propertyName of [
+    "ACTIVE_CARDS_FOLDER_ID",
+    "NEW_CARDS_FOLDER_ID",
+    "CARD_TEMPLATE_IMAGE_ID",
+    "CARD_SLIDES_TEMPLATE_ID",
+  ]) {
+    assert.ok(backendSource.includes(`"${propertyName}"`));
+    const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+    assert.ok(readme.includes(`\`${propertyName}\``));
+  }
+});
+
 test("updates only the matching date and attendee in the attendance matrix", () => {
   const { context } = createBackendContext();
   const today = new Date().toDateString();
@@ -306,11 +319,15 @@ test("builds a daily attendance report and can find an absent person by name", (
   assert.equal(report.success, true);
   assert.equal(report.count, 1);
   assert.equal(report.people[0].name, "Alice");
+  assert.equal(report.people[1].name, "Bob");
+  assert.equal(report.people[1].attended, false);
   assert.equal(report.matches[0].name, "Bob");
   assert.equal(report.matches[0].attended, false);
   assert.equal(report.report.sheetId, 77);
-  assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 2);
+  assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 3);
   assert.equal(sheets.get("Attendance 2026-10-18").rows[1][1], "Alice");
+  assert.equal(sheets.get("Attendance 2026-10-18").rows[2][1], "Bob");
+  assert.equal(sheets.get("Attendance 2026-10-18").rows[2][2], "Not attended");
 });
 
 test("adds previously attending people missing three meetings to follow-up", () => {

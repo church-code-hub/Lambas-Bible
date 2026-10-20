@@ -634,8 +634,6 @@
       async function syncFromToolbar() {
         if (!currentUser) return;
         await openOfflineQueueView();
-        if (!navigator.onLine || !googleIdToken) return;
-        await syncOfflineQueue("", true);
       }
 
       async function renderOfflineQueue() {

@@ -2,9 +2,7 @@
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
         const hasSavedUser = Boolean(localStorage.getItem("app_user"));
-        if (hasSavedUser) {
-          setStartupStatus(translations[currentLang].checkingSavedSignIn);
-        } else {
+        if (!hasSavedUser) {
           window.setTimeout(dismissStartupScreen, 1050);
         }
         initializeNumericPasswords();
@@ -114,11 +112,6 @@
           startupScreen.hidden = true;
           startupScreen.setAttribute("aria-hidden", "true");
         }, 280);
-      }
-
-      function setStartupStatus(message) {
-        const status = document.getElementById("startupStatus");
-        if (status) status.textContent = message;
       }
 
       function initializeGoogleSignIn(showErrors = true) {
@@ -267,6 +260,7 @@
         stopLiveScanner();
         if (msg) showLoginError(msg);
         showView("loginView", false);
+        dismissStartupScreen();
       }
 
       function showLoginError(msg) {

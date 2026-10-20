@@ -36,6 +36,25 @@ test("loads frontend scripts in dependency order as classic scripts and precache
   assert.equal(fs.existsSync(path.join(frontendRoot, "js", "app.js")), false);
 });
 
+test("attendance sheet action remains separate from display filters and sync queue opens without syncing", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  const backend = fs.readFileSync(path.join(__dirname, "..", "Backend", "Code.js"), "utf8");
+
+  assert.match(html, /id="attendanceStatusFilter"/);
+  assert.match(html, /id="attendanceSheetResultDialog"/);
+  assert.match(views, /function filterAttendanceReport\(\)/);
+  assert.match(views, /function showAttendanceSheetResult\(report\)/);
+  assert.match(offline, /async function syncFromToolbar\(\)[\s\S]*?await openOfflineQueueView\(\);[\s\S]*?\n      }/);
+  assert.doesNotMatch(
+    offline.match(/async function syncFromToolbar\(\)[\s\S]*?\n      }/)[0],
+    /syncOfflineQueue/,
+  );
+  assert.match(backend, /people\.forEach\(\(person\) => reportRows\.push\(\[/);
+  assert.doesNotMatch(backend, /attendees\.forEach\(\(person\) => reportRows\.push\(\[/);
+});
+
 test("split classic scripts retain shared state and inline-handler functions", () => {
   const browserContext = vm.createContext({
     window: { LAMBAS_CONFIG: {}, addEventListener() {} },

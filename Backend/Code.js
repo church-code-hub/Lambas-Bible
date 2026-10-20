@@ -1371,7 +1371,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
     success: true,
     date: targetKey,
     count: attendees.length,
-    people: attendees,
+    people: people,
     matches: matches.map((person) => ({
       id: person.id,
       name: person.name,
@@ -1392,6 +1392,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
     const reportRows = [[
       "ID",
       "Name",
+      "Attendance Status",
       "Attendance Mark",
       "Check-in",
       "Checked In By",
@@ -1399,9 +1400,10 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       "Checked Out By",
       "Delay",
     ]];
-    attendees.forEach((person) => reportRows.push([
+    people.forEach((person) => reportRows.push([
       person.id,
       person.name,
+      person.attended ? "Attended" : "Not attended",
       person.mark,
       person.checkinTime,
       person.checkedInBy,
@@ -1409,7 +1411,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       person.checkedOutBy,
       person.delay,
     ]));
-    reportSheet.getRange(1, 1, reportRows.length, 8).setValues(reportRows);
+    reportSheet.getRange(1, 1, reportRows.length, 9).setValues(reportRows);
     response.report = {
       name: sheetName,
       sheetId: reportSheet.getSheetId(),
@@ -2164,7 +2166,7 @@ function generateAllCardsFromRoster(targetStudentId) {
         continue;
 
       const encryptedToken = encryptId(studentId);
-      const qrSizePx = 1000;
+      const qrSizePx = 350;
       const qrApiUrl =
         "https://api.qrserver.com/v1/create-qr-code/?size=" +
         qrSizePx + "x" + qrSizePx +

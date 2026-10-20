@@ -159,13 +159,48 @@
         margin-bottom: 8px;
       }
 
+      .startup-mark::before {
+        content: "";
+        position: absolute;
+        inset: 6px;
+        border: 1px solid var(--startup-gold-soft);
+        border-radius: 30px;
+        transform: rotate(12deg);
+      }
+
       .startup-mark img {
+        position: relative;
+        z-index: 1;
         width: 76px;
         height: 76px;
         border: 2px solid var(--startup-gold-strong);
         border-radius: 24px;
-        box-shadow: 0 0 24px var(--startup-gold-soft);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
         object-fit: cover;
+      }
+
+      .startup-gold-spark {
+        position: absolute;
+        z-index: 2;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent-gold);
+        box-shadow: 0 0 10px var(--startup-gold-medium);
+        animation: startupSparkle 2.6s ease-in-out infinite;
+      }
+
+      .startup-gold-spark-one {
+        inset-block-start: 14px;
+        inset-inline-end: 13px;
+      }
+
+      .startup-gold-spark-two {
+        inset-block-end: 16px;
+        inset-inline-start: 11px;
+        width: 5px;
+        height: 5px;
+        animation-delay: 1.2s;
       }
 
       .startup-gold-orbit {
@@ -193,10 +228,15 @@
       }
 
       .startup-producer {
+        position: absolute;
+        inset-inline: 12px;
+        bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        z-index: 1;
         color: var(--text-sub);
         font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.08em;
+        text-align: center;
       }
 
       .startup-status {
@@ -222,8 +262,13 @@
         50% { opacity: 0.5; transform: rotate(45deg) scale(0.88); }
       }
 
+      @keyframes startupSparkle {
+        50% { opacity: 0.55; transform: scale(0.72); }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .startup-gold-orbit,
+        .startup-gold-spark,
         .startup-progress {
           animation: none;
         }
@@ -410,6 +455,25 @@
         -webkit-backdrop-filter: none;
         color: var(--accent-gold);
         font-size: 14px;
+      }
+
+      .icon-btn:not(.sync-now-btn) {
+        border-color: transparent;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      .icon-btn:not(.sync-now-btn) > i {
+        width: auto;
+        height: auto;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
       }
       .sync-now-label {
         font-size: 12px;
@@ -1059,6 +1123,65 @@
         margin: 0;
       }
 
+      .followup-search-controls input[type="search"],
+      .attendance-report-controls input[type="text"] {
+        display: block;
+        width: 100%;
+        min-height: 42px;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        outline: none;
+        background: var(--input-bg);
+        color: var(--text-main);
+        font: inherit;
+        font-size: 14px;
+        text-align: start;
+        box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.12);
+        transition: border-color 160ms ease, box-shadow 160ms ease;
+      }
+
+      .followup-search-controls input[type="search"]:focus,
+      .attendance-report-controls input[type="text"]:focus {
+        border-color: var(--accent-gold);
+        box-shadow: 0 0 0 3px rgba(245, 189, 85, 0.16);
+      }
+
+      .attendance-filter-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 2px 10px;
+        color: var(--text-sub);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .attendance-filter-select {
+        min-width: 0;
+        flex: 1;
+        min-height: 40px;
+        padding: 8px 12px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        outline: none;
+        background: var(--input-bg);
+        color: var(--text-main);
+        font: inherit;
+        font-weight: 600;
+      }
+
+      .attendance-filter-select:focus-visible {
+        border-color: var(--accent-gold);
+        box-shadow: 0 0 0 3px rgba(245, 189, 85, 0.16);
+      }
+
+      .attendance-filter-select option {
+        background: var(--select-option-bg);
+        color: var(--text-main);
+      }
+
       .attendance-report-controls .btn,
       .followup-search-controls .btn {
         display: inline-flex;
@@ -1087,6 +1210,109 @@
 
       .attendance-sheet-button i {
         color: #34a853;
+      }
+
+      .attendance-report-controls .btn > i,
+      .followup-search-controls .btn > i {
+        width: auto;
+        height: auto;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      .google-sheets-icon {
+        display: block;
+        width: 19px;
+        height: 19px;
+        flex: 0 0 auto;
+        color: #34a853;
+      }
+
+      .attendance-sheet-button {
+        border-color: rgba(52, 168, 83, 0.55);
+      }
+
+      .attendance-sheet-dialog {
+        width: min(92vw, 410px);
+        max-width: 410px;
+        margin: auto;
+        padding: 0;
+        overflow: visible;
+        border: 1px solid var(--glass-edge);
+        border-radius: 22px;
+        background: var(--panel-gradient), var(--card-bg);
+        color: var(--text-main);
+        box-shadow: var(--shadow);
+      }
+
+      .attendance-sheet-dialog::backdrop {
+        background: rgba(7, 14, 23, 0.68);
+      }
+
+      .attendance-sheet-dialog-content {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+        padding: 28px 22px 22px;
+        text-align: center;
+      }
+
+      .attendance-sheet-dialog[open] {
+        animation: attendanceSheetAppear 180ms ease-out both;
+      }
+
+      @keyframes attendanceSheetAppear {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      .attendance-sheet-dialog-content h2 {
+        margin: 4px 0 0;
+        color: var(--text-main);
+        font-size: 19px;
+      }
+
+      .attendance-sheet-dialog-close {
+        position: absolute;
+        inset-block-start: 10px;
+        inset-inline-end: 10px;
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        background: var(--chip-bg);
+        color: var(--text-sub);
+        cursor: pointer;
+      }
+
+      .attendance-sheet-success-icon {
+        display: grid;
+        width: 58px;
+        height: 58px;
+        place-items: center;
+        border: 1px solid rgba(52, 168, 83, 0.35);
+        border-radius: 18px;
+        background: rgba(52, 168, 83, 0.1);
+      }
+
+      .attendance-sheet-success-icon .google-sheets-icon {
+        width: 30px;
+        height: 30px;
+      }
+
+      .attendance-sheet-dialog .btn {
+        margin: 0;
+      }
+
+      .attendance-sheet-open-link {
+        text-decoration: none;
       }
 
       .date-picker-label {

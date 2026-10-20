@@ -28,6 +28,7 @@
       var currentActiveViewId = "loginView";
       var attendanceReportTab = "attendance";
       var attendanceReportRequestId = 0;
+      var attendanceReportData = null;
       var followupReportPeople = [];
       var currentAttendeesRequestId = 0;
       var currentAttendeesSnapshot = "";

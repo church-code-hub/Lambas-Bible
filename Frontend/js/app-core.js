@@ -99,12 +99,6 @@
           if (currentLoaderText && document.getElementById("loader").style.display === "flex") {
             document.getElementById("loaderText").innerText = translateText(currentLoaderText);
           }
-          const startupStatus = document.getElementById("startupStatus");
-          if (startupStatus && !document.getElementById("startupScreen").hidden) {
-            startupStatus.textContent = localStorage.getItem("app_user")
-              ? translations[lang].checkingSavedSignIn
-              : translations[lang].startupLoading;
-          }
           const loginError = document.getElementById("loginError");
           if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
           if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
