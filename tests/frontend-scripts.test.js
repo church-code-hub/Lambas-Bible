@@ -36,6 +36,22 @@ test("loads frontend scripts in dependency order as classic scripts and precache
   assert.equal(fs.existsSync(path.join(frontendRoot, "js", "app.js")), false);
 });
 
+test("splash and toolbar use the requested loading and inner-icon treatments", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const splash = html.match(/<section id="startupScreen"[\s\S]*?<\/section>/)?.[0] || "";
+
+  assert.match(splash, /<h1>Lambas Bible<\/h1>/);
+  assert.match(splash, /Made by Church Code Hub/);
+  assert.match(splash, /class="loader-bars startup-loader-bars"/);
+  assert.equal((splash.match(/<p\b/g) || []).length, 1);
+  assert.doesNotMatch(splash, /Loading|جارٍ|startupStatus/);
+  assert.match(styles, /\.icon-btn > i\s*\{[^}]*border:\s*1px solid/);
+  assert.match(styles, /\.icon-btn\s*\{[^}]*border:\s*0/);
+  assert.match(styles, /\.startup-screen\s*\{[\s\S]*?radial-gradient/);
+  assert.match(styles, /\.loader-overlay::before/);
+});
+
 test("attendance sheet action remains separate from display filters and sync queue opens without syncing", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
