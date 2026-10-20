@@ -170,6 +170,8 @@ function doPost(e) {
       result = syncOfflineEvents_(data.events, identity.email);
     } else if (action === "get_attendance_day") {
       result = getAttendanceDayReport_(data.date, data.name || "");
+    } else if (action === "get_attendance_dates") {
+      result = getAttendanceDates_();
     } else if (action === "create_daily_attendance_report") {
       result = getAttendanceDayReport_(data.date, "", true);
     } else if (action === "get_followups") {
@@ -182,6 +184,8 @@ function doPost(e) {
       result = isSpreadsheetOwner_(identity.email)
         ? withScriptLock_(() => cancelCheckin_(data.id, identity.email))
         : authorizationDenied_();
+    } else if (action === "checkout_attendance") {
+      result = withScriptLock_(() => checkoutAttendance_(data.id, identity.email));
     } else if (action === "scan") {
       result = withScriptLock_(() => processScan(data.id, identity.email));
     } else if (action === "get_roster") {
@@ -318,10 +322,13 @@ function syncOfflineEvents_(events, adminEmail) {
       const existingRecord = properties.getProperty(propertyKey);
       if (existingRecord) {
         const record = JSON.parse(existingRecord);
-        return {
-          status: record.status === "COMPLETE" ? "complete" : "pending",
-          result: record.result || null,
-        };
+        if (record.status === "COMPLETE") {
+          const failedResult = record.result &&
+            (record.result.success === false || record.result.kind === "error");
+          if (!failedResult) return { status: "complete", result: record.result || null };
+        } else if (record.status === "PENDING") {
+          return { status: "pending" };
+        }
       }
       properties.setProperty(
         propertyKey,
@@ -377,11 +384,12 @@ function syncOfflineEvents_(events, adminEmail) {
       };
     }
 
+    const failed = eventResult.success === false || eventResult.kind === "error";
     const savedResult = withScriptLock_(() => {
       PropertiesService.getScriptProperties().setProperty(
         propertyKey,
         JSON.stringify({
-          status: "COMPLETE",
+          status: failed ? "FAILED" : "COMPLETE",
           timestamp: timestamp.toISOString(),
           result: eventResult,
         }),
@@ -393,6 +401,7 @@ function syncOfflineEvents_(events, adminEmail) {
       status: savedResult ? "complete" : "pending",
       result: eventResult,
     });
+    if (failed) break;
   }
   return { success: true, results: results };
 }
@@ -1145,6 +1154,30 @@ function attendanceDateKey_(value) {
   ].join("-");
 }
 
+function getAttendanceDates_() {
+  const attendanceSheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName("Attendance");
+  if (
+    !attendanceSheet ||
+    attendanceSheet.getLastColumn() < 3 ||
+    attendanceSheet.getLastRow() < 1
+  ) {
+    return {
+      success: false,
+      code: "ATTENDANCE_SHEETS_MISSING",
+      message: "تعذر العثور على أعمدة تواريخ الحضور.",
+    };
+  }
+  const headers = attendanceSheet
+    .getRange(1, 3, 1, attendanceSheet.getLastColumn() - 2)
+    .getValues()[0];
+  const dates = Array.from(
+    new Set(headers.map((header) => attendanceDateKey_(header)).filter(Boolean)),
+  ).sort();
+  return { success: true, dates: dates };
+}
+
 function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
   const targetDate = parseAttendanceDate_(dateValue);
   if (!targetDate) {
@@ -1508,6 +1541,37 @@ function cancelCheckin_(id, adminEmail) {
   setAttendanceMark_(spreadsheet.getSheetByName("Attendance"), cleanId, record[2], "");
   removeDelayForAttendance_(cleanId, record[2]);
   return { success: true };
+}
+
+function checkoutAttendance_(id, adminEmail) {
+  const cleanId = String(id || "").trim();
+  const sheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getSheetByName("Check-in & Check-out");
+  if (!cleanId || !sheet || sheet.getLastRow() < 2) {
+    return {
+      kind: "error",
+      title: "تعذر تسجيل الانصراف",
+      message: "لم يتم العثور على تسجيل حضور نشط.",
+    };
+  }
+  const todayKey = attendanceDateKey_(new Date());
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).getValues();
+  const hasActiveCheckin = rows.some((row) =>
+    String(row[0] || "").trim() === cleanId &&
+    row[7] !== "Cancelled" &&
+    row[2] instanceof Date &&
+    attendanceDateKey_(row[2]) === todayKey &&
+    !row[4],
+  );
+  if (!hasActiveCheckin) {
+    return {
+      kind: "error",
+      title: "تعذر تسجيل الانصراف",
+      message: "لم يتم العثور على تسجيل حضور نشط.",
+    };
+  }
+  return processScan(encryptId(cleanId), adminEmail);
 }
 
 function processScan(scannedInput, adminEmail, capturedTimestamp) {
@@ -1924,13 +1988,12 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
         checkinTime,
         "",
         delayMin > 0 ? formatDuration_(delayMin) : "",
-        adminName,
       ]);
       setAttendanceMark_(
         attendanceSheet,
         newId,
         checkinTime,
-        delayMin > 0 ? "+" : "-",
+        "-",
       );
       if (delayMin > 0)
         recordDelay_(

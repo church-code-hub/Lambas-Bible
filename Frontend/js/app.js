@@ -20,6 +20,8 @@
       var verifiedPassword = "";
       var currentLoaderText = "";
       var currentActiveViewId = "loginView";
+      var attendanceReportTab = "attendance";
+      var attendanceReportRequestId = 0;
       var currentLang = localStorage.getItem("app_lang") || "ar";
       var currentThemeMode = localStorage.getItem("app_theme") || "dark";
 
@@ -40,6 +42,11 @@
           offlineSyncMessage: "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
           offlineAccountMismatch: "بعض الإجراءات المحفوظة تخص حساباً آخر. سجّل الدخول بذلك الحساب لمزامنتها.",
           attendanceReports: "تقارير الحضور",
+          attendanceTab: "الحضور",
+          attendanceDateLabel: "تاريخ الاجتماع",
+          attendanceDatesLoading: "جارٍ تحميل التواريخ...",
+          attendanceDatesEmpty: "لا توجد تواريخ حضور مسجلة.",
+          attendanceDatesFailed: "تعذر تحميل تواريخ الحضور.",
           attendancePersonPlaceholder: "ابحث عن اسم في هذا اليوم",
           searchAttendanceBtn: "البحث في هذا اليوم",
           createDailySheetBtn: "إنشاء تبويب لهذا اليوم",
@@ -53,6 +60,12 @@
           markFollowupComplete: "تم الافتقاد",
           noFollowups: "لا توجد أسماء تحتاج إلى افتقاد حالياً.",
           followupCompleted: "تم إكمال الافتقاد.",
+          attendanceCheckout: "تسجيل الانصراف",
+          confirmAttendanceCheckout: "تسجيل انصراف هذا الشخص الآن؟",
+          attendanceCheckoutCompleted: "تم تسجيل الانصراف.",
+          attendanceCancelSuccess: "تم إلغاء تسجيل الحضور.",
+          offlineRetry: "إعادة المحاولة",
+          offlineEventFailed: "فشل مزامنة هذا الإجراء",
           offlineQueueTitle: "الإجراءات المحفوظة",
           offlineManualSyncNote: "راجع الأحداث واحذف غير المطلوب قبل المزامنة اليدوية.",
           syncOfflineEventsBtn: "مزامنة الإجراءات",
@@ -164,6 +177,11 @@
           offlineSyncMessage: "This action will be recorded after connection and account verification return.",
           offlineAccountMismatch: "Some saved actions belong to another account. Sign in with that account to sync them.",
           attendanceReports: "Attendance Reports",
+          attendanceTab: "Attendance",
+          attendanceDateLabel: "Meeting date",
+          attendanceDatesLoading: "Loading dates...",
+          attendanceDatesEmpty: "No attendance dates are available.",
+          attendanceDatesFailed: "Could not load attendance dates.",
           attendancePersonPlaceholder: "Search for a person on this date",
           searchAttendanceBtn: "Search this date",
           createDailySheetBtn: "Create daily tab",
@@ -177,6 +195,12 @@
           markFollowupComplete: "Mark completed",
           noFollowups: "No one currently needs follow-up.",
           followupCompleted: "Follow-up marked completed.",
+          attendanceCheckout: "Check out",
+          confirmAttendanceCheckout: "Record check-out for this person now?",
+          attendanceCheckoutCompleted: "Check-out recorded.",
+          attendanceCancelSuccess: "Check-in was cancelled.",
+          offlineRetry: "Retry",
+          offlineEventFailed: "This action failed to sync",
           offlineQueueTitle: "Saved Actions",
           offlineManualSyncNote: "Review events and remove unwanted ones before manual sync.",
           syncOfflineEventsBtn: "Sync actions",
@@ -525,6 +549,10 @@
             const key = el.getAttribute("data-i18n-title");
             if (translations[lang][key]) el.setAttribute("title", translations[lang][key]);
           });
+          document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+            const key = el.getAttribute("data-i18n-aria-label");
+            if (translations[lang][key]) el.setAttribute("aria-label", translations[lang][key]);
+          });
           document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
             const key = el.getAttribute("data-i18n-alt");
             if (translations[lang][key]) el.setAttribute("alt", translations[lang][key]);
@@ -562,7 +590,10 @@
           const loginError = document.getElementById("loginError");
           if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
           if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
-          if (currentActiveViewId === "followupView") loadFollowups();
+          if (currentActiveViewId === "attendanceReportView") {
+            if (attendanceReportTab === "followups") loadFollowups();
+            else loadAttendanceReportDates();
+          }
         };
         if (currentLang === lang) changeLanguage();
         else runAppearanceTransition(changeLanguage);
@@ -830,7 +861,14 @@
 
       async function updateOfflineStatus() {
         const status = document.getElementById("syncStatus");
+        const toolbarButton = document.getElementById("syncNowToolbarButton");
+        const toolbarCount = document.getElementById("syncNowCount");
         const offlineOverlay = document.getElementById("offlineOverlay");
+        if (toolbarButton) {
+          toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView";
+          toolbarButton.disabled = isSyncingOfflineQueue;
+          toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
+        }
         offlineOverlay.style.display = navigator.onLine ? "none" : "block";
         status.style.top = navigator.onLine
           ? "calc(72px + env(safe-area-inset-top, 0px))"
@@ -838,6 +876,10 @@
         try {
           const events = await getOfflineEvents();
           const count = events.length;
+          if (toolbarCount) {
+            toolbarCount.hidden = count === 0;
+            toolbarCount.textContent = count > 99 ? "99+" : String(count);
+          }
           status.hidden = count === 0 && navigator.onLine;
           const hasOtherAccountEvents = currentUser && events.some((event) => event.queuedBy !== currentUser.email);
           status.textContent = isSyncingOfflineQueue && navigator.onLine
@@ -850,6 +892,7 @@
               ? translations[currentLang].offlineQueueStatus + (count ? ` (${translations[currentLang].queuedEventsCount}${count})` : "")
               : count ? translations[currentLang].queuedEventsCount + count : "";
         } catch (error) {
+          if (toolbarCount) toolbarCount.hidden = true;
           status.hidden = navigator.onLine;
           status.textContent = navigator.onLine ? "" : translations[currentLang].offlineQueueStatus;
         }
@@ -887,10 +930,15 @@
           const message = document.createElement("p");
           message.className = "sync-progress-message";
           message.hidden = true;
+          const retryButton = document.createElement("button");
+          retryButton.type = "button";
+          retryButton.className = "btn secondary sync-retry-button";
+          retryButton.textContent = translations[currentLang].offlineRetry;
+          retryButton.hidden = true;
+          retryButton.addEventListener("click", () => syncOfflineQueue());
           heading.append(title, status);
-          item.append(heading, message);
-          results.appendChild(item);
-          entries.set(event.eventId, { item, status, message, finished: false });
+          item.append(heading, message, retryButton);
+          entries.set(event.eventId, { event, item, status, message, retryButton, finished: false });
         });
         if (!events.length) {
           const empty = document.createElement("p");
@@ -898,7 +946,7 @@
           empty.textContent = translations[currentLang].noOfflineEvents;
           results.appendChild(empty);
         }
-        return { entries, progressBar, count, total: events.length, completed: 0 };
+        return { entries, progressBar, count, results, total: events.length, completed: 0 };
       }
 
       function updateOfflineSyncProgress(progress, eventId, state, message = "") {
@@ -915,6 +963,10 @@
         else if (state === "Syncing") entry.item.classList.add("is-syncing");
         entry.message.textContent = message;
         entry.message.hidden = !message;
+        entry.retryButton.hidden = state !== "Failed" && state !== "NotSynced";
+        if ((state === "Failed" || state === "NotSynced") && !entry.item.isConnected) {
+          progress.results.appendChild(entry.item);
+        }
         if (state !== "Waiting" && state !== "Syncing" && !entry.finished) {
           entry.finished = true;
           progress.completed++;
@@ -923,6 +975,14 @@
             .replace("{completed}", String(progress.completed))
             .replace("{total}", String(progress.total));
         }
+      }
+
+      async function saveOfflineSyncFailure(event, message) {
+        await saveOfflineEvent({
+          ...event,
+          lastSyncError: message,
+          lastSyncFailedAt: new Date().toISOString(),
+        });
       }
 
       async function syncOfflineQueue(targetEventId = "") {
@@ -957,31 +1017,51 @@
               if (!response.results.some((item) => item && item.status === "pending")) break;
             }
             if (!response || !response.success || !Array.isArray(response.results)) {
-              batch.forEach((candidate) => updateOfflineSyncProgress(
-                progress,
-                candidate.eventId,
-                "NotSynced",
-                translations[currentLang].offlineSyncProgressNoResult,
-              ));
+              for (const candidate of batch) {
+                await saveOfflineSyncFailure(
+                  candidate,
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+                updateOfflineSyncProgress(
+                  progress,
+                  candidate.eventId,
+                  "NotSynced",
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+              }
               break;
             }
             let shouldStop = response.results.length !== batch.length;
             for (let index = 0; index < batch.length; index++) {
               const eventResult = response.results[index];
               if (!eventResult || eventResult.status !== "complete") {
+                const failureMessage = eventResult && eventResult.message
+                  ? eventResult.message
+                  : translations[currentLang].offlineSyncProgressNoResult;
+                await saveOfflineSyncFailure(batch[index], failureMessage);
                 updateOfflineSyncProgress(
                   progress,
                   batch[index].eventId,
-                  "NotSynced",
-                  translations[currentLang].offlineSyncProgressNoResult,
+                  "Failed",
+                  failureMessage,
+                );
+                showToast(
+                  failureMessage,
+                  "error",
+                  4500,
                 );
                 shouldStop = true;
                 break;
               }
               const completedEvent = batch[index];
-              await removeOfflineEvent(completedEvent.eventId);
               const result = eventResult.result || {};
               const failed = result.success === false || result.kind === "error";
+              if (failed) {
+                const failureMessage = result.message || translations[currentLang].offlineSyncFailed;
+                await saveOfflineSyncFailure(completedEvent, failureMessage);
+              } else {
+                await removeOfflineEvent(completedEvent.eventId);
+              }
               updateOfflineSyncProgress(
                 progress,
                 completedEvent.eventId,
@@ -992,23 +1072,48 @@
               if (completedEvent.type === "add_student" && result.success) {
                 await refreshRosterCache();
               }
-              if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
-              else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
+              const eventTitle = completedEvent.type === "add_student"
+                ? `${translations[currentLang].offlineEventAdd}: ${completedEvent.name}`
+                : translations[currentLang].offlineEventScan;
+              const eventMessage = [eventTitle, result.title, result.name, result.message]
+                .filter((part) => typeof part === "string" && part.trim())
+                .join(" · ");
+              showToast(
+                eventMessage || translations[currentLang].offlineSyncFailed,
+                failed ? "error" : result.cardGenerationFailed ? "info" : "success",
+                4500,
+              );
+              if (failed) {
+                shouldStop = true;
+                break;
+              }
             }
             if (shouldStop) {
-              batch.forEach((candidate) => updateOfflineSyncProgress(
-                progress,
-                candidate.eventId,
-                "NotSynced",
-                translations[currentLang].offlineSyncProgressNoResult,
-              ));
+              for (const candidate of batch) {
+                const entry = progress && progress.entries.get(candidate.eventId);
+                if (!entry || entry.finished) continue;
+                await saveOfflineSyncFailure(
+                  candidate,
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+                updateOfflineSyncProgress(
+                  progress,
+                  candidate.eventId,
+                  "NotSynced",
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+              }
             }
             if (shouldStop) break;
             events = await getOfflineEvents();
           }
           if (progress) {
-            progress.entries.forEach((entry, eventId) => {
+            for (const [eventId, entry] of progress.entries) {
               if (!entry.finished) {
+                await saveOfflineSyncFailure(
+                  entry.event,
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
                 updateOfflineSyncProgress(
                   progress,
                   eventId,
@@ -1016,12 +1121,16 @@
                   translations[currentLang].offlineSyncProgressNoResult,
                 );
               }
-            });
+            }
           }
         } catch (error) {
           if (progress) {
-            progress.entries.forEach((entry, eventId) => {
+            for (const [eventId, entry] of progress.entries) {
               if (!entry.finished) {
+                await saveOfflineSyncFailure(
+                  entry.event,
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
                 updateOfflineSyncProgress(
                   progress,
                   eventId,
@@ -1029,7 +1138,7 @@
                   translations[currentLang].offlineSyncProgressNoResult,
                 );
               }
-            });
+            }
           }
           if (currentUser && googleIdToken) showToast(translations[currentLang].offlineSyncFailed, "error");
         } finally {
@@ -1043,6 +1152,20 @@
       async function openOfflineQueueView() {
         showView("offlineQueueView");
         await renderOfflineQueue();
+      }
+
+      async function syncFromToolbar() {
+        if (!currentUser) return;
+        await openOfflineQueueView();
+        if (!navigator.onLine) {
+          showToast(translations[currentLang].offlineQueueStatus, "info");
+          return;
+        }
+        if (!googleIdToken) {
+          showToast(translations[currentLang].offlineNeedsLogin, "info");
+          return;
+        }
+        await syncOfflineQueue();
       }
 
       async function renderOfflineQueue() {
@@ -1070,12 +1193,29 @@
             metadata.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
             metadata.textContent = `${new Date(event.timestamp).toLocaleString(currentLang === "ar" ? "ar" : "en")} · ${event.queuedBy || ""}`;
             details.append(title, metadata);
+            if (event.lastSyncError) {
+              const error = document.createElement("small");
+              error.className = "offline-event-error";
+              error.textContent = `${translations[currentLang].offlineEventFailed}: ${event.lastSyncError}`;
+              details.appendChild(error);
+            }
+            const actions = document.createElement("div");
+            actions.className = "offline-event-actions";
+            if (event.lastSyncError) {
+              const retryButton = document.createElement("button");
+              retryButton.type = "button";
+              retryButton.className = "btn secondary";
+              retryButton.textContent = translations[currentLang].offlineRetry;
+              retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId));
+              actions.appendChild(retryButton);
+            }
             const deleteButton = document.createElement("button");
             deleteButton.type = "button";
             deleteButton.className = "admin-del-btn";
             deleteButton.textContent = translations[currentLang].deleteOfflineEventBtn;
             deleteButton.addEventListener("click", () => deleteQueuedOfflineEvent(event.eventId));
-            item.append(details, deleteButton);
+            actions.appendChild(deleteButton);
+            item.append(details, actions);
             container.appendChild(item);
           });
           syncButton.disabled = !events.length || !navigator.onLine || !currentUser || !googleIdToken || isSyncingOfflineQueue;
@@ -1118,7 +1258,7 @@
         return text;
       }
 
-      function showToast(message, type = "error") {
+      function showToast(message, type = "error", duration = 3000) {
         const container = document.getElementById("toastContainer");
         const toast = document.createElement("div");
         toast.className = `toast ${type}`;
@@ -1127,7 +1267,7 @@
         container.appendChild(toast);
         setTimeout(() => {
           toast.remove();
-        }, 3000);
+        }, duration);
       }
 
       function showSearchLoader(container) {
@@ -1151,6 +1291,7 @@
 
       function showView(viewId, pushHistory = true) {
         hideLoader();
+        const viewChanged = currentActiveViewId !== viewId;
         if (currentActiveViewId && currentActiveViewId !== viewId)
           resetView(currentActiveViewId);
 
@@ -1183,7 +1324,6 @@
           "scheduleSettingsView",
           "resultView",
           "attendanceReportView",
-          "followupView",
           "offlineQueueView",
         ].forEach((id) => {
           const el = document.getElementById(id);
@@ -1203,8 +1343,12 @@
 
         const homeBtn = document.getElementById("homeBtn");
         const adminToolbarButton = document.getElementById("adminToolbarButton");
+        const syncToolbarButton = document.getElementById("syncNowToolbarButton");
         if (adminToolbarButton) {
           adminToolbarButton.hidden = !currentUser || viewId === "loginView";
+        }
+        if (syncToolbarButton) {
+          syncToolbarButton.hidden = !currentUser || viewId === "loginView";
         }
         if (viewId === "dashboardView" || viewId === "loginView") {
           homeBtn.style.display = "none";
@@ -1223,6 +1367,9 @@
         currentActiveViewId = viewId;
         window.scrollTo({ top: 0, behavior: "smooth" });
 
+        if (viewId === "attendanceReportView" && viewChanged) {
+          selectAttendanceReportTab(attendanceReportTab);
+        }
         if (viewId === "scanView") {
           isProcessingScan = false;
           setTimeout(startLiveScanner, 150);
@@ -1237,18 +1384,104 @@
         ].join("-");
       }
 
+      function openAttendanceReport(tab = "attendance") {
+        const alreadyOpen = currentActiveViewId === "attendanceReportView";
+        attendanceReportTab = tab;
+        showView("attendanceReportView");
+        if (alreadyOpen) selectAttendanceReportTab(tab);
+      }
+
       function openFollowupView() {
-        showView("followupView");
-        loadFollowups();
+        openAttendanceReport("followups");
+      }
+
+      function selectAttendanceReportTab(tab) {
+        attendanceReportTab = tab === "followups" ? "followups" : "attendance";
+        const attendancePanel = document.getElementById("attendanceTabPanel");
+        const followupPanel = document.getElementById("followupTabPanel");
+        const attendanceButton = document.getElementById("attendanceTabButton");
+        const followupButton = document.getElementById("followupTabButton");
+        const isFollowups = attendanceReportTab === "followups";
+        attendancePanel.hidden = isFollowups;
+        followupPanel.hidden = !isFollowups;
+        attendanceButton.classList.toggle("is-active", !isFollowups);
+        followupButton.classList.toggle("is-active", isFollowups);
+        attendanceButton.setAttribute("aria-selected", String(!isFollowups));
+        followupButton.setAttribute("aria-selected", String(isFollowups));
+        if (isFollowups) loadFollowups();
+        else if (document.getElementById("attendanceReportDate").options.length <= 1) {
+          loadAttendanceReportDates();
+        }
+      }
+
+      async function loadAttendanceReportDates() {
+        const requestId = ++attendanceReportRequestId;
+        const select = document.getElementById("attendanceReportDate");
+        if (!select) return;
+        select.disabled = true;
+        const loadingOption = document.createElement("option");
+        loadingOption.value = "";
+        loadingOption.textContent = translations[currentLang].attendanceDatesLoading;
+        select.replaceChildren(loadingOption);
+        document.getElementById("attendanceReportResults").replaceChildren();
+        document.getElementById("attendanceSearchResult").replaceChildren();
+        try {
+          const result = await apiCall("get_attendance_dates");
+          if (
+            requestId !== attendanceReportRequestId ||
+            currentActiveViewId !== "attendanceReportView" ||
+            attendanceReportTab !== "attendance"
+          ) return;
+          if (!result || !result.success || !Array.isArray(result.dates)) {
+            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceDatesFailed);
+          }
+          select.replaceChildren();
+          if (!result.dates.length) {
+            const emptyOption = document.createElement("option");
+            emptyOption.value = "";
+            emptyOption.textContent = translations[currentLang].attendanceDatesEmpty;
+            select.appendChild(emptyOption);
+            return;
+          }
+          result.dates.forEach((date) => {
+            const option = document.createElement("option");
+            option.value = date;
+            const [year, month, day] = date.split("-").map(Number);
+            option.textContent = new Date(year, month - 1, day, 12).toLocaleDateString(
+              currentLang === "ar" ? "ar" : "en",
+              { year: "numeric", month: "short", day: "numeric" },
+            );
+            select.appendChild(option);
+          });
+          select.value = result.dates[result.dates.length - 1];
+          select.disabled = false;
+          await loadAttendanceReport();
+        } catch (error) {
+          if (requestId !== attendanceReportRequestId) return;
+          select.replaceChildren();
+          const errorOption = document.createElement("option");
+          errorOption.value = "";
+          errorOption.textContent = translations[currentLang].attendanceDatesFailed;
+          select.appendChild(errorOption);
+          showToast(error.message || translations[currentLang].attendanceDatesFailed, "error");
+        } finally {
+          if (requestId === attendanceReportRequestId) select.disabled = false;
+        }
       }
 
       async function loadFollowups() {
+        const requestId = ++attendanceReportRequestId;
         const container = document.getElementById("followupResults");
         container.replaceChildren();
         showLoader();
         try {
           const result = await apiCall("get_followups");
           hideLoader();
+          if (
+            requestId !== attendanceReportRequestId ||
+            currentActiveViewId !== "attendanceReportView" ||
+            attendanceReportTab !== "followups"
+          ) return;
           if (!result || !result.success) throw new Error(result && result.message);
           if (!result.followups.length) {
             const empty = document.createElement("p");
@@ -1278,6 +1511,7 @@
           });
         } catch (error) {
           hideLoader();
+          if (requestId !== attendanceReportRequestId) return;
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         }
       }
@@ -1314,7 +1548,7 @@
             ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", { hour: "2-digit", minute: "2-digit" })
             : "";
           details.textContent = [person.mark, checkinTime, person.delay].filter(Boolean).join(" · ");
-          item.append(name, details);
+          item.append(name, details, createAttendanceActions(person, report.date));
           list.appendChild(item);
         });
 
@@ -1329,15 +1563,7 @@
             const item = document.createElement("div");
             item.className = "status-tag";
             item.textContent = `${person.name} · ${person.attended ? translations[currentLang].attended : translations[currentLang].absent}`;
-            if (person.attended && person.activeCheckin && currentUser && currentUser.isOwner && report.date === localDateInputValue(new Date())) {
-              const cancelButton = document.createElement("button");
-              cancelButton.type = "button";
-              cancelButton.className = "btn secondary";
-              cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
-              cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
-              item.appendChild(document.createElement("br"));
-              item.appendChild(cancelButton);
-            }
+            item.appendChild(createAttendanceActions(person, report.date));
             searchResult.appendChild(item);
           });
         }
@@ -1352,7 +1578,29 @@
         }
       }
 
+      function createAttendanceActions(person, reportDate) {
+        const actions = document.createElement("div");
+        actions.className = "attendance-person-actions";
+        if (!person.activeCheckin || reportDate !== localDateInputValue(new Date())) return actions;
+        const checkoutButton = document.createElement("button");
+        checkoutButton.type = "button";
+        checkoutButton.className = "btn secondary";
+        checkoutButton.textContent = translations[currentLang].attendanceCheckout;
+        checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
+        actions.appendChild(checkoutButton);
+        if (currentUser && currentUser.isOwner) {
+          const cancelButton = document.createElement("button");
+          cancelButton.type = "button";
+          cancelButton.className = "btn secondary attendance-cancel-button";
+          cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
+          cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
+          actions.appendChild(cancelButton);
+        }
+        return actions;
+      }
+
       async function loadAttendanceReport(createSheet = false) {
+        const requestId = ++attendanceReportRequestId;
         const date = document.getElementById("attendanceReportDate").value;
         const query = document.getElementById("attendancePersonQuery").value.trim();
         if (!date) {
@@ -1366,16 +1614,39 @@
             { date: date, name: query },
           );
           hideLoader();
+          if (
+            requestId !== attendanceReportRequestId ||
+            currentActiveViewId !== "attendanceReportView" ||
+            attendanceReportTab !== "attendance"
+          ) return;
           if (!result || !result.success) throw new Error(result && result.message);
           renderAttendanceReport(result, query, createSheet);
         } catch (error) {
           hideLoader();
+          if (requestId !== attendanceReportRequestId) return;
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         }
       }
 
       function createAttendanceReportSheet() {
         loadAttendanceReport(true);
+      }
+
+      async function checkoutAttendance(id) {
+        if (!window.confirm(translations[currentLang].confirmAttendanceCheckout)) return;
+        showLoader();
+        try {
+          const result = await apiCall("checkout_attendance", { id: id });
+          hideLoader();
+          if (!result || result.kind !== "out") {
+            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceCheckout);
+          }
+          showToast(translations[currentLang].attendanceCheckoutCompleted, "success");
+          await loadAttendanceReport();
+        } catch (error) {
+          hideLoader();
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
       }
 
       async function cancelAttendanceCheckin(id) {
@@ -1394,7 +1665,7 @@
             }
             throw new Error(result && result.message);
           }
-          showToast(translations[currentLang].followupCompleted, "success");
+          showToast(translations[currentLang].attendanceCancelSuccess, "success");
           await loadAttendanceReport();
         } catch (error) {
           hideLoader();
@@ -1419,6 +1690,24 @@
         } else if (viewId === "cardShareView") {
           document.getElementById("shareNameInput").value = "";
           document.getElementById("shareResults").innerHTML = "";
+        } else if (viewId === "attendanceReportView") {
+          attendanceReportRequestId++;
+          attendanceReportTab = "attendance";
+          document.getElementById("attendancePersonQuery").value = "";
+          document.getElementById("attendanceReportResults").replaceChildren();
+          document.getElementById("attendanceSearchResult").replaceChildren();
+          document.getElementById("followupResults").replaceChildren();
+          const select = document.getElementById("attendanceReportDate");
+          const placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = translations[currentLang].attendanceDatesLoading;
+          select.replaceChildren(placeholder);
+          document.getElementById("attendanceTabPanel").hidden = false;
+          document.getElementById("followupTabPanel").hidden = true;
+          document.getElementById("attendanceTabButton").classList.add("is-active");
+          document.getElementById("followupTabButton").classList.remove("is-active");
+          document.getElementById("attendanceTabButton").setAttribute("aria-selected", "true");
+          document.getElementById("followupTabButton").setAttribute("aria-selected", "false");
         }
       }
 
@@ -1441,8 +1730,6 @@
       window.addEventListener("offline", updateOfflineStatus);
 
       window.addEventListener("DOMContentLoaded", async function () {
-        const attendanceDateInput = document.getElementById("attendanceReportDate");
-        if (attendanceDateInput) attendanceDateInput.value = localDateInputValue(new Date());
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
         const enterActions = {

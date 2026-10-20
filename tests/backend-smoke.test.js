@@ -606,6 +606,96 @@ test("does not apply an offline event twice when the client retries sync", () =>
   assert.equal(applyCount, 1);
 });
 
+test("allows failed offline events to retry without reapplying completed events", () => {
+  const { context } = createBackendContext();
+  let applyCount = 0;
+  context.saveStudentAndGenerateCard_ = (name, email) => {
+    applyCount += 1;
+    return applyCount === 1
+      ? { success: false, message: "Temporary failure" }
+      : { success: true, name, email };
+  };
+  const event = {
+    eventId: "offline-retry-event-1234",
+    type: "add_student",
+    name: "Offline attendee",
+    queuedBy: "admin@example.com",
+    timestamp: new Date().toISOString(),
+  };
+
+  const first = context.syncOfflineEvents_([event], "admin@example.com");
+  const retry = context.syncOfflineEvents_([event], "admin@example.com");
+  const duplicate = context.syncOfflineEvents_([event], "admin@example.com");
+
+  assert.equal(first.results[0].result.success, false);
+  assert.equal(retry.results[0].result.success, true);
+  assert.equal(duplicate.results[0].result.success, true);
+  assert.equal(applyCount, 2);
+});
+
+test("lists only valid attendance date columns without duplicate dates", () => {
+  const { context } = createBackendContext();
+  const headers = [
+    new Date(2025, 0, 5, 12),
+    new Date(2025, 0, 5, 12),
+    new Date(2025, 0, 8, 12),
+    "not a date",
+  ];
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Attendance"
+      ? {
+          getLastColumn: () => headers.length + 2,
+          getLastRow: () => 1,
+          getRange: (row, column, rowCount, columnCount) => ({
+            getValues: () => [headers.slice(column - 3, column - 3 + columnCount)],
+          }),
+        }
+      : null,
+  });
+
+  const result = context.getAttendanceDates_();
+
+  assert.deepEqual(Array.from(result.dates), ["2025-01-05", "2025-01-08"]);
+});
+
+test("checks for an active check-in before delegating report check-out to scan flow", () => {
+  const { context } = createBackendContext();
+  const checkinDate = vm.runInContext("new Date()", context);
+  const rows = [[
+    "1",
+    "Attendee",
+    checkinDate,
+    "Test Admin",
+    "",
+    "",
+    "",
+    "Active",
+  ]];
+  let processScanCount = 0;
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Check-in & Check-out"
+      ? {
+          getLastRow: () => rows.length + 1,
+          getRange: () => ({ getValues: () => rows }),
+        }
+      : null,
+  });
+  context.encryptId = (id) => `qr:${id}`;
+  context.processScan = (token, email) => {
+    processScanCount += 1;
+    return { kind: "out", token, email };
+  };
+
+  const checkedOut = context.checkoutAttendance_("1", "admin@example.com");
+  rows[0][4] = vm.runInContext("new Date()", context);
+  const alreadyCheckedOut = context.checkoutAttendance_("1", "admin@example.com");
+
+  assert.equal(checkedOut.kind, "out");
+  assert.equal(checkedOut.token, "qr:1");
+  assert.equal(alreadyCheckedOut.kind, "error");
+  assert.equal(processScanCount, 1);
+});
+
 test("stops an offline batch when an earlier event is still pending", () => {
   const { context, scriptPropertiesStore } = createBackendContext();
   let applyCount = 0;

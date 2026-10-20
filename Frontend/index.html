@@ -17,7 +17,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=19" />
+    <link rel="stylesheet" href="./css/styles.css?v=21" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -68,6 +68,20 @@
           data-i18n-title="themeTooltip"
         >
           <i class="fa-solid fa-moon"></i>
+        </button>
+        <button
+          class="icon-btn sync-now-btn"
+          id="syncNowToolbarButton"
+          onclick="syncFromToolbar()"
+          title="مزامنة الآن"
+          data-i18n-title="syncNow"
+          aria-label="مزامنة الآن"
+          data-i18n-aria-label="syncNow"
+          hidden
+        >
+          <i class="fa-solid fa-rotate"></i>
+          <span class="sync-now-label" data-i18n="syncNow">مزامنة الآن</span>
+          <span id="syncNowCount" class="sync-now-count" aria-hidden="true" hidden></span>
         </button>
         <button
           class="icon-btn"
@@ -178,7 +192,7 @@
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
-          <button class="tile" onclick="showView('attendanceReportView')">
+          <button class="tile" onclick="openAttendanceReport()">
             <span class="ico"><i class="fa-solid fa-calendar-check"></i></span
             ><span data-i18n="attendanceReports">تقارير الحضور</span>
           </button>
@@ -190,31 +204,42 @@
       </div>
 
       <div id="attendanceReportView" style="display: none">
-        <h2 data-i18n="attendanceReports">تقارير الحضور</h2>
-        <input type="date" id="attendanceReportDate" />
-        <input
-          type="text"
-          id="attendancePersonQuery"
-          placeholder="ابحث عن اسم في هذا اليوم"
-          data-i18n-placeholder="attendancePersonPlaceholder"
-        />
-        <button class="btn secondary" onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
-          البحث في هذا اليوم
-        </button>
-        <button class="btn" onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
-          إنشاء تبويب لهذا اليوم
-        </button>
-        <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
-        <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
-      </div>
-
-      <div id="followupView" style="display: none">
-        <h2 data-i18n="followupsTitle">قائمة الافتقاد</h2>
-        <p class="report-note" data-i18n="followupsNote">أشخاص غابوا عن اجتماعين متتاليين.</p>
-        <button class="btn secondary" onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
-          تحديث القائمة
-        </button>
-        <div id="followupResults" class="report-list" aria-live="polite"></div>
+        <h2 id="attendanceReportTitle" data-i18n="attendanceReports">تقارير الحضور</h2>
+        <div class="report-tabs" role="tablist" aria-labelledby="attendanceReportTitle">
+          <button id="attendanceTabButton" class="report-tab is-active" type="button" role="tab"
+            aria-selected="true" aria-controls="attendanceTabPanel" onclick="selectAttendanceReportTab('attendance')"
+            data-i18n="attendanceTab">الحضور</button>
+          <button id="followupTabButton" class="report-tab" type="button" role="tab"
+            aria-selected="false" aria-controls="followupTabPanel" onclick="selectAttendanceReportTab('followups')"
+            data-i18n="followupsTitle">الافتقاد</button>
+        </div>
+        <section id="attendanceTabPanel" role="tabpanel" aria-labelledby="attendanceTabButton">
+          <label class="date-picker-label" for="attendanceReportDate" data-i18n="attendanceDateLabel">تاريخ الاجتماع</label>
+          <select id="attendanceReportDate" class="date-picker" onchange="loadAttendanceReport()">
+            <option value="" data-i18n="attendanceDatesLoading">جارٍ تحميل التواريخ...</option>
+          </select>
+          <input
+            type="text"
+            id="attendancePersonQuery"
+            placeholder="ابحث عن اسم في هذا اليوم"
+            data-i18n-placeholder="attendancePersonPlaceholder"
+          />
+          <button class="btn secondary" onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
+            البحث في هذا اليوم
+          </button>
+          <button class="btn" onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
+            إنشاء تبويب لهذا اليوم
+          </button>
+          <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
+          <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
+        </section>
+        <section id="followupTabPanel" role="tabpanel" aria-labelledby="followupTabButton" hidden>
+          <p class="report-note" data-i18n="followupsNote">أشخاص غابوا عن اجتماعين متتاليين.</p>
+          <button class="btn secondary" onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
+            تحديث القائمة
+          </button>
+          <div id="followupResults" class="report-list" aria-live="polite"></div>
+        </section>
       </div>
 
       <div id="offlineQueueView" style="display: none">
@@ -665,6 +690,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js?v=19"></script>
+    <script src="./js/app.js?v=21"></script>
   </body>
 </html>
