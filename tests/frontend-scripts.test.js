@@ -60,6 +60,128 @@ test("dashboard view does not use horizontal view-entry animation", () => {
   );
 });
 
+test("request loaders cover the view and prevent navigation until requests settle", () => {
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*fixed/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*height:\s*100dvh/);
+  assert.match(views, /activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.match(core, /activeApiRequestCount\+\+/);
+  assert.match(core, /activeApiRequestCount = Math\.max\(0, activeApiRequestCount - 1\)/);
+  assert.match(html, /onclick="updateCurrentAttendees\(\)"/);
+  assert.match(html, /id="offlineSyncProgressLane"/);
+  assert.match(views, /showCurrentAttendeesSkeleton\(\)/);
+});
+
+test("toast animation duration follows its configured visible duration", () => {
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+
+  assert.match(views, /duration = 5000/);
+  assert.match(views, /--toast-out-delay/);
+  assert.match(styles, /toastOut 0\.25s ease-in var\(--toast-out-delay/);
+});
+
+test("home navigation confirms unsaved settings and supports continue or discard", () => {
+  const nodes = new Map();
+  const dialog = {
+    open: false,
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+  };
+  nodes.set("settingsExitDialog", dialog);
+  const browserContext = vm.createContext({
+    window: { addEventListener() {} },
+    document: { getElementById: (id) => nodes.get(id) || null },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    updateOfflineStatus() {},
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-views.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  const navigation = [];
+  browserContext.currentActiveViewId = "scheduleSettingsView";
+  browserContext.hasUnsavedSettingsChanges = () => true;
+  browserContext.discardSettingsChanges = (viewId) => navigation.push(`discard:${viewId}`);
+  browserContext.showView = (viewId) => navigation.push(viewId);
+
+  browserContext.handleHomeNavigation();
+  assert.equal(dialog.open, true);
+  assert.deepEqual(navigation, []);
+
+  browserContext.continueSettingsEditing();
+  assert.equal(dialog.open, false);
+  assert.deepEqual(navigation, []);
+
+  browserContext.handleHomeNavigation();
+  browserContext.discardSettingsAndGoHome();
+  assert.equal(dialog.open, false);
+  assert.deepEqual(navigation, ["discard:scheduleSettingsView", "dashboardView"]);
+});
+
+test("current attendees provide search, three-column actions, and an emergency dialog", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+
+  assert.match(html, /id="currentAttendeesSearch"[^>]*oninput="filterCurrentAttendees\(\)"/);
+  assert.match(html, /id="emergencyCheckoutDialog"[^>]*class="attendance-action-dialog"/);
+  assert.match(views, /function filterCurrentAttendees\(\)/);
+  assert.match(views, /function showEmergencyCheckoutDialog\(person\)/);
+  assert.match(views, /async function submitEmergencyCheckout\(event\)/);
+  assert.match(views, /currentAttendeesAdminTime[\s\S]*?currentAttendeesActions/);
+  assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
+  assert.match(styles, /\.attendance-action-dialog::backdrop/);
+});
+
+test("saving schedule settings returns to the dashboard", async () => {
+  const fields = new Map();
+  for (const [id, value] of [
+    ["cfgStartTime", "10:00"],
+    ["cfgEndTime", "12:00"],
+    ["cfgAcceptedDelay", "15"],
+  ]) {
+    fields.set(id, { value });
+  }
+  for (let day = 0; day <= 6; day++) {
+    fields.set(`day${day}`, { checked: day === 0 });
+  }
+  const browserContext = vm.createContext({
+    window: { addEventListener() {} },
+    document: { getElementById: (id) => fields.get(id) || null },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    updateOfflineStatus() {},
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-views.js", "app-cards-admin.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  const navigation = [];
+  browserContext.apiCall = async () => ({ success: true, message: "Saved" });
+  browserContext.showLoader = () => {};
+  browserContext.hideLoader = () => {};
+  browserContext.showToast = () => {};
+  browserContext.showView = (viewId) => navigation.push(viewId);
+
+  await browserContext.saveScheduleSettings();
+
+  assert.deepEqual(navigation, ["dashboardView"]);
+});
+
 test("attendance sheet action remains separate from display filters and sync queue opens without syncing", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");

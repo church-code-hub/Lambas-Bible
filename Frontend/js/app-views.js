@@ -1,13 +1,43 @@
-      function showToast(message, type = "error", duration = 3000) {
+      function showToast(message, type = "error", duration = 5000) {
         const container = document.getElementById("toastContainer");
         const toast = document.createElement("div");
         toast.className = `toast ${type}`;
         toast.dataset.message = message;
         toast.innerText = translateText(message);
+        toast.style.setProperty("--toast-out-delay", `${Math.max(0, duration - 250)}ms`);
         container.appendChild(toast);
         setTimeout(() => {
           toast.remove();
         }, duration);
+      }
+
+      function handleHomeNavigation() {
+        if (activeApiRequestCount > 0 || isSyncingOfflineQueue) {
+          showToast(translations[currentLang].requestInProgress, "info");
+          return;
+        }
+        const viewId = currentActiveViewId;
+        if (
+          (viewId === "adminSettingsView" || viewId === "scheduleSettingsView") &&
+          hasUnsavedSettingsChanges(viewId)
+        ) {
+          const dialog = document.getElementById("settingsExitDialog");
+          if (!dialog.open) dialog.showModal();
+          return;
+        }
+        showView("dashboardView");
+      }
+
+      function discardSettingsAndGoHome() {
+        const dialog = document.getElementById("settingsExitDialog");
+        if (dialog.open) dialog.close();
+        discardSettingsChanges(currentActiveViewId);
+        showView("dashboardView");
+      }
+
+      function continueSettingsEditing() {
+        const dialog = document.getElementById("settingsExitDialog");
+        if (dialog.open) dialog.close();
       }
 
       function showSearchLoader(container) {
@@ -43,7 +73,15 @@
         container.replaceChildren(skeleton);
       }
 
-      function showView(viewId, pushHistory = true) {
+      function showView(viewId, pushHistory = true, bypassRequestLock = false) {
+        if (
+          !bypassRequestLock &&
+          viewId !== currentActiveViewId &&
+          (activeApiRequestCount > 0 || isSyncingOfflineQueue)
+        ) {
+          showToast(translations[currentLang].requestInProgress, "info");
+          return false;
+        }
         hideLoader();
         const viewChanged = currentActiveViewId !== viewId;
         if (currentActiveViewId && currentActiveViewId !== viewId)
@@ -145,7 +183,8 @@
           selectAttendanceReportTab(attendanceReportTab, true);
         }
         if (viewId === "currentAttendeesView" && viewChanged) {
-          loadCurrentAttendees();
+          showCurrentAttendeesSkeleton();
+          loadCurrentAttendees(false);
           currentAttendeesRefreshTimer = window.setInterval(
             () => loadCurrentAttendees(false),
             30000,
@@ -211,6 +250,26 @@
         if (alreadyOpen) loadCurrentAttendees();
       }
 
+      function showCurrentAttendeesSkeleton() {
+        const container = document.getElementById("currentAttendeesResults");
+        if (!container) return;
+        const skeleton = document.createElement("div");
+        skeleton.className = "report-loading current-attendees-loading";
+        skeleton.setAttribute("role", "status");
+        skeleton.setAttribute("aria-label", translations[currentLang].loadingReport);
+        for (let index = 0; index < 3; index++) {
+          const row = document.createElement("div");
+          row.className = "report-skeleton-row";
+          row.innerHTML = "<span></span><span></span><span></span>";
+          skeleton.appendChild(row);
+        }
+        container.replaceChildren(skeleton);
+      }
+
+      function updateCurrentAttendees() {
+        return loadCurrentAttendees(true, translations[currentLang].updatingAttendance);
+      }
+
       async function refreshCurrentAttendeesWindow() {
         if (currentAttendeesWindowTimer) {
           window.clearTimeout(currentAttendeesWindowTimer);
@@ -253,21 +312,20 @@
         }
       }
 
-      async function loadCurrentAttendees(showLoading = true) {
+      async function loadCurrentAttendees(showLoading = true, loaderText = "Loading current attendance...") {
         const availability = document.getElementById("currentAttendeesAvailability");
         const container = document.getElementById("currentAttendeesResults");
         if (currentActiveViewId !== "currentAttendeesView") return;
         if (
           !showLoading &&
-          (document.hidden || document.querySelector(".emergency-checkout-form"))
+          (document.hidden || document.getElementById("emergencyCheckoutDialog").open)
         ) return;
         const requestId = ++currentAttendeesRequestId;
         const mainContainer = document.getElementById("mainContainer");
         const scrollPosition = mainContainer.scrollTop;
-        if (showLoading) showLoader("Loading current attendance...");
+        if (showLoading) showLoader(loaderText);
         try {
           const result = await apiCall("get_current_attendees");
-          if (showLoading) hideLoader();
           if (requestId !== currentAttendeesRequestId || currentActiveViewId !== "currentAttendeesView") return;
           if (!result || !result.success || !Array.isArray(result.attendees)) {
             throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
@@ -282,140 +340,180 @@
           if (refreshButton) refreshButton.disabled = !navigator.onLine || !result.windowOpen;
           if (!result.windowOpen) {
             currentAttendeesWindowOpen = false;
+            currentAttendeesCheckoutOpen = false;
+            currentAttendeesData = [];
             const closed = document.createElement("p");
             closed.className = "report-note";
             closed.textContent = translations[currentLang].attendanceWindowClosed;
             container.replaceChildren(closed);
+            currentAttendeesData = [];
             currentAttendeesSnapshot = snapshot;
             return;
           }
           if (!showLoading && snapshot === currentAttendeesSnapshot) return;
           currentAttendeesSnapshot = snapshot;
-          if (!result.windowOpen || !result.attendees.length) {
-            const empty = document.createElement("p");
-            empty.className = "report-note";
-            empty.textContent = result.windowOpen
-              ? translations[currentLang].noCurrentAttendees
-              : translations[currentLang].attendanceWindowClosed;
-            container.replaceChildren(empty);
-            return;
-          }
-          const panel = document.createElement("section");
-          panel.className = "report-panel";
-          const heading = document.createElement("div");
-          heading.className = "report-panel-heading";
-          const title = document.createElement("strong");
-          title.textContent = `${translations[currentLang].currentAttendeesTitle} · ${result.attendees.length}`;
-          heading.appendChild(title);
-          panel.appendChild(heading);
-          result.attendees.forEach((person) => {
-            const item = document.createElement("article");
-            item.className = "attendance-person-card";
-            const details = document.createElement("div");
-            const name = document.createElement("strong");
-            name.textContent = person.name;
-            const metadata = document.createElement("small");
-            const checkinTime = person.checkinTime
-              ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "";
-            metadata.textContent = [checkinTime, person.checkedInBy].filter(Boolean).join(" · ");
-            details.append(name, metadata);
-            const actions = document.createElement("div");
-            actions.className = "attendance-person-actions";
-            if (result.checkoutOpen) {
-              const checkoutButton = document.createElement("button");
-              checkoutButton.type = "button";
-              checkoutButton.className = "btn secondary";
-              checkoutButton.dataset.onlineOnly = "";
-              checkoutButton.textContent = translations[currentLang].attendanceCheckout;
-              checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
-              actions.appendChild(checkoutButton);
-            }
-            const emergencyButton = document.createElement("button");
-            emergencyButton.type = "button";
-            emergencyButton.className = "btn secondary emergency-checkout-button";
-            emergencyButton.dataset.onlineOnly = "";
-            emergencyButton.textContent = translations[currentLang].emergencyCheckout;
-            emergencyButton.addEventListener("click", () => showEmergencyCheckoutForm(item, person.id));
-            actions.appendChild(emergencyButton);
-            const cancelButton = document.createElement("button");
-            cancelButton.type = "button";
-            cancelButton.className = "btn secondary attendance-cancel-button";
-            cancelButton.dataset.onlineOnly = "";
-            cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
-            cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
-            actions.appendChild(cancelButton);
-            item.append(details, actions);
-            panel.appendChild(item);
-          });
-          container.replaceChildren(panel);
-          updateOnlineOnlyControls();
+          currentAttendeesData = result.attendees;
+          currentAttendeesCheckoutOpen = result.checkoutOpen;
+          renderCurrentAttendees(result.checkoutOpen);
           mainContainer.scrollTop = scrollPosition;
         } catch (error) {
-          if (showLoading) hideLoader();
           if (requestId !== currentAttendeesRequestId) return;
           availability.textContent = error.message || translations[currentLang].offlineSyncFailed;
           availability.classList.add("is-closed");
           if (showLoading) showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        } finally {
+          if (showLoading) hideLoader();
         }
       }
 
-      function showEmergencyCheckoutForm(item, id) {
-        if (item.querySelector(".emergency-checkout-form")) return;
-        const form = document.createElement("form");
-        form.className = "emergency-checkout-form";
-        const reason = document.createElement("textarea");
-        reason.required = true;
-        reason.minLength = 5;
-        reason.maxLength = 500;
-        reason.rows = 3;
-        reason.placeholder = translations[currentLang].emergencyCheckoutReason;
-        reason.setAttribute("aria-label", translations[currentLang].emergencyCheckoutReason);
-        const submit = document.createElement("button");
-        submit.type = "submit";
-        submit.className = "btn emergency-checkout-submit";
-        submit.dataset.onlineOnly = "";
-        submit.textContent = translations[currentLang].emergencyCheckout;
-        const cancel = document.createElement("button");
-        cancel.type = "button";
-        cancel.className = "btn secondary";
-        cancel.textContent = translations[currentLang].cancelEmergencyCheckout;
-        cancel.addEventListener("click", () => form.remove());
-        form.append(reason, submit, cancel);
-        updateOnlineOnlyControls();
-        form.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          const cleanReason = reason.value.replace(/\s+/g, " ").trim();
-          if (cleanReason.length < 5 || cleanReason.length > 500) {
-            reason.setCustomValidity(translations[currentLang].emergencyCheckoutReason);
-            reason.reportValidity();
-            return;
-          }
-          reason.setCustomValidity("");
-          if (!window.confirm(translations[currentLang].confirmEmergencyCheckout)) return;
-          submit.disabled = true;
-          submit.dataset.busy = "true";
-          try {
-            const result = await apiCall("emergency_checkout_attendance", {
-              id: id,
-              reason: cleanReason,
-            });
-            if (!result || result.kind !== "out") {
-              throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
-            }
-            showToast(translations[currentLang].emergencyCheckoutCompleted, "success");
-            await loadCurrentAttendees();
-          } catch (error) {
-            delete submit.dataset.busy;
-            submit.disabled = false;
-            showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
-          }
+      function renderCurrentAttendees(checkoutOpen) {
+        const container = document.getElementById("currentAttendeesResults");
+        const query = document.getElementById("currentAttendeesSearch").value.trim().toLocaleLowerCase();
+        const attendees = currentAttendeesData.filter((person) =>
+          `${person.name || ""} ${person.checkedInBy || ""}`.toLocaleLowerCase().includes(query),
+        );
+        if (!attendees.length) {
+          const empty = document.createElement("p");
+          empty.className = "report-note";
+          empty.textContent = currentAttendeesData.length
+            ? translations[currentLang].currentAttendeesNoMatches
+            : translations[currentLang].noCurrentAttendees;
+          container.replaceChildren(empty);
+          return;
+        }
+        const panel = document.createElement("section");
+        panel.className = "report-panel";
+        const heading = document.createElement("div");
+        heading.className = "report-panel-heading";
+        const title = document.createElement("strong");
+        title.textContent = `${translations[currentLang].currentAttendeesTitle} · ${attendees.length}`;
+        heading.appendChild(title);
+        panel.appendChild(heading);
+        const table = document.createElement("div");
+        table.className = "current-attendees-table";
+        table.setAttribute("role", "table");
+        const header = document.createElement("div");
+        header.className = "current-attendees-row current-attendees-header";
+        header.setAttribute("role", "row");
+        [
+          translations[currentLang].studentNameLabel,
+          translations[currentLang].currentAttendeesAdminTime,
+          translations[currentLang].currentAttendeesActions,
+        ].forEach((label) => {
+          const cell = document.createElement("strong");
+          cell.setAttribute("role", "columnheader");
+          cell.textContent = label;
+          header.appendChild(cell);
         });
-        item.appendChild(form);
-        reason.focus();
+        table.appendChild(header);
+        attendees.forEach((person) => {
+          const row = document.createElement("div");
+          row.className = "current-attendees-row";
+          row.setAttribute("role", "row");
+          const nameCell = document.createElement("strong");
+          nameCell.setAttribute("role", "cell");
+          nameCell.textContent = person.name;
+          const metaCell = document.createElement("div");
+          metaCell.className = "current-attendees-meta";
+          metaCell.setAttribute("role", "cell");
+          const admin = document.createElement("span");
+          admin.textContent = person.checkedInBy || "—";
+          const time = document.createElement("time");
+          time.dateTime = person.checkinTime ? new Date(person.checkinTime).toISOString() : "";
+          time.textContent = person.checkinTime
+            ? new Date(person.checkinTime).toLocaleTimeString(
+                currentLang === "ar" ? "ar" : "en",
+                { hour: "2-digit", minute: "2-digit" },
+              )
+            : "";
+          metaCell.append(admin, time);
+          const actions = document.createElement("div");
+          actions.className = "current-attendees-actions";
+          actions.setAttribute("role", "cell");
+          if (checkoutOpen) {
+            const checkoutButton = document.createElement("button");
+            checkoutButton.type = "button";
+            checkoutButton.className = "btn secondary";
+            checkoutButton.dataset.onlineOnly = "";
+            checkoutButton.textContent = translations[currentLang].attendanceCheckout;
+            checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
+            actions.appendChild(checkoutButton);
+          }
+          const emergencyButton = document.createElement("button");
+          emergencyButton.type = "button";
+          emergencyButton.className = "btn secondary emergency-checkout-button";
+          emergencyButton.dataset.onlineOnly = "";
+          emergencyButton.textContent = translations[currentLang].emergencyCheckout;
+          emergencyButton.addEventListener("click", () => showEmergencyCheckoutDialog(person));
+          actions.appendChild(emergencyButton);
+          const cancelButton = document.createElement("button");
+          cancelButton.type = "button";
+          cancelButton.className = "btn secondary attendance-cancel-button";
+          cancelButton.dataset.onlineOnly = "";
+          cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
+          cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
+          actions.appendChild(cancelButton);
+          row.append(nameCell, metaCell, actions);
+          table.appendChild(row);
+        });
+        panel.appendChild(table);
+        container.replaceChildren(panel);
+        updateOnlineOnlyControls();
+      }
+
+      function filterCurrentAttendees() {
+        renderCurrentAttendees(currentAttendeesCheckoutOpen);
+      }
+
+      function showEmergencyCheckoutDialog(person) {
+        currentEmergencyCheckoutId = person.id;
+        document.getElementById("emergencyCheckoutAttendee").textContent = person.name;
+        const reason = document.getElementById("emergencyCheckoutReason");
+        reason.value = "";
+        const dialog = document.getElementById("emergencyCheckoutDialog");
+        if (!dialog.open) dialog.showModal();
+        window.setTimeout(() => reason.focus(), 0);
+      }
+
+      function closeEmergencyCheckoutDialog() {
+        const dialog = document.getElementById("emergencyCheckoutDialog");
+        if (dialog.open) dialog.close();
+        currentEmergencyCheckoutId = "";
+      }
+
+      async function submitEmergencyCheckout(event) {
+        event.preventDefault();
+        const id = currentEmergencyCheckoutId;
+        const actionKey = `emergency:${id}`;
+        if (!id || currentAttendeeActionsInFlight.has(actionKey)) return;
+        const reasonInput = document.getElementById("emergencyCheckoutReason");
+        const cleanReason = reasonInput.value.replace(/\s+/g, " ").trim();
+        if (cleanReason.length < 5 || cleanReason.length > 500) {
+          reasonInput.setCustomValidity(translations[currentLang].emergencyCheckoutReason);
+          reasonInput.reportValidity();
+          return;
+        }
+        reasonInput.setCustomValidity("");
+        currentAttendeeActionsInFlight.add(actionKey);
+        const submit = document.getElementById("emergencyCheckoutSubmit");
+        submit.disabled = true;
+        try {
+          const result = await apiCall("emergency_checkout_attendance", {
+            id: id,
+            reason: cleanReason,
+          });
+          if (!result || result.kind !== "out") {
+            throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+          }
+          closeEmergencyCheckoutDialog();
+          showToast(translations[currentLang].emergencyCheckoutCompleted, "success");
+          await loadCurrentAttendees();
+        } catch (error) {
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        } finally {
+          currentAttendeeActionsInFlight.delete(actionKey);
+          submit.disabled = false;
+        }
       }
 
       function selectAttendanceReportTab(tab, forceReload = false) {
@@ -617,31 +715,47 @@
         const panel = document.createElement("section");
         panel.className = "report-panel";
         panel.appendChild(summary);
+        const table = document.createElement("div");
+        table.className = "attendance-report-table";
+        table.setAttribute("role", "table");
+        const header = document.createElement("div");
+        header.className = "attendance-report-row attendance-report-header";
+        header.setAttribute("role", "row");
+        const nameHeader = document.createElement("strong");
+        nameHeader.setAttribute("role", "columnheader");
+        nameHeader.textContent = translations[currentLang].studentNameLabel;
+        const stateHeader = document.createElement("strong");
+        stateHeader.setAttribute("role", "columnheader");
+        stateHeader.textContent = translations[currentLang].attendanceStateLabel;
+        header.append(nameHeader, stateHeader);
+        table.appendChild(header);
         if (!visiblePeople.length) {
           const empty = document.createElement("p");
           empty.className = "search-empty";
           empty.textContent = translations[currentLang].attendanceFilterNoResults;
-          panel.appendChild(empty);
+          table.appendChild(empty);
         }
         visiblePeople.forEach((person) => {
-          const item = document.createElement("article");
+          const item = document.createElement("div");
           item.className = "attendance-report-row";
+          item.setAttribute("role", "row");
           const name = document.createElement("strong");
+          name.setAttribute("role", "cell");
           name.textContent = person.name;
-          const details = document.createElement("small");
-          const checkinTime = person.checkinTime
-            ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", { hour: "2-digit", minute: "2-digit" })
-            : "";
-          details.textContent = [
-            person.attended
-              ? translations[currentLang].attended
-              : translations[currentLang].absent,
-            checkinTime,
-            person.delay,
-          ].filter(Boolean).join(" · ");
-          item.append(name, details, createAttendanceActions(person, report.date, report.checkoutOpen));
-          panel.appendChild(item);
+          const state = document.createElement("span");
+          state.setAttribute("role", "cell");
+          state.className = `attendance-state attendance-state-${person.state || (person.attended ? "on_time" : "absent")}`;
+          state.textContent = person.state === "delayed"
+            ? person.delay
+              ? translations[currentLang].attendanceWithDelay.replace("{delay}", person.delay)
+              : translations[currentLang].attendanceDelayed
+            : person.attended
+              ? translations[currentLang].attendanceOnTime
+              : translations[currentLang].absent;
+          item.append(name, state);
+          table.appendChild(item);
         });
+        panel.appendChild(table);
         list.appendChild(panel);
 
         if (query) {
@@ -654,8 +768,18 @@
           report.matches.forEach((person) => {
             const item = document.createElement("div");
             item.className = "attendance-report-match";
-            item.textContent = `${person.name} · ${person.attended ? translations[currentLang].attended : translations[currentLang].absent}`;
-            item.appendChild(createAttendanceActions(person, report.date, report.checkoutOpen));
+            const name = document.createElement("strong");
+            name.textContent = person.name;
+            const state = document.createElement("span");
+            state.className = `attendance-state attendance-state-${person.state || (person.attended ? "on_time" : "absent")}`;
+            state.textContent = person.state === "delayed"
+              ? person.delay
+                ? translations[currentLang].attendanceWithDelay.replace("{delay}", person.delay)
+                : translations[currentLang].attendanceDelayed
+              : person.attended
+                ? translations[currentLang].attendanceOnTime
+                : translations[currentLang].absent;
+            item.append(name, state);
             resultPanel.appendChild(item);
           });
         }
@@ -679,10 +803,12 @@
       function showAttendanceSheetResult(report) {
         const dialog = document.getElementById("attendanceSheetResultDialog");
         const date = formatAttendanceDateOption(report.date, localDateInputValue(new Date()));
-        document.getElementById("attendanceSheetResultMessage").textContent =
-          `${translations[currentLang].attendanceSheetCreatedMessage
-            .replace("{total}", report.people.length)
-            .replace("{attended}", report.count)} · ${date}`;
+        const sheetMessage = report.report.alreadyExists
+          ? translations[currentLang].attendanceSheetAlreadyExistsMessage
+          : translations[currentLang].attendanceSheetCreatedMessage
+              .replace("{total}", report.people.length)
+              .replace("{attended}", report.count);
+        document.getElementById("attendanceSheetResultMessage").textContent = `${sheetMessage} · ${date}`;
         document.getElementById("attendanceSheetOpenLink").href =
           `${GOOGLE_SHEET_URL}#gid=${report.report.sheetId}`;
         if (!dialog.open) dialog.showModal();
@@ -691,30 +817,6 @@
       function closeAttendanceSheetResult() {
         const dialog = document.getElementById("attendanceSheetResultDialog");
         if (dialog.open) dialog.close();
-      }
-
-      function createAttendanceActions(person, reportDate, checkoutOpen = false) {
-        const actions = document.createElement("div");
-        actions.className = "attendance-person-actions";
-        if (!person.activeCheckin || reportDate !== localDateInputValue(new Date())) return actions;
-        if (checkoutOpen) {
-          const checkoutButton = document.createElement("button");
-          checkoutButton.type = "button";
-          checkoutButton.className = "btn secondary";
-          checkoutButton.dataset.onlineOnly = "";
-          checkoutButton.textContent = translations[currentLang].attendanceCheckout;
-          checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
-          actions.appendChild(checkoutButton);
-        }
-        const cancelButton = document.createElement("button");
-        cancelButton.type = "button";
-        cancelButton.className = "btn secondary attendance-cancel-button";
-        cancelButton.dataset.onlineOnly = "";
-        cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
-        cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
-        actions.appendChild(cancelButton);
-        updateOnlineOnlyControls();
-        return actions;
       }
 
       async function loadAttendanceReport(createSheet = false) {
@@ -737,6 +839,7 @@
         if (createSheet) {
           sheetButton.disabled = true;
           sheetButton.setAttribute("aria-busy", "true");
+          showLoader(translations[currentLang].creatingAttendanceSheet);
         }
         try {
           const result = await apiCall(
@@ -756,6 +859,7 @@
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         } finally {
           if (createSheet) {
+            hideLoader();
             sheetButton.disabled = !navigator.onLine;
             sheetButton.removeAttribute("aria-busy");
           }
@@ -767,7 +871,10 @@
       }
 
       async function checkoutAttendance(id) {
+        const actionKey = `checkout:${id}`;
+        if (currentAttendeeActionsInFlight.has(actionKey)) return;
         if (!window.confirm(translations[currentLang].confirmAttendanceCheckout)) return;
+        currentAttendeeActionsInFlight.add(actionKey);
         showLoader("Recording attendance check-out...");
         try {
           const result = await apiCall("checkout_attendance", { id: id });
@@ -781,12 +888,17 @@
         } catch (error) {
           hideLoader();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        } finally {
+          currentAttendeeActionsInFlight.delete(actionKey);
         }
       }
 
       async function cancelAttendanceCheckin(id) {
         if (!currentUser) return;
+        const actionKey = `cancel:${id}`;
+        if (currentAttendeeActionsInFlight.has(actionKey)) return;
         if (!window.confirm(translations[currentLang].confirmCancelCheckin)) return;
+        currentAttendeeActionsInFlight.add(actionKey);
         showLoader("Cancelling attendance check-in...");
         try {
           const result = await apiCall("cancel_checkin", { id: id });
@@ -803,10 +915,17 @@
         } catch (error) {
           hideLoader();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        } finally {
+          currentAttendeeActionsInFlight.delete(actionKey);
         }
       }
 
       window.addEventListener("popstate", function (e) {
+        if (activeApiRequestCount > 0 || isSyncingOfflineQueue) {
+          history.pushState({ view: currentActiveViewId }, "", "");
+          showToast(translations[currentLang].requestInProgress, "info");
+          return;
+        }
         if (e.state && e.state.view) showView(e.state.view, false);
         else showView(currentUser ? "dashboardView" : "loginView", false);
       });

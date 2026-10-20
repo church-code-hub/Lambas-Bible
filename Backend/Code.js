@@ -179,6 +179,14 @@ function doPost(e) {
       result = getAttendanceWindow_();
     } else if (action === "get_current_attendees") {
       result = getCurrentAttendees_();
+    } else if (action === "checkout_attendance") {
+      result = withScriptLock_(() =>
+        checkoutAttendance_(data.id, identity.email),
+      );
+    } else if (action === "emergency_checkout_attendance") {
+      result = withScriptLock_(() =>
+        checkoutAttendance_(data.id, identity.email, data.reason, true),
+      );
     } else if (action === "create_daily_attendance_report") {
       result = getAttendanceDayReport_(data.date, "", true);
     } else if (action === "get_followups") {
@@ -188,9 +196,7 @@ function doPost(e) {
         completeFollowup_(data.id, identity.email),
       );
     } else if (action === "cancel_checkin") {
-      result = isSpreadsheetOwner_(identity.email)
-        ? withScriptLock_(() => cancelCheckin_(data.id, identity.email))
-        : authorizationDenied_();
+      result = withScriptLock_(() => cancelCheckin_(data.id, identity.email));
     } else if (action === "scan") {
       result = withScriptLock_(() => processScan(data.id, identity.email));
     } else if (action === "get_roster") {
@@ -834,6 +840,13 @@ function saveSettings(
         message: "يجب أن تتكون كلمة المرور الجديدة من 8 أحرف على الأقل.",
       };
     }
+    if (newPassword && !/^\d+$/.test(String(newPassword).trim())) {
+      return {
+        success: false,
+        code: "PASSWORD_DIGITS_ONLY",
+        message: "يجب أن تتكون كلمة المرور الجديدة من أرقام فقط.",
+      };
+    }
     const days = Array.isArray(allowedDays)
       ? [
           ...new Set(
@@ -894,7 +907,7 @@ function saveSettings(
 // =========================================================================
 // 📁 Card Sharing & Migration
 // =========================================================================
-function searchCardForShare(name) {
+function searchCardForShare(name, sharingState) {
   if (!name) return { status: "error", message: "الاسم فارغ" };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rosterSheet = ss.getSheetByName("Roster");
@@ -915,12 +928,14 @@ function searchCardForShare(name) {
     if (normalizeName_(rowName).includes(cleanInput)) {
       let isNew = false;
       let fileId = "";
+      let updatedAt = 0;
       if (rowUrl) {
         let matchId = rowUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
         if (matchId && matchId[1]) {
           fileId = matchId[1];
           try {
             let file = DriveApp.getFileById(fileId);
+            updatedAt = file.getLastUpdated().getTime();
             let parents = file.getParents();
             while (parents.hasNext()) {
               if (
@@ -940,9 +955,17 @@ function searchCardForShare(name) {
         driveUrl: rowUrl,
         fileId: fileId,
         isNew: isNew,
+        updatedAt: updatedAt,
       });
     }
   }
+  if (sharingState === "shared") {
+    matches = matches.filter((match) => !match.isNew);
+  } else if (sharingState === "unshared") {
+    matches = matches.filter((match) => match.isNew);
+  }
+  matches.sort((left, right) => right.updatedAt - left.updatedAt);
+  matches.forEach((match) => delete match.updatedAt);
   return matches.length > 0
     ? { status: "success", matches: matches }
     : { status: "no_match" };
@@ -1180,7 +1203,7 @@ function getCurrentAttendees_() {
   const checkinSheet = spreadsheet.getSheetByName("Check-in & Check-out");
   const lastRow = checkinSheet ? checkinSheet.getLastRow() : 0;
   const rows = checkinSheet && lastRow >= 2
-    ? checkinSheet.getRange(2, 1, lastRow - 1, 9).getValues()
+    ? checkinSheet.getRange(2, 1, lastRow - 1, 8).getValues()
     : [];
   const todayKey = attendanceDateKey_(now);
   const attendees = rows
@@ -1204,6 +1227,152 @@ function getCurrentAttendees_() {
     checkoutOpen: isCheckoutAllowed(now, settings),
     attendees: attendees,
   };
+}
+
+function getAttendanceAuditSheet_(spreadsheet) {
+  let sheet = spreadsheet.getSheetByName("Attendance Audit");
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet("Attendance Audit");
+  }
+  const headers = [[
+    "ID",
+    "Name",
+    "Check-in Time",
+    "Action At",
+    "Action By",
+    "Action",
+    "Details",
+  ]];
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, 7).setValues(headers);
+  } else if (sheet.getLastColumn() < 7) {
+    sheet.getRange(1, 1, 1, 7).setValues(headers);
+  }
+  return sheet;
+}
+
+function appendAttendanceAudit_(spreadsheet, record, action, details, adminEmail, actionAt) {
+  getAttendanceAuditSheet_(spreadsheet).appendRow([
+    String(record[0]),
+    String(record[1] || ""),
+    record[2] || "",
+    actionAt,
+    getAdminNameByEmail(adminEmail),
+    action,
+    details || "",
+  ]);
+}
+
+function checkoutAttendance_(id, adminEmail, emergencyReason, emergency) {
+  const cleanId = String(id || "").trim();
+  const reason = String(emergencyReason || "").replace(/\s+/g, " ").trim();
+  if (emergency && (reason.length < 5 || reason.length > 500)) {
+    return {
+      kind: "error",
+      code: "INVALID_EMERGENCY_REASON",
+      message: "يجب إدخال سبب من 5 إلى 500 حرف.",
+    };
+  }
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet.getSheetByName("Check-in & Check-out");
+  const lastRow = sheet ? sheet.getLastRow() : 0;
+  if (!cleanId || lastRow < 2) {
+    return { kind: "error", code: "CHECKIN_NOT_FOUND", message: "لا يوجد حضور نشط لهذا الشخص." };
+  }
+
+  const now = new Date();
+  const settings = getSettings();
+  if (emergency) {
+    if (!isCurrentAttendanceWindowOpen_(now, settings)) {
+      return {
+        kind: "error",
+        code: "ATTENDANCE_WINDOW_CLOSED",
+        message: "إدارة الحضور غير متاحة خارج وقت الاجتماع.",
+      };
+    }
+  } else if (!isCheckoutAllowed(now, settings)) {
+    return {
+      kind: "error",
+      code: "CHECKOUT_WINDOW_CLOSED",
+      message: "وقت الانصراف الرسمي غير مفتوح حالياً.",
+    };
+  }
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  const todayKey = attendanceDateKey_(now);
+  const index = rows.findIndex((row) =>
+    String(row[0] || "").trim() === cleanId &&
+    row[7] !== "Cancelled" &&
+    row[2] instanceof Date &&
+    attendanceDateKey_(row[2]) === todayKey &&
+    !row[4],
+  );
+  if (index === -1) {
+    return { kind: "error", code: "CHECKIN_NOT_FOUND", message: "لا يوجد حضور نشط لهذا الشخص." };
+  }
+
+  const record = rows[index];
+  const delayMinutes = Number(record[6]) > 0
+    ? Number(record[6])
+    : parseDelayMinutes_(record[6]);
+  const delayText = delayMinutes > 0 ? formatDuration_(delayMinutes) : "";
+  sheet.getRange(index + 2, 5, 1, 2).setValues([[
+    now,
+    getAdminNameByEmail(adminEmail),
+  ]]);
+  setAttendanceMark_(
+    spreadsheet.getSheetByName("Attendance"),
+    cleanId,
+    now,
+    delayMinutes > 0 ? "+ " + delayText : "++",
+  );
+  appendAttendanceAudit_(
+    spreadsheet,
+    record,
+    emergency ? "Emergency check-out" : "Check-out",
+    emergency ? reason : delayText,
+    adminEmail,
+    now,
+  );
+
+  if (emergency) {
+    let emergencySheet = spreadsheet.getSheetByName("Emergency Check-out");
+    if (!emergencySheet) {
+      emergencySheet = spreadsheet.insertSheet("Emergency Check-out");
+      emergencySheet.getRange(1, 1, 1, 6).setValues([[
+        "ID",
+        "Name",
+        "Check-in Time",
+        "Check-out Time",
+        "Reason",
+        "Recorded By",
+      ]]);
+    }
+    emergencySheet.appendRow([
+      cleanId,
+      record[1],
+      record[2],
+      now,
+      reason,
+      getAdminNameByEmail(adminEmail),
+    ]);
+  }
+  return {
+    kind: "out",
+    id: cleanId,
+    name: String(record[1] || ""),
+    message: "تم تسجيل الانصراف.",
+  };
+}
+
+function parseDelayMinutes_(value) {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const hours = Number((text.match(/(\d+)\s*ساعة/) || [])[1]) || 0;
+  const minutes = Number((text.match(/(\d+)\s*دقيقة/) || [])[1]) || 0;
+  if (hours || minutes) return hours * 60 + minutes;
+  const number = Number(text.match(/\d+/)?.[0]) || 0;
+  return number;
 }
 
 function setAttendanceMark_(sheet, id, date, mark) {
@@ -1296,18 +1465,17 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
 
   const attendanceLastRow = attendanceSheet.getLastRow();
   const attendanceLastColumn = attendanceSheet.getLastColumn();
-  const attendanceRows = attendanceLastRow >= 2
-    ? attendanceSheet
-        .getRange(1, 1, attendanceLastRow, attendanceLastColumn)
-        .getValues()
-    : [];
   const targetKey = attendanceDateKey_(targetDate);
-  const dateColumn = attendanceRows.length
-    ? attendanceRows[0].findIndex(
-        (header, index) => index >= 2 && attendanceDateKey_(header) === targetKey,
-      )
-    : -1;
-  if (dateColumn === -1) {
+  const dateHeaders = attendanceSheet.getRange(
+    1,
+    3,
+    1,
+    attendanceLastColumn - 2,
+  ).getValues()[0];
+  const dateColumnOffset = dateHeaders.findIndex(
+    (header) => attendanceDateKey_(header) === targetKey,
+  );
+  if (dateColumnOffset === -1) {
     return {
       success: false,
       code: "ATTENDANCE_DATE_NOT_FOUND",
@@ -1319,10 +1487,21 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
   const rosterRows = rosterLastRow >= 2
     ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 2).getValues()
     : [];
+  const attendanceRows = attendanceLastRow >= 2
+    ? attendanceSheet.getRange(2, 1, attendanceLastRow - 1, 1).getValues()
+    : [];
+  const attendanceMarks = attendanceLastRow >= 2
+    ? attendanceSheet.getRange(
+        2,
+        dateColumnOffset + 3,
+        attendanceLastRow - 1,
+        1,
+      ).getValues()
+    : [];
   const marksById = new Map();
-  attendanceRows.slice(1).forEach((row) => {
+  attendanceRows.forEach((row, index) => {
     if (row[0] !== "" && row[0] !== null && row[0] !== undefined) {
-      marksById.set(String(row[0]).trim(), String(row[dateColumn] || "").trim());
+      marksById.set(String(row[0]).trim(), String(attendanceMarks[index][0] || "").trim());
     }
   });
 
@@ -1349,17 +1528,24 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       const id = String(row[0]).trim();
       const mark = marksById.get(id) || "";
       const checkin = checkinsById.get(id) || [];
+      const delayMinutes = parseDelayMinutes_(checkin[6]);
+      const markDelayMinutes = parseDelayMinutes_(mark.replace(/^\+\s*/, ""));
+      const effectiveDelayMinutes = delayMinutes || markDelayMinutes;
+      const state = checkin[2] || mark === "-" || mark === "++"
+        ? effectiveDelayMinutes > 0 || /^\+\s*(?!\+)/.test(mark)
+          ? "delayed"
+          : "on_time"
+        : mark.startsWith("+")
+          ? "delayed"
+          : "absent";
       return {
         id: id,
         name: String(row[1]),
         mark: mark,
-        attended: Boolean(mark),
-        checkinTime: checkin[2] || null,
-        checkedInBy: checkin[3] || "",
-        checkoutTime: checkin[4] || null,
-        checkedOutBy: checkin[5] || "",
-        delay: checkin[6] || "",
-        activeCheckin: Boolean(checkin[2] && !checkin[4]),
+        attended: state !== "absent",
+        state: state,
+        delayMinutes: effectiveDelayMinutes,
+        delay: effectiveDelayMinutes > 0 ? formatDuration_(effectiveDelayMinutes) : "",
       };
     });
   const attendees = people.filter((person) => person.attended);
@@ -1376,45 +1562,35 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       id: person.id,
       name: person.name,
       attended: person.attended,
+      state: person.state,
       mark: person.mark,
-      checkinTime: person.checkinTime,
-      checkoutTime: person.checkoutTime,
+      delayMinutes: person.delayMinutes,
       delay: person.delay,
-      activeCheckin: person.activeCheckin,
     })),
   };
 
   if (createSheet) {
     const sheetName = "Attendance " + targetKey;
     let reportSheet = spreadsheet.getSheetByName(sheetName);
-    if (!reportSheet) reportSheet = spreadsheet.insertSheet(sheetName);
-    else reportSheet.clearContents();
-    const reportRows = [[
-      "ID",
-      "Name",
-      "Attendance Status",
-      "Attendance Mark",
-      "Check-in",
-      "Checked In By",
-      "Check-out",
-      "Checked Out By",
-      "Delay",
-    ]];
-    people.forEach((person) => reportRows.push([
-      person.id,
-      person.name,
-      person.attended ? "Attended" : "Not attended",
-      person.mark,
-      person.checkinTime,
-      person.checkedInBy,
-      person.checkoutTime,
-      person.checkedOutBy,
-      person.delay,
-    ]));
-    reportSheet.getRange(1, 1, reportRows.length, 9).setValues(reportRows);
+    const alreadyExists = Boolean(reportSheet);
+    if (!reportSheet) {
+      reportSheet = spreadsheet.insertSheet(sheetName);
+      const reportRows = [["Name", "Attendance Status", "Delay"]];
+      people.forEach((person) => reportRows.push([
+        person.name,
+        person.state === "on_time"
+          ? "Attended on time"
+          : person.state === "delayed"
+            ? "Attended with delay"
+            : "Absent",
+        person.delay,
+      ]));
+      reportSheet.getRange(1, 1, reportRows.length, 3).setValues(reportRows);
+    }
     response.report = {
       name: sheetName,
       sheetId: reportSheet.getSheetId(),
+      alreadyExists: alreadyExists,
     };
   }
   return response;
@@ -1618,27 +1794,15 @@ function cancelCheckin_(id, adminEmail) {
   const record = rows[index];
   if (record[4]) return { success: false, code: "CHECKOUT_ALREADY_RECORDED" };
 
-  let auditSheet = spreadsheet.getSheetByName("Attendance Audit");
-  if (!auditSheet) {
-    auditSheet = spreadsheet.insertSheet("Attendance Audit");
-    auditSheet.getRange(1, 1, 1, 6).setValues([[
-      "ID",
-      "Name",
-      "Check-in Time",
-      "Cancelled At",
-      "Cancelled By",
-      "Action",
-    ]]);
-  }
-  auditSheet.appendRow([
-    cleanId,
-    record[1],
-    record[2],
-    new Date(),
-    getAdminNameByEmail(adminEmail),
+  appendAttendanceAudit_(
+    spreadsheet,
+    record,
     "Check-in cancelled",
-  ]);
-  sheet.getRange(index + 2, 8).setValue("Cancelled");
+    "",
+    adminEmail,
+    new Date(),
+  );
+  sheet.deleteRow(index + 2);
   setAttendanceMark_(spreadsheet.getSheetByName("Attendance"), cleanId, record[2], "");
   removeDelayForAttendance_(cleanId, record[2]);
   return { success: true };
@@ -1760,7 +1924,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
           ss.getSheetByName("Attendance"),
           realId,
           timestamp,
-          delayMin > 0 ? "+" : "++",
+          delayMin > 0 ? "+ " + formatDuration_(delayMin) : "++",
         );
         return {
           kind: "out",
@@ -1811,12 +1975,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
       delayText,
       "Active",
     ]);
-    setAttendanceMark_(
-      ss.getSheetByName("Attendance"),
-      realId,
-      timestamp,
-      delayMin > 0 ? "+" : "-",
-    );
+    setAttendanceMark_(ss.getSheetByName("Attendance"), realId, timestamp, "-");
     if (delayMin > 0) {
       return {
         kind: "late",
@@ -2065,6 +2224,7 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
         "",
         "",
         delayMin > 0 ? formatDuration_(delayMin) : "",
+        "Active",
       ]);
       setAttendanceMark_(
         attendanceSheet,
@@ -2166,7 +2326,7 @@ function generateAllCardsFromRoster(targetStudentId) {
         continue;
 
       const encryptedToken = encryptId(studentId);
-      const qrSizePx = 350;
+      const qrSizePx = 1000;
       const qrApiUrl =
         "https://api.qrserver.com/v1/create-qr-code/?size=" +
         qrSizePx + "x" + qrSizePx +
@@ -2193,17 +2353,6 @@ function generateAllCardsFromRoster(targetStudentId) {
         const qrY = 255;
         const qrW = 210;
         const qrH = 210;
-        slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
-        const qrFrame = slide.insertShape(
-          SlidesApp.ShapeType.RECTANGLE,
-          qrX - 8,
-          qrY - 8,
-          qrW + 16,
-          qrH + 16,
-        );
-        qrFrame.getFill().setSolidFill("#FFFFFF");
-        qrFrame.getBorder().setTransparent();
-        qrFrame.setZIndex(1);
         slide.insertImage(qrBlob, qrX, qrY, qrW, qrH);
         const textBox = slide.insertTextBox(
           studentName.toString().trim(),

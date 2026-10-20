@@ -325,8 +325,9 @@
         const section = document.getElementById("offlineSyncProgress");
         const progressBar = document.getElementById("offlineSyncProgressBar");
         const count = document.getElementById("offlineSyncProgressCount");
+        const lane = document.getElementById("offlineSyncProgressLane");
         const results = document.getElementById("offlineSyncProgressResults");
-        if (!section || !progressBar || !count || !results) return null;
+        if (!section || !progressBar || !count || !lane || !results) return null;
 
         section.hidden = false;
         progressBar.max = Math.max(events.length, 1);
@@ -335,6 +336,7 @@
           .replace("{completed}", "0")
           .replace("{total}", String(events.length));
         results.replaceChildren();
+        lane.querySelectorAll(".sync-progress-flight").forEach((flight) => flight.remove());
         const entries = new Map();
         events.forEach((event) => {
           const item = document.createElement("div");
@@ -359,7 +361,16 @@
           retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId, true));
           heading.append(title, status);
           item.append(heading, message, retryButton);
-          entries.set(event.eventId, { event, item, status, message, retryButton, finished: false });
+          results.appendChild(item);
+          entries.set(event.eventId, {
+            event,
+            item,
+            status,
+            message,
+            retryButton,
+            finished: false,
+            flight: null,
+          });
         });
         if (!events.length) {
           const empty = document.createElement("p");
@@ -367,7 +378,7 @@
           empty.textContent = translations[currentLang].noOfflineEvents;
           results.appendChild(empty);
         }
-        return { entries, progressBar, count, results, total: events.length, completed: 0 };
+        return { entries, progressBar, count, lane, results, total: events.length, completed: 0 };
       }
 
       function updateOfflineSyncProgress(progress, eventId, state, message = "") {
@@ -382,12 +393,26 @@
         else if (state === "Failed") entry.item.classList.add("is-failed");
         else if (state === "NotSynced") entry.item.classList.add("is-not-synced");
         else if (state === "Syncing") entry.item.classList.add("is-syncing");
+        if (state === "Syncing" && !entry.flight) {
+          entry.flight = document.createElement("div");
+          entry.flight.className = "sync-progress-flight";
+          entry.flight.textContent = offlineEventDescription(entry.event);
+          progress.lane.appendChild(entry.flight);
+          const flightDistance = Math.max(
+            0,
+            progress.lane.clientWidth - entry.flight.offsetWidth - 62,
+          );
+          entry.flight.style.setProperty("--sync-flight-distance", `${flightDistance}px`);
+          const animateFlight = () => entry.flight && entry.flight.classList.add("is-moving");
+          if (window.requestAnimationFrame) window.requestAnimationFrame(animateFlight);
+          else window.setTimeout(animateFlight, 0);
+        } else if (state !== "Waiting" && state !== "Syncing" && entry.flight) {
+          entry.flight.remove();
+          entry.flight = null;
+        }
         entry.message.textContent = message;
         entry.message.hidden = !message;
         entry.retryButton.hidden = state !== "Failed" && state !== "NotSynced";
-        if ((state === "Failed" || state === "NotSynced") && !entry.item.isConnected) {
-          progress.results.appendChild(entry.item);
-        }
         if (state !== "Waiting" && state !== "Syncing" && !entry.finished) {
           entry.finished = true;
           progress.completed++;
@@ -441,8 +466,8 @@
         isSyncingOfflineQueue = true;
         let targetResult = null;
         let progress = null;
-        await updateOfflineStatus();
         try {
+          await updateOfflineStatus();
           let events = await hydrateOfflinePersonNames(await getOfflineEvents());
           const selectedBatch = getOfflineSyncBatch(events, targetEventId, groupType, currentUser.email);
           if ((targetEventId || groupType) && !selectedBatch) {
@@ -467,7 +492,6 @@
                 else window.setTimeout(resolve, 0);
               });
             }
-            const resultStartedAt = Date.now();
             let response = null;
             for (const delay of [0, 750, 2000, 4000]) {
               if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -493,11 +517,9 @@
                 showToast(
                   translations[currentLang].offlineSyncProgressNoResult,
                   "error",
-                  3000,
+                  5000,
                 );
-                await new Promise((resolve) =>
-                  setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
-                );
+                await new Promise((resolve) => setTimeout(resolve, 5000));
               }
               break;
             }
@@ -515,11 +537,9 @@
                   "Failed",
                   failureMessage,
                 );
-                showToast(failureMessage, "error", showProgress ? 3000 : 4500);
+                showToast(failureMessage, "error", 5000);
                 if (showProgress) {
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
-                  );
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
                 }
                 shouldStop = true;
                 break;
@@ -550,12 +570,10 @@
               showToast(
                 eventMessage || translations[currentLang].offlineSyncFailed,
                 failed ? "error" : result.cardGenerationFailed ? "info" : "success",
-                showProgress ? 3000 : 4500,
+                5000,
               );
               if (showProgress) {
-                await new Promise((resolve) =>
-                  setTimeout(resolve, Math.max(0, 3000 - (Date.now() - resultStartedAt))),
-                );
+                await new Promise((resolve) => setTimeout(resolve, 5000));
               }
               if (failed) {
                 shouldStop = true;

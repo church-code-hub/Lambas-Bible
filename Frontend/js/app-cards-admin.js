@@ -216,6 +216,10 @@
               "block";
             document.getElementById("cfgAdminName").value =
               currentUser.name || "";
+            document.getElementById("cfgNewPassword").value = "";
+            document.getElementById("newAdminEmail").value = "";
+            document.getElementById("newAdminNameInput").value = "";
+            captureAdminSettingsSnapshot();
             loadAdminsData();
           } else {
             showToast("❌ Incorrect password", "error");
@@ -285,7 +289,11 @@
             currentUser.name = newName;
             localStorage.setItem("app_user", JSON.stringify(currentUser));
             document.getElementById("uName").innerText = newName;
+            updateAdminSettingsSnapshotField("name", newName);
             showToast(res.message, "success");
+            if (!hasUnsavedSettingsChanges("adminSettingsView")) {
+              showView("dashboardView");
+            }
           } else {
             showToast(res.message || "Update failed", "error");
           }
@@ -375,6 +383,10 @@
               verifiedPassword = newPw;
               document.getElementById("cfgNewPassword").value = "";
               resetPasswordVisibility("cfgNewPassword");
+              updateAdminSettingsSnapshotField("password", "");
+              if (!hasUnsavedSettingsChanges("adminSettingsView")) {
+                showView("dashboardView");
+              }
             } else {
               showToast(res.message || "Failed", "error");
             }
@@ -427,6 +439,7 @@
             for (let d = 0; d <= 6; d++) {
               document.getElementById("day" + d).checked = days.includes(d);
             }
+            captureScheduleSettingsSnapshot();
           }
         } catch (e) {}
       }
@@ -449,12 +462,76 @@
           hideLoader();
           if (res && res.success) {
             showToast(res.message, "success");
+            captureScheduleSettingsSnapshot();
+            showView("dashboardView");
           } else {
             showToast(res.message || "Failed", "error");
           }
         } catch (e) {
           hideLoader();
           showToast("Error", "error");
+        }
+      }
+
+      function getScheduleSettingsValues() {
+        const days = [];
+        for (let day = 0; day <= 6; day++) {
+          if (document.getElementById("day" + day).checked) days.push(day);
+        }
+        return JSON.stringify({
+          startTime: document.getElementById("cfgStartTime").value,
+          endTime: document.getElementById("cfgEndTime").value,
+          acceptedDelay: document.getElementById("cfgAcceptedDelay").value,
+          allowedDays: days,
+        });
+      }
+
+      function captureScheduleSettingsSnapshot() {
+        scheduleSettingsSnapshot = getScheduleSettingsValues();
+      }
+
+      function getAdminSettingsValues() {
+        return {
+          name: document.getElementById("cfgAdminName").value,
+          password: document.getElementById("cfgNewPassword").value,
+          newAdminEmail: document.getElementById("newAdminEmail").value,
+          newAdminName: document.getElementById("newAdminNameInput").value,
+        };
+      }
+
+      function captureAdminSettingsSnapshot() {
+        adminSettingsSnapshot = JSON.stringify(getAdminSettingsValues());
+      }
+
+      function updateAdminSettingsSnapshotField(field, value) {
+        if (adminSettingsSnapshot === null) return;
+        const snapshot = JSON.parse(adminSettingsSnapshot);
+        snapshot[field] = value;
+        adminSettingsSnapshot = JSON.stringify(snapshot);
+      }
+
+      function hasUnsavedSettingsChanges(viewId) {
+        if (viewId === "scheduleSettingsView") {
+          return scheduleSettingsSnapshot !== null &&
+            getScheduleSettingsValues() !== scheduleSettingsSnapshot;
+        }
+        if (viewId === "adminSettingsView") {
+          return adminSettingsSnapshot !== null &&
+            JSON.stringify(getAdminSettingsValues()) !== adminSettingsSnapshot;
+        }
+        return false;
+      }
+
+      function discardSettingsChanges(viewId) {
+        if (viewId === "adminSettingsView") {
+          document.getElementById("cfgAdminName").value = currentUser.name || "";
+          document.getElementById("cfgNewPassword").value = "";
+          document.getElementById("newAdminEmail").value = "";
+          document.getElementById("newAdminNameInput").value = "";
+          resetPasswordVisibility("cfgNewPassword");
+          adminSettingsSnapshot = null;
+        } else if (viewId === "scheduleSettingsView") {
+          scheduleSettingsSnapshot = null;
         }
       }
 

@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=38" />
+    <link rel="stylesheet" href="./css/styles.css?v=42" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -111,7 +111,7 @@
       id="homeBtn"
       class="home-btn"
       style="display: none"
-      onclick="showView('dashboardView')"
+      onclick="handleHomeNavigation()"
     >
       <i class="fa-solid fa-house"></i> <span data-i18n="home">الرئيسية</span>
     </button>
@@ -247,12 +247,29 @@
 
       <div id="currentAttendeesView" style="display: none">
         <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
-        <button id="refreshCurrentAttendeesButton" class="btn secondary" type="button" data-online-only onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
+        <button id="refreshCurrentAttendeesButton" class="btn secondary" type="button" data-online-only onclick="updateCurrentAttendees()" data-i18n="refreshCurrentAttendees">
           تحديث الحضور
         </button>
+        <input id="currentAttendeesSearch" class="current-attendees-search" type="search"
+          data-i18n-placeholder="currentAttendeesSearchPlaceholder"
+          placeholder="ابحث بالاسم أو اسم المسؤول" oninput="filterCurrentAttendees()" />
         <div id="currentAttendeesAvailability" class="attendance-window-note" aria-live="polite"></div>
         <div id="currentAttendeesResults" class="report-list" aria-live="polite"></div>
       </div>
+
+      <dialog id="emergencyCheckoutDialog" class="attendance-action-dialog" aria-labelledby="emergencyCheckoutDialogTitle">
+        <form class="attendance-action-dialog-content" onsubmit="submitEmergencyCheckout(event)">
+          <h2 id="emergencyCheckoutDialogTitle" data-i18n="emergencyCheckout">انصراف طارئ</h2>
+          <p id="emergencyCheckoutAttendee" class="report-note"></p>
+          <label for="emergencyCheckoutReason" data-i18n="emergencyCheckoutReason">سبب الانصراف الطارئ</label>
+          <textarea id="emergencyCheckoutReason" required minlength="5" maxlength="500" rows="4"
+            data-i18n-placeholder="emergencyCheckoutReason" placeholder="سبب الانصراف الطارئ (5 إلى 500 حرف)"></textarea>
+          <div class="attendance-action-dialog-buttons">
+            <button id="emergencyCheckoutSubmit" class="btn emergency-checkout-submit" type="submit" data-i18n="emergencyCheckout">انصراف طارئ</button>
+            <button class="btn secondary" type="button" onclick="closeEmergencyCheckoutDialog()" data-i18n="cancelEmergencyCheckout">إلغاء</button>
+          </div>
+        </form>
+      </dialog>
 
       <div id="attendanceReportView" style="display: none">
         <h2 id="attendanceReportTitle" data-i18n="attendanceReports">تقارير الحضور</h2>
@@ -335,6 +352,17 @@
         </div>
       </dialog>
 
+      <dialog id="settingsExitDialog" class="settings-exit-dialog" aria-labelledby="settingsExitTitle" aria-describedby="settingsExitMessage">
+        <div class="settings-exit-dialog-content">
+          <h2 id="settingsExitTitle" data-i18n="unsavedSettingsTitle">Unsaved changes</h2>
+          <p id="settingsExitMessage" data-i18n="unsavedSettingsMessage">You have unsaved changes. Exit without saving?</p>
+          <div class="settings-exit-actions">
+            <button class="btn danger" type="button" onclick="discardSettingsAndGoHome()" data-i18n="exitWithoutSaving">Exit without saving</button>
+            <button class="btn secondary" type="button" onclick="continueSettingsEditing()" data-i18n="continueEditing">Continue editing</button>
+          </div>
+        </div>
+      </dialog>
+
       <div id="offlineQueueView" style="display: none">
         <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
         <p class="report-note" data-i18n="offlineManualSyncNote">
@@ -344,6 +372,12 @@
           <h3 id="offlineSyncProgressTitle" data-i18n="offlineSyncProgressTitle">نتائج المزامنة</h3>
           <progress id="offlineSyncProgressBar" max="1" value="0" aria-labelledby="offlineSyncProgressTitle"></progress>
           <span id="offlineSyncProgressCount" class="sync-progress-count"></span>
+          <div class="sync-progress-stage">
+            <span class="sync-progress-stage-label" data-i18n="offlineSyncProgressInFlight">Processing next event</span>
+            <div id="offlineSyncProgressLane" class="sync-progress-lane" aria-hidden="true">
+              <span class="sync-progress-lane-target"><i class="fa-solid fa-inbox"></i></span>
+            </div>
+          </div>
           <div id="offlineSyncProgressResults" class="sync-progress-results"></div>
         </section>
         <div id="offlineQueueResults" class="report-list" aria-live="polite"></div>
@@ -832,13 +866,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=38"></script>
-    <script src="./js/app-i18n.js?v=38"></script>
-    <script src="./js/app-core.js?v=38"></script>
-    <script src="./js/app-offline.js?v=38"></script>
-    <script src="./js/app-views.js?v=38"></script>
-    <script src="./js/app-auth.js?v=38"></script>
-    <script src="./js/app-scanner-search.js?v=38"></script>
-    <script src="./js/app-cards-admin.js?v=38"></script>
+    <script src="./js/app-state.js?v=42"></script>
+    <script src="./js/app-i18n.js?v=42"></script>
+    <script src="./js/app-core.js?v=42"></script>
+    <script src="./js/app-offline.js?v=42"></script>
+    <script src="./js/app-views.js?v=42"></script>
+    <script src="./js/app-auth.js?v=42"></script>
+    <script src="./js/app-scanner-search.js?v=42"></script>
+    <script src="./js/app-cards-admin.js?v=42"></script>
   </body>
 </html>

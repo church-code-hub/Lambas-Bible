@@ -9,7 +9,10 @@ const backendSource = fs.readFileSync(
   "utf8",
 );
 
-function createBackendContext(rosterRows = [["ID", "Name", "Card URL"]]) {
+function createBackendContext(
+  rosterRows = [["ID", "Name", "Card URL"]],
+  { stubCardGeneration = true } = {},
+) {
   const scriptProperties = {
     GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
     QR_SECRET_KEY: "test-only-qr-secret-key",
@@ -91,10 +94,12 @@ function createBackendContext(rosterRows = [["ID", "Name", "Card URL"]]) {
   vm.runInContext(backendSource, context);
   context.getAdminNameByEmail = () => "Test Admin";
   context.isAttendanceTimeAllowed = () => false;
-  context.generateAllCardsFromRoster = (id) => ({
-    success: true,
-    cards: [{ id, driveUrl: `https://drive.google.com/file/d/card-${id}` }],
-  });
+  if (stubCardGeneration) {
+    context.generateAllCardsFromRoster = (id) => ({
+      success: true,
+      cards: [{ id, driveUrl: `https://drive.google.com/file/d/card-${id}` }],
+    });
+  }
 
   return {
     context,
@@ -187,6 +192,95 @@ test("retains the configured card template and folder property names", () => {
   }
 });
 
+test("generates a card with one QR image and no QR frame", () => {
+  const { context } = createBackendContext(
+    [
+      ["ID", "Name", "Card URL"],
+      [7, "Alice", ""],
+    ],
+    { stubCardGeneration: false },
+  );
+  const rosterSheet = {
+    getLastRow: () => 2,
+    getRange: () => ({
+      getValues: () => [[7, "Alice", ""]],
+      setValue: () => {},
+    }),
+  };
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: () => rosterSheet,
+  });
+
+  const qrBlob = { setName(name) { this.name = name; return this; } };
+  const templateBlob = {};
+  const exportBlob = { setName(name) { this.name = name; return this; } };
+  const insertedImages = [];
+  const textStyle = {
+    setFontSize() { return this; },
+    setBold() { return this; },
+    setForegroundColor() { return this; },
+    setFontFamily() { return this; },
+  };
+  const textBox = {
+    getText: () => ({
+      getParagraphStyle: () => ({ setParagraphAlignment() {} }),
+      getTextStyle: () => textStyle,
+    }),
+  };
+  const slide = {
+    getPageElements: () => [],
+    insertImage(blob, ...geometry) {
+      insertedImages.push({ blob, geometry });
+    },
+    insertTextBox: () => textBox,
+    getObjectId: () => "slide-1",
+  };
+  const presentation = {
+    getSlides: () => [slide],
+    getId: () => "presentation-1",
+    saveAndClose() {},
+  };
+  const finalFile = {
+    setSharing() {},
+    getUrl: () => "https://drive.google.com/file/d/card-7",
+  };
+  context.DriveApp = {
+    Access: { ANYONE_WITH_LINK: "anyone" },
+    Permission: { VIEW: "view" },
+    getFolderById: () => ({ createFile: () => finalFile }),
+    getFileById: (id) => id === "test-image-template"
+      ? { getBlob: () => templateBlob }
+      : {
+        getBlob: () => ({}),
+        makeCopy: () => ({
+          getId: () => "presentation-1",
+          setTrashed() {},
+        }),
+      },
+  };
+  context.SlidesApp = {
+    ParagraphAlignment: { CENTER: "center" },
+    openById: () => presentation,
+  };
+  context.ScriptApp = { getOAuthToken: () => "test-token" };
+  context.Utilities.base64Encode = (value) => Buffer.from(value).toString("base64");
+  const errors = [];
+  context.console = { error: (...args) => errors.push(args) };
+  context.UrlFetchApp.fetch = (url) => ({
+    getResponseCode: () => 200,
+    getBlob: () => url.includes("api.qrserver.com") ? qrBlob : exportBlob,
+  });
+
+  const result = context.generateAllCardsFromRoster(7);
+
+  assert.equal(result.success, true, String(errors[0]?.[1]));
+  assert.equal(insertedImages.length, 2);
+  assert.equal(insertedImages[0].blob, templateBlob);
+  assert.equal(insertedImages[1].blob, qrBlob);
+  assert.deepEqual(Array.from(insertedImages[1].geometry), [120, 255, 210, 210]);
+  assert.equal(qrBlob.name, "Alice.png");
+});
+
 test("updates only the matching date and attendee in the attendance matrix", () => {
   const { context } = createBackendContext();
   const today = new Date().toDateString();
@@ -272,6 +366,7 @@ test("builds a daily attendance report and can find an absent person by name", (
     ["ID", "Name", "Card URL"],
     [1, "Alice", ""],
     [2, "Bob", ""],
+    [3, "Charlie", ""],
   ]);
   const meetingDate = new Date(2026, 9, 18, 12);
   const makeSheet = (rows, sheetId = 0) => ({
@@ -295,10 +390,12 @@ test("builds a daily attendance report and can find an absent person by name", (
     ["ID", "Name", meetingDate],
     [1, "Alice", "-"],
     [2, "Bob", ""],
+    [3, "Charlie", "+ 1 ساعة و15 دقيقة"],
   ]);
   const checkinSheet = makeSheet([
     ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
     [1, "Alice", new Date(2026, 9, 18, 10), "Admin", "", "", "", "Active"],
+    [3, "Charlie", new Date(2026, 9, 18, 11, 15), "Admin", "", "", "1 ساعة و15 دقيقة", "Active"],
   ]);
   const sheets = new Map([
     ["Attendance", attendanceSheet],
@@ -317,17 +414,37 @@ test("builds a daily attendance report and can find an absent person by name", (
   const report = context.getAttendanceDayReport_("2026-10-18", "Bob", true);
 
   assert.equal(report.success, true);
-  assert.equal(report.count, 1);
+  assert.equal(report.count, 2);
   assert.equal(report.people[0].name, "Alice");
   assert.equal(report.people[1].name, "Bob");
   assert.equal(report.people[1].attended, false);
   assert.equal(report.matches[0].name, "Bob");
   assert.equal(report.matches[0].attended, false);
   assert.equal(report.report.sheetId, 77);
-  assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 3);
-  assert.equal(sheets.get("Attendance 2026-10-18").rows[1][1], "Alice");
-  assert.equal(sheets.get("Attendance 2026-10-18").rows[2][1], "Bob");
-  assert.equal(sheets.get("Attendance 2026-10-18").rows[2][2], "Not attended");
+  assert.equal(report.people[2].state, "delayed");
+  assert.equal(report.people[2].delay, "1 ساعة و15 دقيقة");
+  assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 4);
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18").rows[0]),
+    ["Name", "Attendance Status", "Delay"],
+  );
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18").rows[1]),
+    ["Alice", "Attended on time", ""],
+  );
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18").rows[2]),
+    ["Bob", "Absent", ""],
+  );
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18").rows[3]),
+    ["Charlie", "Attended with delay", "1 ساعة و15 دقيقة"],
+  );
+  const preservedRows = JSON.stringify(sheets.get("Attendance 2026-10-18").rows);
+  const existingReport = context.getAttendanceDayReport_("2026-10-18", "", true);
+  assert.equal(existingReport.report.alreadyExists, true);
+  assert.equal(existingReport.report.sheetId, 77);
+  assert.equal(JSON.stringify(sheets.get("Attendance 2026-10-18").rows), preservedRows);
 });
 
 test("adds previously attending people missing three meetings to follow-up", () => {
@@ -393,7 +510,7 @@ test("adds previously attending people missing three meetings to follow-up", () 
   );
 });
 
-test("cancels today's check-in without deleting its audit history", () => {
+test("cancels today's check-in by removing its row and retaining an audit record", () => {
   const { context } = createBackendContext();
   const today = new Date();
   const attendanceRows = [["ID", "Name", today], [7, "Sam", "-"]];
@@ -417,6 +534,7 @@ test("cancels today's check-in without deleting its audit history", () => {
       };
     },
     appendRow: (values) => rows.push(values),
+    deleteRow: (row) => rows.splice(row - 1, 1),
   });
   const attendanceSheet = makeSheet(attendanceRows);
   const checkinSheet = makeSheet(checkinRows);
@@ -436,10 +554,11 @@ test("cancels today's check-in without deleting its audit history", () => {
   const result = context.cancelCheckin_(7, "admin@example.com");
 
   assert.equal(result.success, true);
-  assert.equal(checkinRows[1][7], "Cancelled");
+  assert.equal(checkinRows.length, 1);
   assert.equal(attendanceRows[1][2], "");
   assert.equal(sheets.get("Attendance Audit").rows.length, 2);
   assert.equal(sheets.get("Attendance Audit").rows[1][4], "Test Admin");
+  assert.equal(sheets.get("Attendance Audit").rows[1][5], "Check-in cancelled");
   assert.equal(context.cancelCheckin_(7, "admin@example.com").code, "CHECKIN_NOT_FOUND");
 });
 
@@ -787,47 +906,90 @@ test("lists only valid attendance date columns without duplicate dates", () => {
   assert.deepEqual(Array.from(result.dates), ["2025-01-05", "2025-01-08"]);
 });
 
-test("checks for an active check-in before delegating report check-out to scan flow", () => {
+test("checks out directly from the current-attendee action and audits the action", () => {
   const { context } = createBackendContext();
-  const checkinDate = vm.runInContext("new Date()", context);
-  const rows = [[
+  const now = new Date();
+  const backendDate = (date) =>
+    vm.runInContext(`new Date(${date.getTime()})`, context);
+  const pad = (value) => String(value).padStart(2, "0");
+  const timeAtOffset = (minutes) => {
+    const date = new Date(now.getTime() + minutes * 60000);
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+  const checkinRows = [
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    [
     "1",
     "Attendee",
-    checkinDate,
+    backendDate(new Date(now.getTime() - 5 * 60000)),
     "Test Admin",
     "",
     "",
-    "",
+    "40 دقيقة",
     "Active",
-  ]];
-  let processScanCount = 0;
-  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
-    getSheetByName: (name) => name === "Check-in & Check-out"
-      ? {
-          getLastRow: () => rows.length + 1,
-          getRange: () => ({ getValues: () => rows }),
-        }
-      : null,
+    ],
+  ];
+  const attendanceRows = [
+    ["ID", "Name", backendDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()))],
+    ["1", "Attendee", "-"],
+  ];
+  const makeSheet = (rows) => ({
+    rows,
+    getLastRow: () => rows.length,
+    getLastColumn: () => Math.max(1, ...rows.map((row) => row.length)),
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValue: (value) => { rows[row - 1][column - 1] = value; },
+        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+          const targetRow = row - 1 + rowOffset;
+          rows[targetRow] ||= [];
+          valuesRow.forEach((value, columnOffset) => {
+            rows[targetRow][column - 1 + columnOffset] = value;
+          });
+        }),
+      };
+    },
+    appendRow: (values) => rows.push(values),
+    deleteRow: (row) => rows.splice(row - 1, 1),
   });
-  context.encryptId = (id) => `qr:${id}`;
-  context.processScan = (token, email) => {
-    processScanCount += 1;
-    return { kind: "out", token, email };
-  };
+  const sheets = new Map([
+    ["Check-in & Check-out", makeSheet(checkinRows)],
+    ["Attendance", makeSheet(attendanceRows)],
+  ]);
+  context.getSettings = () => ({
+    startTime: timeAtOffset(-45),
+    endTime: timeAtOffset(0),
+    acceptedDelay: 0,
+    allowedDays: [now.getDay()],
+  });
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = makeSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
 
   const checkedOut = context.checkoutAttendance_("1", "admin@example.com");
-  rows[0][4] = vm.runInContext("new Date()", context);
   const alreadyCheckedOut = context.checkoutAttendance_("1", "admin@example.com");
 
-  assert.equal(checkedOut.kind, "out");
-  assert.equal(checkedOut.token, "qr:1");
+  assert.equal(checkedOut.kind, "out", checkedOut.message);
+  assert.equal(checkinRows[1][5], "Test Admin");
+  assert.equal(attendanceRows[1][2], "+ 40 دقيقة");
+  assert.equal(sheets.get("Attendance Audit").rows[1][5], "Check-out");
   assert.equal(alreadyCheckedOut.kind, "error");
-  assert.equal(processScanCount, 1);
 });
 
 test("logs an emergency check-out reason and rejects a missing reason", () => {
   const { context } = createBackendContext();
   const now = new Date();
+  const backendDate = (date) =>
+    vm.runInContext(`new Date(${date.getTime()})`, context);
   const formatTime = (date) =>
     `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   let schedule = {
@@ -836,42 +998,42 @@ test("logs an emergency check-out reason and rejects a missing reason", () => {
     allowedDays: [now.getDay()],
   };
   context.getSettings = () => schedule;
-  const checkinDate = vm.runInContext("new Date()", context);
-  const rows = [[
-    "1",
-    "Attendee",
-    checkinDate,
-    "Test Admin",
-    "",
-    "",
-    "",
-    "Active",
-  ]];
-  const auditRows = [];
-  const checkinSheet = {
-    getLastRow: () => rows.length + 1,
-    getRange: () => ({ getValues: () => rows }),
-  };
-  const auditSheet = { appendRow: (row) => auditRows.push(row) };
+  const checkinRows = [
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    ["1", "Attendee", backendDate(now), "Test Admin", "", "", "", "Active"],
+  ];
+  const makeSheet = (rows) => ({
+    rows,
+    getLastRow: () => rows.length,
+    getLastColumn: () => Math.max(1, ...rows.map((row) => row.length)),
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+          const targetRow = row - 1 + rowOffset;
+          rows[targetRow] ||= [];
+          valuesRow.forEach((value, columnOffset) => {
+            rows[targetRow][column - 1 + columnOffset] = value;
+          });
+        }),
+      };
+    },
+    appendRow: (row) => rows.push(row),
+  });
+  const sheets = new Map([
+    ["Check-in & Check-out", makeSheet(checkinRows)],
+  ]);
   context.SpreadsheetApp.getActiveSpreadsheet = () => ({
-    getSheetByName: (name) => {
-      if (name === "Check-in & Check-out") return checkinSheet;
-      if (name === "Emergency Check-out") return auditSheet;
-      return null;
-    },
+    getSheetByName: (name) => sheets.get(name) || null,
     insertSheet: (name) => {
-      assert.equal(name, "Emergency Check-out");
-      return auditSheet;
+      const sheet = makeSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
     },
   });
-  context.encryptId = (id) => `qr:${id}`;
   context.getAdminNameByEmail = () => "Test Admin";
-  context.processScan = (token, email, timestamp, emergency) => ({
-    kind: emergency ? "out" : "warn",
-    token,
-    email,
-    name: "Attendee",
-  });
 
   const missingReason = context.checkoutAttendance_("1", "admin@example.com", "", true);
   const closedWindow = context.checkoutAttendance_(
@@ -894,9 +1056,10 @@ test("logs an emergency check-out reason and rejects a missing reason", () => {
 
   assert.equal(missingReason.code, "INVALID_EMERGENCY_REASON");
   assert.equal(closedWindow.code, "ATTENDANCE_WINDOW_CLOSED");
-  assert.equal(result.kind, "out");
-  assert.equal(auditRows.length, 1);
-  assert.equal(auditRows[0][4], "Medical emergency");
+  assert.equal(result.kind, "out", result.message);
+  assert.equal(sheets.get("Emergency Check-out").rows[1][4], "Medical emergency");
+  assert.equal(sheets.get("Attendance Audit").rows[1][5], "Emergency check-out");
+  assert.equal(sheets.get("Attendance Audit").rows[1][6], "Medical emergency");
 });
 
 test("returns only active check-ins with schedule-window state", () => {

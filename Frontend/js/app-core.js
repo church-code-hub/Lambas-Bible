@@ -152,6 +152,7 @@
         const controller = new AbortController();
         const timeoutMs = ["add_student", "generate_student_card", "sync_offline_events"].includes(action) ? 180000 : 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        activeApiRequestCount++;
         try {
           const response = await fetch(API_URL, {
             method: "POST",
@@ -174,5 +175,6 @@
           return result;
         } finally {
           clearTimeout(timeoutId);
+          activeApiRequestCount = Math.max(0, activeApiRequestCount - 1);
         }
       }
