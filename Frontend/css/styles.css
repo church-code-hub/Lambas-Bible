@@ -1498,6 +1498,10 @@
       .view-enter-back {
         animation: enterBack 0.18s ease-out both;
       }
+      #dashboardView.view-enter-forward,
+      #dashboardView.view-enter-back {
+        animation: none;
+      }
       @keyframes enterForward {
         from { opacity: 0; transform: translateX(18px); }
         to { opacity: 1; transform: translateX(0); }

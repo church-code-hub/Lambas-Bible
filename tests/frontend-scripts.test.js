@@ -52,6 +52,14 @@ test("splash and toolbar use the requested loading and inner-icon treatments", (
   assert.match(styles, /\.loader-overlay::before/);
 });
 
+test("dashboard view does not use horizontal view-entry animation", () => {
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  assert.match(
+    styles,
+    /#dashboardView\.view-enter-forward,\s*#dashboardView\.view-enter-back\s*\{\s*animation:\s*none;/,
+  );
+});
+
 test("attendance sheet action remains separate from display filters and sync queue opens without syncing", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
