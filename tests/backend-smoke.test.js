@@ -179,6 +179,270 @@ test("updates only the matching date and attendee in the attendance matrix", () 
   assert.deepEqual(rows[2], [18, "Bob", "+", ""]);
 });
 
+test("records each delay by attendance date and retains the aggregate summary", () => {
+  const { context } = createBackendContext();
+  const sheets = new Map();
+  const createSheet = () => {
+    const rows = [];
+    return {
+      rows,
+      getDataRange: () => ({ getValues: () => rows.map((row) => row.slice()) }),
+      getRange(row, column) {
+        return {
+          setValues: (values) => {
+            values.forEach((valuesRow, rowOffset) => {
+              const targetRow = row - 1 + rowOffset;
+              rows[targetRow] ||= [];
+              valuesRow.forEach((value, columnOffset) => {
+                rows[targetRow][column - 1 + columnOffset] = value;
+              });
+            });
+          },
+        };
+      },
+      appendRow: (values) => rows.push(values),
+    };
+  };
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = createSheet();
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const firstDate = new Date(2026, 9, 4, 10, 32);
+  const secondDate = new Date(2026, 9, 11, 10, 47);
+  context.recordDelay_(42, "Sam", 17, firstDate, "Admin A");
+  context.recordDelay_(42, "Sam", 32, secondDate, "Admin B");
+
+  const details = sheets.get("Delay Details").rows;
+  assert.equal(details.length, 3);
+  assert.equal(details[1][2].toDateString(), firstDate.toDateString());
+  assert.equal(details[2][2].toDateString(), secondDate.toDateString());
+  assert.equal(details[1][4], 17);
+  assert.equal(details[2][5], "Admin B");
+  assert.equal(
+    JSON.stringify(sheets.get("Delays").rows[1]),
+    JSON.stringify([42, "Sam", 49, 2, "49 دقيقة"]),
+  );
+});
+
+test("builds a daily attendance report and can find an absent person by name", () => {
+  const { context, rosterSheet } = createBackendContext([
+    ["ID", "Name", "Card URL"],
+    [1, "Alice", ""],
+    [2, "Bob", ""],
+  ]);
+  const meetingDate = new Date(2026, 9, 18, 12);
+  const makeSheet = (rows, sheetId = 0) => ({
+    rows,
+    getLastRow: () => rows.length,
+    getLastColumn: () => Math.max(...rows.map((row) => row.length)),
+    getSheetId: () => sheetId,
+    clearContents: () => { rows.length = 0; },
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+          rows[row - 1 + rowOffset] = valuesRow.slice();
+        }),
+      };
+    },
+  });
+  const attendanceSheet = makeSheet([
+    ["ID", "Name", meetingDate],
+    [1, "Alice", "-"],
+    [2, "Bob", ""],
+  ]);
+  const checkinSheet = makeSheet([
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    [1, "Alice", new Date(2026, 9, 18, 10), "Admin", "", "", "", "Active"],
+  ]);
+  const sheets = new Map([
+    ["Attendance", attendanceSheet],
+    ["Roster", rosterSheet],
+    ["Check-in & Check-out", checkinSheet],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = makeSheet([], 77);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const report = context.getAttendanceDayReport_("2026-10-18", "Bob", true);
+
+  assert.equal(report.success, true);
+  assert.equal(report.count, 1);
+  assert.equal(report.people[0].name, "Alice");
+  assert.equal(report.matches[0].name, "Bob");
+  assert.equal(report.matches[0].attended, false);
+  assert.equal(report.report.sheetId, 77);
+  assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 2);
+  assert.equal(sheets.get("Attendance 2026-10-18").rows[1][1], "Alice");
+});
+
+test("adds people missing two meetings to follow-up and closes completed follow-up", () => {
+  const { context, rosterSheet } = createBackendContext([
+    ["ID", "Name", "Card URL"],
+    [1, "Alice", ""],
+    [2, "Bob", ""],
+  ]);
+  const dates = [14, 7, 0].map((daysAgo) => {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    date.setHours(12, 0, 0, 0);
+    return date;
+  });
+  const makeSheet = (rows) => ({
+    rows,
+    getLastRow: () => rows.length,
+    getLastColumn: () => Math.max(...rows.map((row) => row.length)),
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+          const targetRow = row - 1 + rowOffset;
+          rows[targetRow] ||= [];
+          valuesRow.forEach((value, columnOffset) => {
+            rows[targetRow][column - 1 + columnOffset] = value;
+          });
+        }),
+      };
+    },
+    appendRow: (values) => rows.push(values),
+  });
+  const attendanceSheet = makeSheet([
+    ["ID", "Name", ...dates],
+    [1, "Alice", "-", "", ""],
+    [2, "Bob", "", "", ""],
+  ]);
+  const sheets = new Map([
+    ["Attendance", attendanceSheet],
+    ["Roster", rosterSheet],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = makeSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const firstList = context.getFollowupCandidates_();
+  assert.deepEqual(
+    Array.from(firstList.followups, (person) => [person.id, person.missedMeetings]),
+    [["1", 2], ["2", 3]],
+  );
+  assert.equal(context.completeFollowup_("1", "admin@example.com").success, true);
+  const refreshedList = context.getFollowupCandidates_();
+  assert.deepEqual(
+    Array.from(refreshedList.followups, (person) => person.id),
+    ["2"],
+  );
+});
+
+test("cancels today's check-in without deleting its audit history", () => {
+  const { context } = createBackendContext();
+  const today = new Date();
+  const attendanceRows = [["ID", "Name", today], [7, "Sam", "-"]];
+  const checkinRows = [
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    [7, "Sam", today, "Admin A", "", "", "", "Active"],
+  ];
+  const makeSheet = (rows) => ({
+    rows,
+    getLastRow: () => rows.length,
+    getLastColumn: () => Math.max(...rows.map((row) => row.length)),
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValue: (value) => { rows[row - 1][column - 1] = value; },
+        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+          rows[row - 1 + rowOffset] = valuesRow.slice();
+        }),
+      };
+    },
+    appendRow: (values) => rows.push(values),
+  });
+  const attendanceSheet = makeSheet(attendanceRows);
+  const checkinSheet = makeSheet(checkinRows);
+  const sheets = new Map([
+    ["Attendance", attendanceSheet],
+    ["Check-in & Check-out", checkinSheet],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = makeSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const result = context.cancelCheckin_(7, "admin@example.com");
+
+  assert.equal(result.success, true);
+  assert.equal(checkinRows[1][7], "Cancelled");
+  assert.equal(attendanceRows[1][2], "");
+  assert.equal(sheets.get("Attendance Audit").rows.length, 2);
+  assert.equal(sheets.get("Attendance Audit").rows[1][4], "Test Admin");
+  assert.equal(context.cancelCheckin_(7, "admin@example.com").code, "CHECKIN_NOT_FOUND");
+});
+
+test("allows only the spreadsheet owner to use the check-in cancellation API", () => {
+  const { context, tokenResponses } = createBackendContext();
+  const ownerEmail = "owner@example.com";
+  const createTokenInfo = (email) => ({
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: email,
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  tokenResponses.set("owner-token", createTokenInfo(ownerEmail));
+  tokenResponses.set("admin-token", createTokenInfo("admin@example.com"));
+  context.isEmailAllowed = () => true;
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getOwner: () => ({ getEmail: () => ownerEmail }),
+    getSheetByName: () => null,
+  });
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  let cancellationCount = 0;
+  context.cancelCheckin_ = () => {
+    cancellationCount++;
+    return { success: true };
+  };
+  const send = (idToken) => context.doPost({
+    postData: {
+      contents: JSON.stringify({ action: "cancel_checkin", id: "7", idToken }),
+    },
+  });
+
+  const ownerResult = send("owner-token");
+  const adminResult = send("admin-token");
+
+  assert.equal(ownerResult.success, true);
+  assert.equal(adminResult.success, false);
+  assert.equal(cancellationCount, 1);
+});
+
 test("verifies token audience and caches successful Google token checks", () => {
   const { context, tokenResponses, getTokenFetchCount } = createBackendContext();
   const clientId = "test-client-id.apps.googleusercontent.com";

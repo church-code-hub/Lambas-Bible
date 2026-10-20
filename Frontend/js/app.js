@@ -7,6 +7,9 @@
       var googleIdToken = sessionStorage.getItem("google_id_token") || "";
       var html5QrCode = null;
       var isScannerRunning = false;
+      var isScannerStarting = false;
+      var scannerStartGeneration = 0;
+      var qrLibraryPromise = null;
       var isProcessingScan = false;
       var isNameSearchRunning = false;
       var isCardSearchRunning = false;
@@ -36,6 +39,41 @@
           offlineQueuedTitle: "محفوظ للمزامنة",
           offlineSyncMessage: "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
           offlineAccountMismatch: "بعض الإجراءات المحفوظة تخص حساباً آخر. سجّل الدخول بذلك الحساب لمزامنتها.",
+          attendanceReports: "تقارير الحضور",
+          attendancePersonPlaceholder: "ابحث عن اسم في هذا اليوم",
+          searchAttendanceBtn: "البحث في هذا اليوم",
+          createDailySheetBtn: "إنشاء تبويب لهذا اليوم",
+          attendanceNoMatches: "لا توجد نتيجة لهذا الاسم في هذا اليوم.",
+          attended: "حضر",
+          absent: "لم يحضر",
+          dailySheetCreated: "تم إنشاء تبويب اليوم في ملف الحضور.",
+          followupsTitle: "قائمة الافتقاد",
+          followupsNote: "أشخاص غابوا عن اجتماعين متتاليين.",
+          refreshFollowupsBtn: "تحديث القائمة",
+          markFollowupComplete: "تم الافتقاد",
+          noFollowups: "لا توجد أسماء تحتاج إلى افتقاد حالياً.",
+          followupCompleted: "تم إكمال الافتقاد.",
+          offlineQueueTitle: "الإجراءات المحفوظة",
+          offlineManualSyncNote: "راجع الأحداث واحذف غير المطلوب قبل المزامنة اليدوية.",
+          syncOfflineEventsBtn: "مزامنة الإجراءات",
+          syncNow: "مزامنة الآن",
+          offlineSyncProgressTitle: "نتائج المزامنة",
+          offlineSyncProgressCount: "تمت معالجة {completed} من {total}",
+          offlineSyncProgressWaiting: "في الانتظار",
+          offlineSyncProgressSyncing: "جارٍ المزامنة",
+          offlineSyncProgressComplete: "تمت المزامنة",
+          offlineSyncProgressFailed: "فشلت",
+          offlineSyncProgressNotSynced: "لم تتم المزامنة",
+          offlineSyncProgressNoResult: "لم تكتمل المزامنة. سيظل الإجراء محفوظاً للمحاولة لاحقاً.",
+          deleteOfflineEventBtn: "حذف",
+          noOfflineEvents: "لا توجد إجراءات محفوظة للمزامنة.",
+          offlineEventScan: "مسح حضور أو انصراف",
+          offlineEventAdd: "إضافة مخدوم",
+          attendanceCancelCheckin: "إلغاء تسجيل الحضور",
+          confirmCancelCheckin: "هل تريد إلغاء تسجيل الحضور لهذا الشخص؟ سيبقى الإلغاء محفوظاً في سجل التدقيق.",
+          confirmDeleteOfflineEvent: "حذف هذا الإجراء المحفوظ؟",
+          ownerOnlyCancel: "إلغاء تسجيل الحضور متاح لمالك ملف الشيت فقط.",
+          checkoutAlreadyRecorded: "لا يمكن الإلغاء بعد تسجيل الانصراف.",
           attendNewStudent: "تسجيل حضور المخدوم إذا كان وقت الاجتماع مفتوحاً",
           searchRequiresInternet: "هذه الميزة تحتاج إلى اتصال بالإنترنت.",
           offlineRosterUnavailable: "لا توجد قائمة أسماء محفوظة على هذا الجهاز. اتصل بالإنترنت مرة واحدة لتجهيز البحث دون اتصال.",
@@ -125,6 +163,41 @@
           offlineQueuedTitle: "Saved for sync",
           offlineSyncMessage: "This action will be recorded after connection and account verification return.",
           offlineAccountMismatch: "Some saved actions belong to another account. Sign in with that account to sync them.",
+          attendanceReports: "Attendance Reports",
+          attendancePersonPlaceholder: "Search for a person on this date",
+          searchAttendanceBtn: "Search this date",
+          createDailySheetBtn: "Create daily tab",
+          attendanceNoMatches: "No result for this name on this date.",
+          attended: "Attended",
+          absent: "Absent",
+          dailySheetCreated: "The daily tab was created in the attendance spreadsheet.",
+          followupsTitle: "Follow-up List",
+          followupsNote: "People who missed two consecutive meetings.",
+          refreshFollowupsBtn: "Refresh list",
+          markFollowupComplete: "Mark completed",
+          noFollowups: "No one currently needs follow-up.",
+          followupCompleted: "Follow-up marked completed.",
+          offlineQueueTitle: "Saved Actions",
+          offlineManualSyncNote: "Review events and remove unwanted ones before manual sync.",
+          syncOfflineEventsBtn: "Sync actions",
+          syncNow: "Sync now",
+          offlineSyncProgressTitle: "Sync results",
+          offlineSyncProgressCount: "{completed} of {total} processed",
+          offlineSyncProgressWaiting: "Waiting",
+          offlineSyncProgressSyncing: "Syncing",
+          offlineSyncProgressComplete: "Synced",
+          offlineSyncProgressFailed: "Failed",
+          offlineSyncProgressNotSynced: "Not synced",
+          offlineSyncProgressNoResult: "Sync did not finish. This action remains saved for another attempt.",
+          deleteOfflineEventBtn: "Delete",
+          noOfflineEvents: "No saved actions to sync.",
+          offlineEventScan: "Check-in or check-out scan",
+          offlineEventAdd: "Add attendee",
+          attendanceCancelCheckin: "Cancel check-in",
+          confirmCancelCheckin: "Cancel this check-in? The cancellation will remain in the audit log.",
+          confirmDeleteOfflineEvent: "Delete this saved action?",
+          ownerOnlyCancel: "Only the spreadsheet owner can cancel a check-in.",
+          checkoutAlreadyRecorded: "A check-in cannot be cancelled after checkout.",
           attendNewStudent: "Record attendance if the meeting is open",
           searchRequiresInternet: "This feature requires an internet connection.",
           offlineRosterUnavailable: "No saved roster is available on this device. Connect once to enable offline search.",
@@ -488,6 +561,8 @@
           }
           const loginError = document.getElementById("loginError");
           if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
+          if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
+          if (currentActiveViewId === "followupView") loadFollowups();
         };
         if (currentLang === lang) changeLanguage();
         else runAppearanceTransition(changeLanguage);
@@ -776,13 +851,85 @@
         }
       }
 
+      function createOfflineSyncProgress(events) {
+        if (currentActiveViewId !== "offlineQueueView") return null;
+        const section = document.getElementById("offlineSyncProgress");
+        const progressBar = document.getElementById("offlineSyncProgressBar");
+        const count = document.getElementById("offlineSyncProgressCount");
+        const results = document.getElementById("offlineSyncProgressResults");
+        if (!section || !progressBar || !count || !results) return null;
+
+        section.hidden = false;
+        progressBar.max = Math.max(events.length, 1);
+        progressBar.value = 0;
+        count.textContent = translations[currentLang].offlineSyncProgressCount
+          .replace("{completed}", "0")
+          .replace("{total}", String(events.length));
+        results.replaceChildren();
+        const entries = new Map();
+        events.forEach((event) => {
+          const item = document.createElement("div");
+          item.className = "sync-progress-item";
+          const heading = document.createElement("div");
+          heading.className = "sync-progress-event";
+          const title = document.createElement("strong");
+          title.textContent = event.type === "add_student"
+            ? translations[currentLang].offlineEventAdd + ": " + event.name
+            : translations[currentLang].offlineEventScan;
+          const status = document.createElement("span");
+          status.className = "sync-progress-status";
+          status.dataset.i18n = "offlineSyncProgressWaiting";
+          status.textContent = translations[currentLang].offlineSyncProgressWaiting;
+          const message = document.createElement("p");
+          message.className = "sync-progress-message";
+          message.hidden = true;
+          heading.append(title, status);
+          item.append(heading, message);
+          results.appendChild(item);
+          entries.set(event.eventId, { item, status, message, finished: false });
+        });
+        if (!events.length) {
+          const empty = document.createElement("p");
+          empty.className = "report-note";
+          empty.textContent = translations[currentLang].noOfflineEvents;
+          results.appendChild(empty);
+        }
+        return { entries, progressBar, count, total: events.length, completed: 0 };
+      }
+
+      function updateOfflineSyncProgress(progress, eventId, state, message = "") {
+        if (!progress) return;
+        const entry = progress.entries.get(eventId);
+        if (!entry) return;
+        const translationKey = `offlineSyncProgress${state}`;
+        entry.status.dataset.i18n = translationKey;
+        entry.status.textContent = translations[currentLang][translationKey];
+        entry.item.classList.remove("is-complete", "is-failed", "is-not-synced", "is-syncing");
+        if (state === "Complete") entry.item.classList.add("is-complete");
+        else if (state === "Failed") entry.item.classList.add("is-failed");
+        else if (state === "NotSynced") entry.item.classList.add("is-not-synced");
+        else if (state === "Syncing") entry.item.classList.add("is-syncing");
+        entry.message.textContent = message;
+        entry.message.hidden = !message;
+        if (state !== "Waiting" && state !== "Syncing" && !entry.finished) {
+          entry.finished = true;
+          progress.completed++;
+          progress.progressBar.value = progress.completed;
+          progress.count.textContent = translations[currentLang].offlineSyncProgressCount
+            .replace("{completed}", String(progress.completed))
+            .replace("{total}", String(progress.total));
+        }
+      }
+
       async function syncOfflineQueue(targetEventId = "") {
         if (isSyncingOfflineQueue || !navigator.onLine || !currentUser || !googleIdToken) return null;
         isSyncingOfflineQueue = true;
         let targetResult = null;
+        let progress = null;
         await updateOfflineStatus();
         try {
           let events = await getOfflineEvents();
+          progress = createOfflineSyncProgress(events);
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
             const event = events[0];
             if (event.queuedBy !== currentUser.email) break;
@@ -796,6 +943,7 @@
               ) break;
               batch.push(candidate);
             }
+            batch.forEach((candidate) => updateOfflineSyncProgress(progress, candidate.eventId, "Syncing"));
             let response = null;
             for (const delay of [0, 750, 2000, 4000]) {
               if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -804,17 +952,38 @@
               if (!response || !response.success || !Array.isArray(response.results)) break;
               if (!response.results.some((item) => item && item.status === "pending")) break;
             }
-            if (!response || !response.success || !Array.isArray(response.results)) break;
+            if (!response || !response.success || !Array.isArray(response.results)) {
+              batch.forEach((candidate) => updateOfflineSyncProgress(
+                progress,
+                candidate.eventId,
+                "NotSynced",
+                translations[currentLang].offlineSyncProgressNoResult,
+              ));
+              break;
+            }
             let shouldStop = response.results.length !== batch.length;
-            for (let index = 0; index < response.results.length; index++) {
+            for (let index = 0; index < batch.length; index++) {
               const eventResult = response.results[index];
               if (!eventResult || eventResult.status !== "complete") {
+                updateOfflineSyncProgress(
+                  progress,
+                  batch[index].eventId,
+                  "NotSynced",
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
                 shouldStop = true;
                 break;
               }
               const completedEvent = batch[index];
               await removeOfflineEvent(completedEvent.eventId);
               const result = eventResult.result || {};
+              const failed = result.success === false || result.kind === "error";
+              updateOfflineSyncProgress(
+                progress,
+                completedEvent.eventId,
+                failed ? "Failed" : "Complete",
+                typeof result.message === "string" ? result.message : "",
+              );
               if (completedEvent.eventId === targetEventId) targetResult = result;
               if (completedEvent.type === "add_student" && result.success) {
                 await refreshRosterCache();
@@ -822,16 +991,109 @@
               if (result.cardGenerationFailed) showToast(translateText("card generation failed"), "info");
               else if (result.success === false || result.kind === "error") showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
             }
+            if (shouldStop) {
+              batch.forEach((candidate) => updateOfflineSyncProgress(
+                progress,
+                candidate.eventId,
+                "NotSynced",
+                translations[currentLang].offlineSyncProgressNoResult,
+              ));
+            }
             if (shouldStop) break;
             events = await getOfflineEvents();
           }
+          if (progress) {
+            progress.entries.forEach((entry, eventId) => {
+              if (!entry.finished) {
+                updateOfflineSyncProgress(
+                  progress,
+                  eventId,
+                  "NotSynced",
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+              }
+            });
+          }
         } catch (error) {
+          if (progress) {
+            progress.entries.forEach((entry, eventId) => {
+              if (!entry.finished) {
+                updateOfflineSyncProgress(
+                  progress,
+                  eventId,
+                  "NotSynced",
+                  translations[currentLang].offlineSyncProgressNoResult,
+                );
+              }
+            });
+          }
           if (currentUser && googleIdToken) showToast(translations[currentLang].offlineSyncFailed, "error");
         } finally {
           isSyncingOfflineQueue = false;
           await updateOfflineStatus();
+          if (currentActiveViewId === "offlineQueueView") await renderOfflineQueue();
         }
         return targetResult;
+      }
+
+      async function openOfflineQueueView() {
+        showView("offlineQueueView");
+        await renderOfflineQueue();
+      }
+
+      async function renderOfflineQueue() {
+        const container = document.getElementById("offlineQueueResults");
+        const syncButton = document.getElementById("syncOfflineEventsButton");
+        if (!container || !syncButton) return;
+        try {
+          const events = await getOfflineEvents();
+          container.replaceChildren();
+          if (!events.length) {
+            const empty = document.createElement("p");
+            empty.className = "search-empty";
+            empty.textContent = translations[currentLang].noOfflineEvents;
+            container.appendChild(empty);
+          }
+          events.forEach((event) => {
+            const item = document.createElement("div");
+            item.className = "admin-item";
+            const details = document.createElement("div");
+            const title = document.createElement("strong");
+            title.textContent = event.type === "add_student"
+              ? translations[currentLang].offlineEventAdd + ": " + event.name
+              : translations[currentLang].offlineEventScan;
+            const metadata = document.createElement("small");
+            metadata.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
+            metadata.textContent = `${new Date(event.timestamp).toLocaleString(currentLang === "ar" ? "ar" : "en")} · ${event.queuedBy || ""}`;
+            details.append(title, metadata);
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "admin-del-btn";
+            deleteButton.textContent = translations[currentLang].deleteOfflineEventBtn;
+            deleteButton.addEventListener("click", () => deleteQueuedOfflineEvent(event.eventId));
+            item.append(details, deleteButton);
+            container.appendChild(item);
+          });
+          syncButton.disabled = !events.length || !navigator.onLine || !currentUser || !googleIdToken || isSyncingOfflineQueue;
+        } catch (error) {
+          container.replaceChildren();
+          const message = document.createElement("p");
+          message.className = "search-empty";
+          message.textContent = translations[currentLang].offlineStorageError;
+          container.appendChild(message);
+          syncButton.disabled = true;
+        }
+      }
+
+      async function deleteQueuedOfflineEvent(eventId) {
+        if (!window.confirm(translations[currentLang].confirmDeleteOfflineEvent)) return;
+        try {
+          await removeOfflineEvent(eventId);
+          await updateOfflineStatus();
+          await renderOfflineQueue();
+        } catch (error) {
+          showToast(translations[currentLang].offlineStorageError, "error");
+        }
       }
 
       function extractId(text) {
@@ -911,6 +1173,9 @@
           "adminSettingsView",
           "scheduleSettingsView",
           "resultView",
+          "attendanceReportView",
+          "followupView",
+          "offlineQueueView",
         ].forEach((id) => {
           const el = document.getElementById(id);
           if (el) el.style.display = id === viewId ? "block" : "none";
@@ -955,6 +1220,179 @@
         }
       }
 
+      function localDateInputValue(date) {
+        return [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, "0"),
+          String(date.getDate()).padStart(2, "0"),
+        ].join("-");
+      }
+
+      function openFollowupView() {
+        showView("followupView");
+        loadFollowups();
+      }
+
+      async function loadFollowups() {
+        const container = document.getElementById("followupResults");
+        container.replaceChildren();
+        showLoader();
+        try {
+          const result = await apiCall("get_followups");
+          hideLoader();
+          if (!result || !result.success) throw new Error(result && result.message);
+          if (!result.followups.length) {
+            const empty = document.createElement("p");
+            empty.className = "search-empty";
+            empty.textContent = translations[currentLang].noFollowups;
+            container.appendChild(empty);
+            return;
+          }
+          result.followups.forEach((person) => {
+            const item = document.createElement("div");
+            item.className = "admin-item";
+            const details = document.createElement("div");
+            const name = document.createElement("strong");
+            name.textContent = person.name;
+            const note = document.createElement("small");
+            note.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
+            note.textContent = `${person.missedMeetings} · ${person.lastMissed}`;
+            details.append(name, note);
+            const completeButton = document.createElement("button");
+            completeButton.type = "button";
+            completeButton.className = "btn secondary";
+            completeButton.style.cssText = "width:auto;margin:0;padding:8px 10px;";
+            completeButton.textContent = translations[currentLang].markFollowupComplete;
+            completeButton.addEventListener("click", () => completeAttendanceFollowup(person.id));
+            item.append(details, completeButton);
+            container.appendChild(item);
+          });
+        } catch (error) {
+          hideLoader();
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      async function completeAttendanceFollowup(id) {
+        try {
+          const result = await apiCall("complete_followup", { id: id });
+          if (!result || !result.success) throw new Error(result && result.message);
+          showToast(translations[currentLang].followupCompleted, "success");
+          await loadFollowups();
+        } catch (error) {
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      function renderAttendanceReport(report, query, created) {
+        const list = document.getElementById("attendanceReportResults");
+        const searchResult = document.getElementById("attendanceSearchResult");
+        list.replaceChildren();
+        searchResult.replaceChildren();
+
+        const summary = document.createElement("p");
+        summary.className = "report-note";
+        summary.textContent = `${report.date} · ${report.count}`;
+        list.appendChild(summary);
+        report.people.forEach((person) => {
+          const item = document.createElement("div");
+          item.className = "admin-item";
+          const name = document.createElement("strong");
+          name.textContent = person.name;
+          const details = document.createElement("small");
+          details.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
+          const checkinTime = person.checkinTime
+            ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", { hour: "2-digit", minute: "2-digit" })
+            : "";
+          details.textContent = [person.mark, checkinTime, person.delay].filter(Boolean).join(" · ");
+          item.append(name, details);
+          list.appendChild(item);
+        });
+
+        if (query) {
+          if (!report.matches.length) {
+            const empty = document.createElement("p");
+            empty.className = "search-empty";
+            empty.textContent = translations[currentLang].attendanceNoMatches;
+            searchResult.appendChild(empty);
+          }
+          report.matches.forEach((person) => {
+            const item = document.createElement("div");
+            item.className = "status-tag";
+            item.textContent = `${person.name} · ${person.attended ? translations[currentLang].attended : translations[currentLang].absent}`;
+            if (person.attended && person.activeCheckin && currentUser && currentUser.isOwner && report.date === localDateInputValue(new Date())) {
+              const cancelButton = document.createElement("button");
+              cancelButton.type = "button";
+              cancelButton.className = "btn secondary";
+              cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
+              cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
+              item.appendChild(document.createElement("br"));
+              item.appendChild(cancelButton);
+            }
+            searchResult.appendChild(item);
+          });
+        }
+        if (created && report.report) {
+          const link = document.createElement("a");
+          link.className = "btn secondary";
+          link.href = `${GOOGLE_SHEET_URL}#gid=${report.report.sheetId}`;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = translations[currentLang].dailySheetCreated;
+          searchResult.appendChild(link);
+        }
+      }
+
+      async function loadAttendanceReport(createSheet = false) {
+        const date = document.getElementById("attendanceReportDate").value;
+        const query = document.getElementById("attendancePersonQuery").value.trim();
+        if (!date) {
+          showToast(translations[currentLang].attendancePersonPlaceholder, "info");
+          return;
+        }
+        showLoader();
+        try {
+          const result = await apiCall(
+            createSheet ? "create_daily_attendance_report" : "get_attendance_day",
+            { date: date, name: query },
+          );
+          hideLoader();
+          if (!result || !result.success) throw new Error(result && result.message);
+          renderAttendanceReport(result, query, createSheet);
+        } catch (error) {
+          hideLoader();
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      function createAttendanceReportSheet() {
+        loadAttendanceReport(true);
+      }
+
+      async function cancelAttendanceCheckin(id) {
+        if (!currentUser || !currentUser.isOwner) {
+          showToast(translations[currentLang].ownerOnlyCancel, "error");
+          return;
+        }
+        if (!window.confirm(translations[currentLang].confirmCancelCheckin)) return;
+        showLoader();
+        try {
+          const result = await apiCall("cancel_checkin", { id: id });
+          hideLoader();
+          if (!result || !result.success) {
+            if (result && result.code === "CHECKOUT_ALREADY_RECORDED") {
+              throw new Error(translations[currentLang].checkoutAlreadyRecorded);
+            }
+            throw new Error(result && result.message);
+          }
+          showToast(translations[currentLang].followupCompleted, "success");
+          await loadAttendanceReport();
+        } catch (error) {
+          hideLoader();
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
       window.addEventListener("popstate", function (e) {
         if (e.state && e.state.view) showView(e.state.view, false);
         else showView(currentUser ? "dashboardView" : "loginView", false);
@@ -990,25 +1428,12 @@
           return;
         }
         await refreshRosterCache();
-        const retryDelays = [0, 1000, 3000, 7000];
-        for (const delay of retryDelays) {
-          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-          if (!navigator.onLine || !currentUser || !googleIdToken) break;
-
-          await syncOfflineQueue();
-          if (!currentUser || !googleIdToken) break;
-          let events;
-          try {
-            events = await getOfflineEvents();
-          } catch (error) {
-            break;
-          }
-          if (!events.some((event) => event.queuedBy === currentUser.email)) break;
-        }
       });
       window.addEventListener("offline", updateOfflineStatus);
 
       window.addEventListener("DOMContentLoaded", async function () {
+        const attendanceDateInput = document.getElementById("attendanceReportDate");
+        if (attendanceDateInput) attendanceDateInput.value = localDateInputValue(new Date());
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
         const enterActions = {
@@ -1071,12 +1496,12 @@
               String(authRes.email || "").toLowerCase().trim() === currentUser.email.toLowerCase().trim()
             ) {
               if (authRes.adminName) currentUser.name = authRes.adminName;
+              currentUser.isOwner = authRes.isOwner === true;
               localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email.toLowerCase().trim());
               localStorage.setItem("app_user", JSON.stringify(currentUser));
               setupUserProfileUI();
               checkDirectUrlScan();
               await refreshRosterCache();
-              await syncOfflineQueue();
             } else if (authRes && authRes.code === "AUTH_INVALID" && signInReady) {
               googleIdToken = "";
               sessionStorage.removeItem("google_id_token");
@@ -1181,6 +1606,7 @@
               picture:
                 payload.picture ||
                 "https://lh3.googleusercontent.com/a/default-user",
+              isOwner: authRes.isOwner === true,
             };
             sessionStorage.setItem("google_id_token", googleIdToken);
             localStorage.setItem("app_user", JSON.stringify(currentUser));
@@ -1188,7 +1614,6 @@
             setupUserProfileUI();
             checkDirectUrlScan();
             await refreshRosterCache();
-            await syncOfflineQueue();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
             sessionStorage.removeItem("google_id_token");
@@ -1259,10 +1684,12 @@
         document.getElementById("loaderText").innerText = translateText(
           currentLoaderText,
         );
+        document.getElementById("mainContainer").classList.add("is-loading");
         document.getElementById("loader").style.display = "flex";
       }
       function hideLoader() {
         document.getElementById("loader").style.display = "none";
+        document.getElementById("mainContainer").classList.remove("is-loading");
         currentLoaderText = "";
       }
 
@@ -1317,48 +1744,71 @@
         status.textContent = translations[currentLang][translationKey];
       }
 
-      function startLiveScanner() {
-        if (isScannerRunning) return;
+      function loadQrLibrary() {
+        if (window.Html5Qrcode) return Promise.resolve();
+        if (!qrLibraryPromise) {
+          qrLibraryPromise = new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "./vendor/html5-qrcode.min.js";
+            script.async = true;
+            script.onload = () => {
+              if (window.Html5Qrcode) resolve();
+              else reject(new Error("QR scanner library did not initialize."));
+            };
+            script.onerror = () => reject(new Error("QR scanner library could not be loaded."));
+            document.head.appendChild(script);
+          }).catch((error) => {
+            qrLibraryPromise = null;
+            throw error;
+          });
+        }
+        return qrLibraryPromise;
+      }
+
+      async function startLiveScanner() {
+        if (isScannerRunning || isScannerStarting) return;
+        const generation = ++scannerStartGeneration;
+        isScannerStarting = true;
         setCameraStatus("cameraStarting");
         const config = { fps: 10, qrbox: { width: 220, height: 220 } };
 
         try {
+          await loadQrLibrary();
+          if (generation !== scannerStartGeneration || currentActiveViewId !== "scanView") return;
           if (!html5QrCode) html5QrCode = new Html5Qrcode("qr-reader");
-          html5QrCode
-            .start(
+          try {
+            await html5QrCode.start(
               { facingMode: "environment" },
               config,
               onScanSuccess,
               onScanError,
-            )
-            .then(() => {
-              isScannerRunning = true;
-              setCameraStatus("cameraActive");
-            })
-            .catch(() => {
-              html5QrCode
-                .start(
-                  { facingMode: "user" },
-                  config,
-                  onScanSuccess,
-                  onScanError,
-                )
-                .then(() => {
-                  isScannerRunning = true;
-                  setCameraStatus("cameraActive");
-                })
-                .catch(() => {
-                  isScannerRunning = false;
-                  setCameraStatus("cameraUnavailable");
-                });
-            });
+            );
+          } catch (environmentCameraError) {
+            await html5QrCode.start(
+              { facingMode: "user" },
+              config,
+              onScanSuccess,
+              onScanError,
+            );
+          }
+          isScannerRunning = true;
+          setCameraStatus("cameraActive");
         } catch (err) {
           isScannerRunning = false;
-          setCameraStatus("cameraError");
+          setCameraStatus(window.Html5Qrcode ? "cameraUnavailable" : "cameraError");
+        } finally {
+          isScannerStarting = false;
+          if (
+            generation !== scannerStartGeneration &&
+            currentActiveViewId === "scanView"
+          ) {
+            window.setTimeout(startLiveScanner, 0);
+          }
         }
       }
 
       function stopLiveScanner() {
+        scannerStartGeneration++;
         if (html5QrCode && isScannerRunning) {
           return html5QrCode
             .stop()
@@ -1367,6 +1817,11 @@
             })
             .catch(() => {
               isScannerRunning = false;
+            })
+            .finally(() => {
+              if (currentActiveViewId === "scanView") {
+                window.setTimeout(startLiveScanner, 150);
+              }
             });
         }
         return Promise.resolve();
@@ -1405,16 +1860,16 @@
           return;
         }
         try {
-          const queuedEvent = await queueOfflineEvent({ type: "scan", qrText: id });
           if (!navigator.onLine) {
+            await queueOfflineEvent({ type: "scan", qrText: id });
             renderResult({ kind: "queued", title: "offlineQueuedTitle", name: "", message: "offlineScanQueued" });
             return;
           }
           showLoader();
-          const res = await syncOfflineQueue(queuedEvent.eventId);
+          const res = await apiCall("scan", { id: id });
           hideLoader();
           if (res) renderResult(res);
-          else renderResult({ kind: "queued", title: "offlineQueuedTitle", name: "", message: "offlineScanQueued" });
+          else renderResult({ kind: "error", title: "Error", message: "offlineSyncFailed" });
         } catch (e) {
           hideLoader();
           renderResult({ kind: "error", title: "Error", message: "offlineStorageError" });
@@ -1431,11 +1886,11 @@
           return;
         }
         try {
-          const queuedEvent = await queueOfflineEvent({
-            type: "scan",
-            qrText: String(rawId),
-          });
           if (!navigator.onLine) {
+            await queueOfflineEvent({
+              type: "scan",
+              qrText: String(rawId),
+            });
             renderResult({
               kind: "queued",
               title: "offlineQueuedTitle",
@@ -1445,16 +1900,11 @@
             return;
           }
           showLoader();
-          const result = await syncOfflineQueue(queuedEvent.eventId);
+          const result = await apiCall("scan", { id: String(rawId) });
           hideLoader();
           if (result) renderResult(result);
           else {
-            renderResult({
-              kind: "queued",
-              title: "offlineQueuedTitle",
-              name: "",
-              message: "offlineScanQueued",
-            });
+            renderResult({ kind: "error", title: "Error", message: "offlineSyncFailed" });
           }
         } catch (e) {
           hideLoader();
@@ -1740,19 +2190,15 @@
         };
         try {
           if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a signed-in account.");
-          const queuedEvent = await queueOfflineEvent({ type: "add_student", name: name, attendIfOpen: attendIfOpen });
           if (!navigator.onLine) {
+            await queueOfflineEvent({ type: "add_student", name: name, attendIfOpen: attendIfOpen });
             showQueuedResult();
             return;
           }
 
           showLoader("Registering & generating card...");
-          const res = await syncOfflineQueue(queuedEvent.eventId);
+          const res = await apiCall("add_student", { name: name, attendIfOpen: attendIfOpen });
           hideLoader();
-          if (!res) {
-            showQueuedResult();
-            return;
-          }
           if (res && res.success) {
             const resultContainer = document.getElementById("addResult");
             resultContainer.replaceChildren();

@@ -9,7 +9,6 @@
     <title>Lambas Bible</title>
 
     <script src="./js/config.js"></script>
-    <script src="./vendor/html5-qrcode.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" defer></script>
     <link
       rel="stylesheet"
@@ -18,7 +17,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=16" />
+    <link rel="stylesheet" href="./css/styles.css?v=18" />
   </head>
   <body data-theme="dark">
     <div id="toastContainer" class="toast-container"></div>
@@ -29,8 +28,10 @@
       id="syncStatus"
       class="sync-status"
       type="button"
-      onclick="syncOfflineQueue()"
+      onclick="openOfflineQueueView()"
       aria-live="polite"
+      title="مراجعة الإجراءات دون اتصال"
+      data-i18n-title="offlineQueueTitle"
       hidden
     ></button>
 
@@ -172,7 +173,60 @@
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
+          <button class="tile" onclick="showView('attendanceReportView')">
+            <span class="ico"><i class="fa-solid fa-calendar-check"></i></span
+            ><span data-i18n="attendanceReports">تقارير الحضور</span>
+          </button>
+          <button class="tile" onclick="openFollowupView()">
+            <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
+            ><span data-i18n="followupsTitle">الافتقاد</span>
+          </button>
         </div>
+      </div>
+
+      <div id="attendanceReportView" style="display: none">
+        <h2 data-i18n="attendanceReports">تقارير الحضور</h2>
+        <input type="date" id="attendanceReportDate" />
+        <input
+          type="text"
+          id="attendancePersonQuery"
+          placeholder="ابحث عن اسم في هذا اليوم"
+          data-i18n-placeholder="attendancePersonPlaceholder"
+        />
+        <button class="btn secondary" onclick="loadAttendanceReport()" data-i18n="searchAttendanceBtn">
+          البحث في هذا اليوم
+        </button>
+        <button class="btn" onclick="createAttendanceReportSheet()" data-i18n="createDailySheetBtn">
+          إنشاء تبويب لهذا اليوم
+        </button>
+        <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
+        <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <div id="followupView" style="display: none">
+        <h2 data-i18n="followupsTitle">قائمة الافتقاد</h2>
+        <p class="report-note" data-i18n="followupsNote">أشخاص غابوا عن اجتماعين متتاليين.</p>
+        <button class="btn secondary" onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
+          تحديث القائمة
+        </button>
+        <div id="followupResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <div id="offlineQueueView" style="display: none">
+        <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
+        <p class="report-note" data-i18n="offlineManualSyncNote">
+          راجع الأحداث واحذف غير المطلوب قبل المزامنة اليدوية.
+        </p>
+        <section id="offlineSyncProgress" class="sync-progress" aria-live="polite" hidden>
+          <h3 id="offlineSyncProgressTitle" data-i18n="offlineSyncProgressTitle">نتائج المزامنة</h3>
+          <progress id="offlineSyncProgressBar" max="1" value="0" aria-labelledby="offlineSyncProgressTitle"></progress>
+          <span id="offlineSyncProgressCount" class="sync-progress-count"></span>
+          <div id="offlineSyncProgressResults" class="sync-progress-results"></div>
+        </section>
+        <div id="offlineQueueResults" class="report-list" aria-live="polite"></div>
+        <button id="syncOfflineEventsButton" class="btn" onclick="syncOfflineQueue()" data-i18n="syncNow">
+          مزامنة الآن
+        </button>
       </div>
 
       <!-- 2. Live QR Scan View -->
@@ -606,6 +660,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js?v=15"></script>
+    <script src="./js/app.js?v=18"></script>
   </body>
 </html>

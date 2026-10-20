@@ -19,7 +19,22 @@
         --glass-surface: rgba(8, 13, 23, 0.48);
         --glass-edge: rgba(255, 255, 255, 0.52);
         --loader-backdrop: rgba(3, 7, 15, 0.84);
+        --icon-foreground: #f8fafc;
+        --icon-glass-fill: rgba(255, 255, 255, 0.15);
+        --icon-glass-edge: rgba(255, 255, 255, 0.3);
+        --icon-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
       }
 
       [data-theme="light"] {
@@ -43,6 +58,10 @@
         --glass-surface: rgba(255, 255, 255, 0.16);
         --glass-edge: rgba(15, 23, 42, 0.3);
         --loader-backdrop: rgba(15, 23, 42, 0.58);
+        --icon-foreground: #0f172a;
+        --icon-glass-fill: rgba(255, 255, 255, 0.15);
+        --icon-glass-edge: rgba(255, 255, 255, 0.72);
+        --icon-glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.16);
         --shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
       }
 
@@ -74,9 +93,6 @@
       /* Vibrant Multi-Color Blurred Gradient Background */
       body {
         background: var(--bg-gradient);
-        background-size: 400% 400%;
-        animation: gradientBG 15s ease infinite;
-        background-attachment: fixed;
         color: var(--text-main);
         display: flex;
         flex-direction: column;
@@ -87,18 +103,6 @@
         padding-top: 70px;
         padding-bottom: 20px;
         position: relative;
-      }
-
-      @keyframes gradientBG {
-        0% {
-          background-position: 0% 50%;
-        }
-        50% {
-          background-position: 100% 50%;
-        }
-        100% {
-          background-position: 0% 50%;
-        }
       }
 
       body::before,
@@ -286,38 +290,23 @@
       /* Tech Loader Animation */
       .loader-overlay {
         display: none;
-        --loader-height: min(calc(85vh - 50px), calc(100dvh - 150px));
-        position: sticky;
-        top: 0;
-        width: 100%;
-        height: var(--loader-height);
-        margin-bottom: calc(-1 * var(--loader-height));
-        background: var(--loader-backdrop);
+        position: absolute;
+        inset: 0;
+        width: auto;
+        height: auto;
+        margin: 0;
+        background: var(--bg-gradient);
+        background-size: 100% 100%;
         backdrop-filter: blur(18px);
         -webkit-backdrop-filter: blur(18px);
-        z-index: 500;
-        border-radius: 28px;
-        border: 1.5px solid var(--glass-edge);
-        box-shadow: inset 0 1px rgba(255, 255, 255, 0.18);
+        z-index: 20;
+        border-radius: inherit;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         color: var(--accent-gold);
         font-weight: 700;
         animation: fadeIn 0.2s ease;
-      }
-
-      .loader-overlay::before {
-        content: "";
-        position: absolute;
-        width: min(82%, 300px);
-        height: 148px;
-        border: 1.5px solid var(--glass-edge);
-        border-radius: 22px;
-        background: var(--card-bg);
-        box-shadow: inset 0 1px rgba(255, 255, 255, 0.24), 0 18px 44px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(30px);
-        -webkit-backdrop-filter: blur(30px);
       }
 
       .loader-overlay > * {
@@ -398,6 +387,20 @@
         text-align: center;
       }
 
+      .report-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .report-note {
+        margin: 8px 0;
+        color: var(--text-sub);
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+      }
+
       .card-result-name {
         color: var(--accent-gold);
         font-size: 15px;
@@ -448,6 +451,14 @@
         margin: auto 0;
         position: relative;
         animation: viewEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .container.is-loading > :not(#loader) {
+        visibility: hidden;
+      }
+
+      .container.is-loading {
+        overflow: hidden;
       }
 
       @supports (height: 100dvh) {
@@ -603,13 +614,14 @@
         height: 52px;
         display: grid;
         place-items: center;
-        background: transparent;
-        border: 1.5px solid var(--glass-edge);
+        background: var(--icon-glass-fill);
+        border: 1px solid var(--icon-glass-edge);
         border-radius: 16px;
-        box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 0 18px rgba(245, 158, 11, 0.12);
+        box-shadow: var(--icon-glass-shadow);
         backdrop-filter: blur(18px);
         -webkit-backdrop-filter: blur(18px);
-        text-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+        color: var(--icon-foreground);
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       }
       .tile:hover .ico {
         transform: scale(1.12) rotate(4deg);
@@ -705,14 +717,38 @@
         width: 1.8em;
         height: 1.8em;
         place-items: center;
-        color: var(--accent-gold);
-        background: none;
-        border: 0;
-        box-shadow: none;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        text-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+        color: var(--icon-foreground);
+        background: var(--icon-glass-fill);
+        border: 1px solid var(--icon-glass-edge);
+        border-radius: 0.5em;
+        box-shadow: var(--icon-glass-shadow);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         vertical-align: middle;
+      }
+
+      i[class*="fa-"] {
+        display: inline-grid;
+        flex: 0 0 auto;
+        width: 2.1em;
+        height: 2.1em;
+        place-items: center;
+        color: var(--icon-foreground);
+        background: var(--icon-glass-fill);
+        border: 1px solid var(--icon-glass-edge);
+        border-radius: 0.5em;
+        box-shadow: var(--icon-glass-shadow);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        vertical-align: middle;
+      }
+
+      .icon > i {
+        width: 60px;
+        height: 60px;
+        font-size: 24px;
       }
       .icon-btn > i,
       .tile .ico > i,
@@ -1012,6 +1048,91 @@
         height: 18px;
         margin: 1px 0 0;
         accent-color: var(--accent-gold);
+      }
+
+      .sync-progress {
+        margin: 14px 0;
+        padding: 14px;
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        background: var(--glass-surface);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+
+      .sync-progress[hidden] {
+        display: none;
+      }
+
+      .sync-progress h3 {
+        margin-bottom: 8px;
+        color: var(--accent-gold);
+        font-size: 15px;
+        text-align: center;
+      }
+
+      .sync-progress progress {
+        display: block;
+        width: 100%;
+        height: 10px;
+        margin: 8px 0;
+        overflow: hidden;
+        border: 0;
+        border-radius: 999px;
+        background: var(--chip-bg);
+        accent-color: var(--accent-gold);
+      }
+
+      .sync-progress-count {
+        display: block;
+        color: var(--text-sub);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .sync-progress-results {
+        display: grid;
+        gap: 8px;
+        max-height: 220px;
+        margin-top: 12px;
+        overflow-y: auto;
+      }
+
+      .sync-progress-item {
+        padding: 10px 12px;
+        border: 1px solid var(--chip-border);
+        border-radius: 12px;
+        background: var(--chip-bg);
+      }
+
+      .sync-progress-event {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .sync-progress-status {
+        flex: 0 0 auto;
+        color: var(--text-sub);
+        font-size: 12px;
+      }
+
+      .sync-progress-item.is-complete .sync-progress-status {
+        color: #16a34a;
+      }
+
+      .sync-progress-item.is-failed .sync-progress-status,
+      .sync-progress-item.is-not-synced .sync-progress-status {
+        color: #ef4444;
+      }
+
+      .sync-progress-message {
+        margin-top: 4px;
+        color: var(--text-sub);
+        font-size: 12px;
+        line-height: 1.45;
       }
 
       @media (max-width: 480px) {
