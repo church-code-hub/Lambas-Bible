@@ -289,8 +289,13 @@
           queued: "#0284c7",
         };
         var color = COLORS[r.kind] || "#d97706";
+        const iconClass = r.kind === "success"
+          ? "fa-check"
+          : r.kind === "queued"
+            ? "fa-triangle-exclamation"
+            : "fa-circle-info";
         document.getElementById("rIcon").innerHTML =
-          `<i class="fa-solid ${r.kind === "success" ? "fa-check" : "fa-info"}"></i>`;
+          `<i class="fa-solid ${iconClass}"></i>`;
         document.getElementById("rIcon").style.color = color;
         const titleText = r.title || (r.code ? "Request failed" : "");
         const titleEl = document.getElementById("rTitle");
@@ -305,4 +310,3 @@
         msgEl.style.display = r.message ? "block" : "none";
         showView("resultView");
       }
-

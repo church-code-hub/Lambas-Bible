@@ -19,12 +19,19 @@
       }
 
       async function getCachedRoster() {
-        const database = await openOfflineDatabase();
-        return new Promise((resolve, reject) => {
-          const request = database.transaction("roster", "readonly").objectStore("roster").getAll();
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error || new Error("Could not read saved roster"));
-        });
+        if (!cachedRosterPromise) {
+          cachedRosterPromise = openOfflineDatabase().then((database) =>
+            new Promise((resolve, reject) => {
+              const request = database.transaction("roster", "readonly").objectStore("roster").getAll();
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error || new Error("Could not read saved roster"));
+            }),
+          ).catch((error) => {
+            cachedRosterPromise = null;
+            throw error;
+          });
+        }
+        return cachedRosterPromise;
       }
 
       function findCachedPersonName(roster, id) {
@@ -35,7 +42,14 @@
       }
 
       async function getCachedPersonName(id) {
-        return findCachedPersonName(await getCachedRoster(), id);
+        const cleanId = String(id || "").trim();
+        if (!cleanId) return "";
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("roster", "readonly").objectStore("roster").get(cleanId);
+          request.onsuccess = () => resolve(String(request.result?.name || ""));
+          request.onerror = () => reject(request.error || new Error("Could not read saved attendee"));
+        });
       }
 
       async function hydrateOfflinePersonNames(events) {
@@ -65,6 +79,8 @@
           transaction.onerror = () => reject(transaction.error || new Error("Could not save roster"));
           transaction.onabort = () => reject(transaction.error || new Error("Roster cache update was cancelled"));
         });
+        offlineRosterSearchCache = null;
+        cachedRosterPromise = Promise.resolve(roster);
       }
 
       async function refreshRosterCache() {
@@ -77,7 +93,7 @@
           const roster = response.roster.filter(
             (person) => person && person.id != null && person.name,
           ).map((person) => ({
-            id: String(person.id),
+            id: String(person.id).trim(),
             name: String(person.name),
           }));
           await saveCachedRoster(roster);
@@ -123,8 +139,7 @@
         return edits <= 1;
       }
 
-      function scoreCachedName(cleanName, queryTokens) {
-        const nameTokens = cleanName.split(" ");
+      function scoreCachedName(nameTokens, queryTokens) {
         let score = 0;
         for (const queryToken of queryTokens) {
           let bestScore = 0;
@@ -142,19 +157,39 @@
         return score;
       }
 
+      function getOfflineRosterSearchIndex(roster) {
+        if (offlineRosterSearchCache && offlineRosterSearchCache.roster === roster) {
+          return offlineRosterSearchCache;
+        }
+        const exactNames = new Map();
+        const people = roster.map((person) => {
+          const normalizedName = normalizeSearchName(person.name);
+          if (!exactNames.has(normalizedName)) exactNames.set(normalizedName, person);
+          return {
+            id: person.id,
+            name: person.name,
+            normalizedName,
+            nameTokens: normalizedName.split(" "),
+          };
+        });
+        offlineRosterSearchCache = { roster, exactNames, people };
+        return offlineRosterSearchCache;
+      }
+
       function searchCachedRoster(roster, inputName) {
         const query = normalizeSearchName(inputName);
         if (!query) return { status: "error" };
-        const exactMatch = roster.find((person) => normalizeSearchName(person.name) === query);
+        const index = getOfflineRosterSearchIndex(roster);
+        const exactMatch = index.exactNames.get(query);
         if (exactMatch) {
           return { status: "exact_match", id: exactMatch.id, name: exactMatch.name };
         }
         const queryTokens = query.split(" ");
-        const matches = roster
+        const matches = index.people
           .map((person) => ({
             id: person.id,
             name: person.name,
-            score: scoreCachedName(normalizeSearchName(person.name), queryTokens),
+            score: scoreCachedName(person.nameTokens, queryTokens),
           }))
           .filter((person) => person.score >= 0)
           .sort((left, right) =>
@@ -187,6 +222,15 @@
           const request = database.transaction("events", "readonly").objectStore("events").getAll();
           request.onsuccess = () => resolve(request.result.sort((a, b) => a.timestamp.localeCompare(b.timestamp)));
           request.onerror = () => reject(request.error || new Error("Could not read offline queue"));
+        });
+      }
+
+      async function getOfflineEventCount() {
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("events", "readonly").objectStore("events").count();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("Could not count saved actions"));
         });
       }
 
@@ -231,8 +275,7 @@
         }
         updateOnlineOnlyControls();
         try {
-          const events = await getOfflineEvents();
-          const count = events.length;
+          const count = await getOfflineEventCount();
           if (toolbarCount) {
             toolbarCount.hidden = count === 0;
             toolbarCount.textContent = count > 99 ? "99+" : String(count);
@@ -256,6 +299,11 @@
             element.removeAttribute("data-offline-disabled");
           }
         });
+        const currentAttendeesTile = document.getElementById("currentAttendeesTile");
+        if (currentAttendeesTile) {
+          currentAttendeesTile.disabled =
+            !navigator.onLine || !currentAttendeesWindowOpen;
+        }
       }
 
       function addSearchAgainButton(results, input) {

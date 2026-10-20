@@ -17,16 +17,21 @@
       var googleSignInInitialized = false;
       var pendingSessionRestoreEmail = "";
       var offlineDatabasePromise = null;
+      var cachedRosterPromise = null;
+      var offlineRosterSearchCache = null;
       var verifiedPassword = "";
       var currentLoaderText = "";
       var currentActiveViewId = "loginView";
       var attendanceReportTab = "attendance";
       var attendanceReportRequestId = 0;
       var currentAttendeesRequestId = 0;
+      var currentAttendeesSnapshot = "";
       var currentAttendeesRefreshTimer = 0;
+      var currentAttendeesWindowTimer = 0;
+      var currentAttendeesWindowRequestId = 0;
+      var currentAttendeesWindowOpen = false;
       var appearanceTransitionTimeout = 0;
       var currentLang = localStorage.getItem("app_lang") || "ar";
       var currentThemeMode = localStorage.getItem("app_theme") || "dark";
 
       var activePreviewCard = { fileId: "", driveUrl: "", name: "" };
-

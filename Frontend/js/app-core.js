@@ -31,7 +31,10 @@
 
           document.querySelectorAll("[data-i18n]").forEach((el) => {
             const key = el.getAttribute("data-i18n");
-            if (translations[lang][key]) el.innerText = translations[lang][key];
+            if (
+              translations[lang][key] &&
+              !el.classList.contains("password-visibility-btn")
+            ) el.innerText = translations[lang][key];
           });
           document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
             const key = el.getAttribute("data-i18n-placeholder");
@@ -48,6 +51,7 @@
           });
           document.querySelectorAll(".password-visibility-btn[data-i18n]").forEach((el) => {
             el.setAttribute("aria-label", translations[lang][el.dataset.i18n]);
+            el.setAttribute("title", translations[lang][el.dataset.i18n]);
           });
           document.querySelectorAll("[data-i18n-alt]").forEach((el) => {
             const key = el.getAttribute("data-i18n-alt");

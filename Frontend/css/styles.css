@@ -349,22 +349,41 @@
         transform: translateY(-1px);
       }
 
-      .password-visibility-btn {
-        width: auto;
-        min-width: 72px;
-        margin: -4px 0 12px;
-        padding: 6px 12px;
-        border: 1px solid var(--chip-border);
-        border-radius: 10px;
-        background: var(--chip-bg);
-        color: var(--text-sub);
-        font-size: 12px;
-        font-weight: 700;
-        cursor: pointer;
+      .password-input-wrap {
+        position: relative;
+        width: 100%;
+        margin-bottom: 12px;
       }
-      .password-visibility-btn:hover {
+      .password-input-wrap input[type="password"],
+      .password-input-wrap input[type="text"] {
+        margin-bottom: 0;
+        padding-inline-end: 48px;
+      }
+      .password-visibility-btn {
+        position: absolute;
+        inset-block-start: 50%;
+        inset-inline-end: 8px;
+        display: grid;
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        place-items: center;
+        margin: 0;
+        padding: 0;
+        transform: translateY(-50%);
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--text-sub);
+        font-size: 16px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .password-visibility-btn:hover,
+      .password-visibility-btn:focus-visible {
         color: var(--accent-gold);
-        border-color: var(--accent-gold);
+        outline: 2px solid var(--accent-gold);
+        outline-offset: 1px;
       }
       .card-result {
         width: 100%;

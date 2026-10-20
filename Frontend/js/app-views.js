@@ -38,6 +38,10 @@
           window.clearInterval(currentAttendeesRefreshTimer);
           currentAttendeesRefreshTimer = 0;
         }
+        if (viewId !== "dashboardView" && currentAttendeesWindowTimer) {
+          window.clearTimeout(currentAttendeesWindowTimer);
+          currentAttendeesWindowTimer = 0;
+        }
 
         if (viewId !== "adminSettingsView") {
           const lockEl = document.getElementById("adminSettingsLock");
@@ -130,6 +134,9 @@
             30000,
           );
         }
+        if (viewId === "dashboardView") {
+          refreshCurrentAttendeesWindow();
+        }
         if (viewId === "scanView") {
           isProcessingScan = false;
           setTimeout(startLiveScanner, 150);
@@ -157,9 +164,52 @@
       }
 
       function openCurrentAttendeesView() {
+        if (!currentAttendeesWindowOpen) return;
         const alreadyOpen = currentActiveViewId === "currentAttendeesView";
         showView("currentAttendeesView");
         if (alreadyOpen) loadCurrentAttendees();
+      }
+
+      async function refreshCurrentAttendeesWindow() {
+        if (currentAttendeesWindowTimer) {
+          window.clearTimeout(currentAttendeesWindowTimer);
+          currentAttendeesWindowTimer = 0;
+        }
+        const requestId = ++currentAttendeesWindowRequestId;
+        const requestStartedAt = Date.now();
+        let nextWindowCheckMs = 30000;
+        const tile = document.getElementById("currentAttendeesTile");
+        if (!tile) return;
+        currentAttendeesWindowOpen = false;
+        tile.disabled = true;
+        tile.setAttribute("aria-busy", "true");
+        if (!currentUser || !navigator.onLine || currentActiveViewId !== "dashboardView") {
+          tile.removeAttribute("aria-busy");
+          return;
+        }
+        try {
+          const result = await apiCall("get_attendance_window");
+          if (requestId !== currentAttendeesWindowRequestId) return;
+          currentAttendeesWindowOpen = Boolean(result && result.success && result.windowOpen);
+          if (Number.isFinite(Number(result?.nextCheckMs))) {
+            nextWindowCheckMs = Number(result.nextCheckMs);
+          }
+        } catch (error) {
+          console.error("Could not check the current-attendance window.", error);
+          currentAttendeesWindowOpen = false;
+        } finally {
+          if (requestId === currentAttendeesWindowRequestId) {
+            tile.disabled = !navigator.onLine || !currentAttendeesWindowOpen;
+            tile.removeAttribute("aria-busy");
+            if (navigator.onLine && currentUser && currentActiveViewId === "dashboardView") {
+              const delay = Math.max(1000, nextWindowCheckMs - (Date.now() - requestStartedAt));
+              currentAttendeesWindowTimer = window.setTimeout(
+                refreshCurrentAttendeesWindow,
+                Math.min(delay, 2147483647),
+              );
+            }
+          }
+        }
       }
 
       async function loadCurrentAttendees(showLoading = true) {
@@ -173,7 +223,6 @@
         const requestId = ++currentAttendeesRequestId;
         const mainContainer = document.getElementById("mainContainer");
         const scrollPosition = mainContainer.scrollTop;
-        container.replaceChildren();
         if (showLoading) showLoader();
         try {
           const result = await apiCall("get_current_attendees");
@@ -182,19 +231,32 @@
           if (!result || !result.success || !Array.isArray(result.attendees)) {
             throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
           }
-          availability.replaceChildren();
+          const snapshot = JSON.stringify(result);
           availability.textContent = result.windowOpen
             ? translations[currentLang].attendanceWindowOpen
             : translations[currentLang].attendanceWindowClosed;
           availability.classList.toggle("is-open", result.windowOpen);
           availability.classList.toggle("is-closed", !result.windowOpen);
+          const refreshButton = document.getElementById("refreshCurrentAttendeesButton");
+          if (refreshButton) refreshButton.disabled = !navigator.onLine || !result.windowOpen;
+          if (!result.windowOpen) {
+            currentAttendeesWindowOpen = false;
+            const closed = document.createElement("p");
+            closed.className = "report-note";
+            closed.textContent = translations[currentLang].attendanceWindowClosed;
+            container.replaceChildren(closed);
+            currentAttendeesSnapshot = snapshot;
+            return;
+          }
+          if (!showLoading && snapshot === currentAttendeesSnapshot) return;
+          currentAttendeesSnapshot = snapshot;
           if (!result.windowOpen || !result.attendees.length) {
             const empty = document.createElement("p");
             empty.className = "report-note";
             empty.textContent = result.windowOpen
               ? translations[currentLang].noCurrentAttendees
               : translations[currentLang].attendanceWindowClosed;
-            container.appendChild(empty);
+            container.replaceChildren(empty);
             return;
           }
           const panel = document.createElement("section");
@@ -248,7 +310,7 @@
             item.append(details, actions);
             panel.appendChild(item);
           });
-          container.appendChild(panel);
+          container.replaceChildren(panel);
           updateOnlineOnlyControls();
           mainContainer.scrollTop = scrollPosition;
         } catch (error) {
@@ -654,6 +716,7 @@
           document.getElementById("followupTabButton").setAttribute("aria-selected", "false");
         } else if (viewId === "currentAttendeesView") {
           currentAttendeesRequestId++;
+          currentAttendeesSnapshot = "";
           document.getElementById("currentAttendeesAvailability").replaceChildren();
           document.getElementById("currentAttendeesResults").replaceChildren();
         }
@@ -674,6 +737,7 @@
           return;
         }
         await refreshRosterCache();
+        if (currentActiveViewId === "dashboardView") refreshCurrentAttendeesWindow();
       });
       window.addEventListener("offline", updateOfflineStatus);
 
@@ -692,8 +756,13 @@
             input.type = isVisible ? "password" : "text";
             const labelKey = isVisible ? "showPassword" : "hidePassword";
             button.dataset.i18n = labelKey;
-            button.textContent = translations[currentLang][labelKey];
-            button.setAttribute("aria-label", button.textContent);
+            const icon = button.querySelector("i");
+            if (icon) {
+              icon.classList.toggle("fa-eye", !isVisible);
+              icon.classList.toggle("fa-eye-slash", isVisible);
+            }
+            button.setAttribute("aria-label", translations[currentLang][labelKey]);
+            button.setAttribute("title", translations[currentLang][labelKey]);
           });
         });
       }
@@ -704,7 +773,11 @@
         if (!input || !button) return;
         input.type = "password";
         button.dataset.i18n = "showPassword";
-        button.textContent = translations[currentLang].showPassword;
-        button.setAttribute("aria-label", button.textContent);
+        const icon = button.querySelector("i");
+        if (icon) {
+          icon.classList.add("fa-eye");
+          icon.classList.remove("fa-eye-slash");
+        }
+        button.setAttribute("aria-label", translations[currentLang].showPassword);
+        button.setAttribute("title", translations[currentLang].showPassword);
       }
-

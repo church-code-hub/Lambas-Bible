@@ -858,6 +858,27 @@ test("returns only active check-ins with schedule-window state", () => {
   assert.equal(result.checkoutOpen, true);
 });
 
+test("keeps current-attendance management open through the checkout window", () => {
+  const { context } = createBackendContext();
+  const meetingDay = new Date(2026, 9, 19, 10, 0, 0, 0);
+  const settings = {
+    startTime: "10:00",
+    endTime: "12:00",
+    allowedDays: [meetingDay.getDay()],
+  };
+  const at = (hour, minute) => {
+    const date = new Date(meetingDay);
+    date.setHours(hour, minute, 0, 0);
+    return date;
+  };
+
+  assert.equal(context.isCurrentAttendanceWindowOpen_(at(9, 59), settings), false);
+  assert.equal(context.isCurrentAttendanceWindowOpen_(at(10, 0), settings), true);
+  assert.equal(context.isCurrentAttendanceWindowOpen_(at(12, 30), settings), true);
+  assert.equal(context.isCurrentAttendanceWindowOpen_(at(13, 0), settings), true);
+  assert.equal(context.isCurrentAttendanceWindowOpen_(at(13, 1), settings), false);
+});
+
 test("stops an offline batch when an earlier event is still pending", () => {
   const { context, scriptPropertiesStore } = createBackendContext();
   let applyCount = 0;

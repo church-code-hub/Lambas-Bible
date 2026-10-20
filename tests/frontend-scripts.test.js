@@ -80,9 +80,15 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
       { eventId: "add-1", type: "add_student", queuedBy: account },
       { eventId: "scan-3", type: "scan", queuedBy: account },
     ];
+    const roster = [
+      { id: "001", name: "Attendee One" },
+      { id: "002", name: "Attendee Two" },
+    ];
     return {
       foundName: findCachedPersonName([{ id: "001", name: "Attendee One" }], "001"),
       missingName: findCachedPersonName([{ id: "1", name: "Attendee One" }], "unknown"),
+      exactCachedSearch: searchCachedRoster(roster, "Attendee One"),
+      fuzzyCachedSearch: searchCachedRoster(roster, "Attendee On"),
       individualLater: getOfflineSyncBatch(queue, "scan-2", "", account),
       individualFirst: getOfflineSyncBatch(queue, "scan-1", "", account),
       scanGroup: getOfflineSyncBatch(queue, "", "scan", account),
@@ -95,6 +101,10 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
 
   assert.equal(result.foundName, "Attendee One");
   assert.equal(result.missingName, "");
+  assert.equal(result.exactCachedSearch.status, "exact_match");
+  assert.equal(result.exactCachedSearch.id, "001");
+  assert.equal(result.fuzzyCachedSearch.status, "suggestions");
+  assert.deepEqual(Array.from(result.fuzzyCachedSearch.matches, (person) => person.id), ["001"]);
   assert.equal(result.individualLater, null);
   assert.deepEqual(Array.from(result.individualFirst, (event) => event.eventId), ["scan-1"]);
   assert.deepEqual(Array.from(result.scanGroup, (event) => event.eventId), ["scan-1", "scan-2"]);

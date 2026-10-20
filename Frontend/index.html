@@ -16,8 +16,8 @@
     />
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
-    <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=28" />
+    <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
+    <link rel="stylesheet" href="./css/styles.css?v=32" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -30,7 +30,7 @@
     <header class="top-app-bar">
       <div class="brand">
         <img
-          src="Assets/icons/PWA-ICON-192.png"
+          src="Assets/icons/icon-192.png"
           alt="App Icon"
           data-i18n-alt="appIconAlt"
         />
@@ -180,7 +180,7 @@
             <span class="ico"><i class="fa-solid fa-calendar-check"></i></span
             ><span data-i18n="attendanceReports">تقارير الحضور</span>
           </button>
-          <button class="tile" data-online-only onclick="openCurrentAttendeesView()">
+          <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
             <span class="ico"><i class="fa-solid fa-people-group"></i></span
             ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
           </button>
@@ -218,7 +218,7 @@
 
       <div id="currentAttendeesView" style="display: none">
         <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
-        <button class="btn secondary" type="button" data-online-only onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
+        <button id="refreshCurrentAttendeesButton" class="btn secondary" type="button" data-online-only onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
           تحديث الحضور
         </button>
         <div id="currentAttendeesAvailability" class="attendance-window-note" aria-live="polite"></div>
@@ -461,19 +461,23 @@
           <span data-i18n="adminSettingsTitle">إدارة الخدام وكلمة المرور</span>
         </h2>
         <div id="adminSettingsLock">
-          <input
-            type="password"
-            id="adminGatePassword"
-            class="numeric-password"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            autocomplete="off"
-            placeholder="ادخل كلمة المرور"
-            data-i18n-placeholder="passwordPlaceholder"
-            enterkeyhint="go"
-          />
-          <button class="password-visibility-btn" type="button" data-password-toggle="adminGatePassword"
-            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="adminGatePassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              placeholder="ادخل كلمة المرور"
+              data-i18n-placeholder="passwordPlaceholder"
+              enterkeyhint="go"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="adminGatePassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
           <button
             class="btn"
             data-online-only
@@ -520,20 +524,23 @@
             data-i18n="newPasswordLabel"
             >كلمة مرور النظام الجديدة (اختياري)</label
           >
-          <input
-            type="password"
-            id="cfgNewPassword"
-            class="numeric-password"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            autocomplete="new-password"
-            minlength="8"
-            placeholder="اتركها فارغة للإبقاء على الحالية"
-            data-i18n-placeholder="newPasswordPlaceholder"
-            style="margin-bottom: 16px"
-          />
-          <button class="password-visibility-btn" type="button" data-password-toggle="cfgNewPassword"
-            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
+          <div class="password-input-wrap" style="margin-bottom: 16px">
+            <input
+              type="password"
+              id="cfgNewPassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="new-password"
+              minlength="8"
+              placeholder="اتركها فارغة للإبقاء على الحالية"
+              data-i18n-placeholder="newPasswordPlaceholder"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="cfgNewPassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
 
           <h3
             style="
@@ -596,19 +603,23 @@
           <span data-i18n="scheduleTitle">مواعيد الاجتماع وأيامه</span>
         </h2>
         <div id="scheduleSettingsLock">
-          <input
-            type="password"
-            id="scheduleGatePassword"
-            class="numeric-password"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            autocomplete="off"
-            placeholder="ادخل كلمة المرور"
-            data-i18n-placeholder="passwordPlaceholder"
-            enterkeyhint="go"
-          />
-          <button class="password-visibility-btn" type="button" data-password-toggle="scheduleGatePassword"
-            data-i18n="showPassword" aria-label="إظهار كلمة المرور">إظهار</button>
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="scheduleGatePassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              placeholder="ادخل كلمة المرور"
+              data-i18n-placeholder="passwordPlaceholder"
+              enterkeyhint="go"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="scheduleGatePassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
           <button
             class="btn"
             data-online-only
@@ -750,13 +761,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=28"></script>
-    <script src="./js/app-i18n.js?v=28"></script>
-    <script src="./js/app-core.js?v=28"></script>
-    <script src="./js/app-offline.js?v=28"></script>
-    <script src="./js/app-views.js?v=28"></script>
-    <script src="./js/app-auth.js?v=28"></script>
-    <script src="./js/app-scanner-search.js?v=28"></script>
-    <script src="./js/app-cards-admin.js?v=28"></script>
+    <script src="./js/app-state.js?v=32"></script>
+    <script src="./js/app-i18n.js?v=32"></script>
+    <script src="./js/app-core.js?v=32"></script>
+    <script src="./js/app-offline.js?v=32"></script>
+    <script src="./js/app-views.js?v=32"></script>
+    <script src="./js/app-auth.js?v=32"></script>
+    <script src="./js/app-scanner-search.js?v=32"></script>
+    <script src="./js/app-cards-admin.js?v=32"></script>
   </body>
 </html>
