@@ -22,6 +22,8 @@
       var currentActiveViewId = "loginView";
       var attendanceReportTab = "attendance";
       var attendanceReportRequestId = 0;
+      var currentAttendeesRequestId = 0;
+      var currentAttendeesRefreshTimer = 0;
       var currentLang = localStorage.getItem("app_lang") || "ar";
       var currentThemeMode = localStorage.getItem("app_theme") || "dark";
 
@@ -30,6 +32,13 @@
       const translations = {
         ar: {
           offlineMsg: "⚠️ لا توجد اتصال بالإنترنت، يرجى التحقق من الشبكة",
+          appSettingsTitle: "إعدادات التطبيق",
+          languageSettingTitle: "اللغة",
+          themeSettingTitle: "المظهر",
+          arabicLanguage: "العربية",
+          englishLanguage: "الإنجليزية",
+          lightTheme: "فاتح",
+          darkTheme: "داكن",
           offlineQueueStatus: "سيتم حفظ الإجراءات على هذا الجهاز حتى عودة الاتصال.",
           queuedEventsCount: "إجراءات محفوظة للمزامنة: ",
           offlineScanQueued: "تم حفظ المسح على هذا الجهاز وسيُسجل عند عودة الاتصال.",
@@ -55,7 +64,7 @@
           absent: "لم يحضر",
           dailySheetCreated: "تم إنشاء تبويب اليوم في ملف الحضور.",
           followupsTitle: "قائمة الافتقاد",
-          followupsNote: "أشخاص غابوا عن اجتماعين متتاليين.",
+          followupsNote: "أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.",
           refreshFollowupsBtn: "تحديث القائمة",
           markFollowupComplete: "تم الافتقاد",
           noFollowups: "لا توجد أسماء تحتاج إلى افتقاد حالياً.",
@@ -85,8 +94,19 @@
           attendanceCancelCheckin: "إلغاء تسجيل الحضور",
           confirmCancelCheckin: "هل تريد إلغاء تسجيل الحضور لهذا الشخص؟ سيبقى الإلغاء محفوظاً في سجل التدقيق.",
           confirmDeleteOfflineEvent: "حذف هذا الإجراء المحفوظ؟",
-          ownerOnlyCancel: "إلغاء تسجيل الحضور متاح لمالك ملف الشيت فقط.",
           checkoutAlreadyRecorded: "لا يمكن الإلغاء بعد تسجيل الانصراف.",
+          currentAttendeesTitle: "الحضور الحالي",
+          refreshCurrentAttendees: "تحديث الحضور",
+          attendanceWindowOpen: "الاجتماع مفتوح لتسجيل وإدارة الحضور.",
+          attendanceWindowClosed: "إدارة الحضور متاحة من بداية الاجتماع وحتى نهاية وقت الانصراف.",
+          checkoutWindowClosed: "وقت الانصراف الرسمي غير مفتوح حالياً.",
+          noCurrentAttendees: "لا يوجد حضور نشط حالياً.",
+          emergencyCheckout: "انصراف طارئ",
+          emergencyCheckoutReason: "سبب الانصراف الطارئ (5 إلى 500 حرف)",
+          cancelEmergencyCheckout: "إلغاء",
+          confirmEmergencyCheckout: "تسجيل انصراف طارئ الآن؟ سيتم حفظ السبب في سجل التدقيق.",
+          emergencyCheckoutCompleted: "تم تسجيل الانصراف الطارئ وحفظه في سجل التدقيق.",
+          noSyncFailures: "لا توجد أحداث مزامنة فاشلة.",
           attendNewStudent: "تسجيل حضور المخدوم إذا كان وقت الاجتماع مفتوحاً",
           searchRequiresInternet: "هذه الميزة تحتاج إلى اتصال بالإنترنت.",
           offlineRosterUnavailable: "لا توجد قائمة أسماء محفوظة على هذا الجهاز. اتصل بالإنترنت مرة واحدة لتجهيز البحث دون اتصال.",
@@ -165,6 +185,13 @@
         },
         en: {
           offlineMsg: "⚠️ No internet connection, please check your network",
+          appSettingsTitle: "App Settings",
+          languageSettingTitle: "Language",
+          themeSettingTitle: "Appearance",
+          arabicLanguage: "Arabic",
+          englishLanguage: "English",
+          lightTheme: "Light",
+          darkTheme: "Dark",
           offlineQueueStatus: "Actions will be saved on this device until the connection returns.",
           queuedEventsCount: "Actions waiting to sync: ",
           offlineScanQueued: "Scan saved on this device and will be recorded when online.",
@@ -190,7 +217,7 @@
           absent: "Absent",
           dailySheetCreated: "The daily tab was created in the attendance spreadsheet.",
           followupsTitle: "Follow-up List",
-          followupsNote: "People who missed two consecutive meetings.",
+          followupsNote: "People who have attended before and missed at least three consecutive meetings.",
           refreshFollowupsBtn: "Refresh list",
           markFollowupComplete: "Mark completed",
           noFollowups: "No one currently needs follow-up.",
@@ -220,8 +247,19 @@
           attendanceCancelCheckin: "Cancel check-in",
           confirmCancelCheckin: "Cancel this check-in? The cancellation will remain in the audit log.",
           confirmDeleteOfflineEvent: "Delete this saved action?",
-          ownerOnlyCancel: "Only the spreadsheet owner can cancel a check-in.",
           checkoutAlreadyRecorded: "A check-in cannot be cancelled after checkout.",
+          currentAttendeesTitle: "Current Attendees",
+          refreshCurrentAttendees: "Refresh attendees",
+          attendanceWindowOpen: "The meeting is open for attendance management.",
+          attendanceWindowClosed: "Attendance management is available from meeting start until the checkout window closes.",
+          checkoutWindowClosed: "The normal checkout window is currently closed.",
+          noCurrentAttendees: "There are no active check-ins right now.",
+          emergencyCheckout: "Emergency check-out",
+          emergencyCheckoutReason: "Emergency check-out reason (5–500 characters)",
+          cancelEmergencyCheckout: "Cancel",
+          confirmEmergencyCheckout: "Record an emergency check-out now? The reason will be saved in the audit log.",
+          emergencyCheckoutCompleted: "Emergency check-out recorded and saved to the audit log.",
+          noSyncFailures: "There are no failed sync events.",
           attendNewStudent: "Record attendance if the meeting is open",
           searchRequiresInternet: "This feature requires an internet connection.",
           offlineRosterUnavailable: "No saved roster is available on this device. Connect once to enable offline search.",
@@ -516,24 +554,14 @@
 
       function setLanguage(lang) {
         lang = translations[lang] ? lang : "ar";
-        const languageChanged = currentLang !== lang;
         const changeLanguage = () => {
           currentLang = lang;
           localStorage.setItem("app_lang", lang);
           const root = document.getElementById("htmlRoot");
           root.setAttribute("lang", lang);
           root.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
-          const languageLabel = document.getElementById("langLabel");
-          languageLabel.innerText = lang === "ar" ? "EN" : "AR";
-          if (languageChanged) {
-            languageLabel.classList.remove("language-label-change");
-            languageLabel.offsetWidth;
-            languageLabel.classList.add("language-label-change");
-            window.setTimeout(
-              () => languageLabel.classList.remove("language-label-change"),
-              360,
-            );
-          }
+          document.getElementById("languageArabicOption")?.setAttribute("aria-pressed", String(lang === "ar"));
+          document.getElementById("languageEnglishOption")?.setAttribute("aria-pressed", String(lang === "en"));
           updateOfflineStatus();
 
           document.querySelectorAll("[data-i18n]").forEach((el) => {
@@ -594,6 +622,7 @@
             if (attendanceReportTab === "followups") loadFollowups();
             else loadAttendanceReportDates();
           }
+          if (currentActiveViewId === "currentAttendeesView") loadCurrentAttendees();
         };
         if (currentLang === lang) changeLanguage();
         else runAppearanceTransition(changeLanguage);
@@ -610,23 +639,13 @@
           currentThemeMode = mode;
           localStorage.setItem("app_theme", mode);
           const body = document.body;
-          const btn = document.getElementById("themeToggleBtn");
           body.setAttribute("data-theme", mode);
           body.classList.toggle("theme-light", mode === "light");
           body.classList.toggle("theme-dark", mode === "dark");
           document.documentElement.classList.toggle("theme-light", mode === "light");
           document.documentElement.classList.toggle("theme-dark", mode === "dark");
-          btn.classList.remove("theme-icon-change");
-          btn.offsetWidth;
-          if (mode === "dark") btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
-          else btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
-          if (themeChanged) {
-            btn.classList.add("theme-icon-change");
-            window.setTimeout(
-              () => btn.classList.remove("theme-icon-change"),
-              360,
-            );
-          }
+          document.getElementById("themeLightOption")?.setAttribute("aria-pressed", String(mode === "light"));
+          document.getElementById("themeDarkOption")?.setAttribute("aria-pressed", String(mode === "dark"));
         };
         if (!themeChanged) changeTheme();
         else runAppearanceTransition(changeTheme);
@@ -860,19 +879,13 @@
       }
 
       async function updateOfflineStatus() {
-        const status = document.getElementById("syncStatus");
         const toolbarButton = document.getElementById("syncNowToolbarButton");
         const toolbarCount = document.getElementById("syncNowCount");
-        const offlineOverlay = document.getElementById("offlineOverlay");
         if (toolbarButton) {
           toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView";
           toolbarButton.disabled = isSyncingOfflineQueue;
           toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
         }
-        offlineOverlay.style.display = navigator.onLine ? "none" : "block";
-        status.style.top = navigator.onLine
-          ? "calc(72px + env(safe-area-inset-top, 0px))"
-          : `${Math.ceil(offlineOverlay.getBoundingClientRect().bottom + 8)}px`;
         try {
           const events = await getOfflineEvents();
           const count = events.length;
@@ -880,21 +893,9 @@
             toolbarCount.hidden = count === 0;
             toolbarCount.textContent = count > 99 ? "99+" : String(count);
           }
-          status.hidden = count === 0 && navigator.onLine;
-          const hasOtherAccountEvents = currentUser && events.some((event) => event.queuedBy !== currentUser.email);
-          status.textContent = isSyncingOfflineQueue && navigator.onLine
-            ? translations[currentLang].offlineSyncing
-            : count && (!currentUser || (navigator.onLine && !googleIdToken))
-              ? translations[currentLang].offlineNeedsLogin + ` (${translations[currentLang].queuedEventsCount}${count})`
-              : hasOtherAccountEvents
-            ? translations[currentLang].offlineAccountMismatch
-            : !navigator.onLine
-              ? translations[currentLang].offlineQueueStatus + (count ? ` (${translations[currentLang].queuedEventsCount}${count})` : "")
-              : count ? translations[currentLang].queuedEventsCount + count : "";
         } catch (error) {
           if (toolbarCount) toolbarCount.hidden = true;
-          status.hidden = navigator.onLine;
-          status.textContent = navigator.onLine ? "" : translations[currentLang].offlineQueueStatus;
+          console.error("Could not read saved sync count.", error);
         }
       }
 
@@ -985,7 +986,7 @@
         });
       }
 
-      async function syncOfflineQueue(targetEventId = "") {
+      async function syncOfflineQueue(targetEventId = "", showProgress = false) {
         if (isSyncingOfflineQueue || !navigator.onLine || !currentUser || !googleIdToken) return null;
         isSyncingOfflineQueue = true;
         let targetResult = null;
@@ -993,7 +994,7 @@
         await updateOfflineStatus();
         try {
           let events = await getOfflineEvents();
-          progress = createOfflineSyncProgress(events);
+          progress = showProgress ? createOfflineSyncProgress(events) : null;
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
             const event = events[0];
             if (event.queuedBy !== currentUser.email) break;
@@ -1142,6 +1143,8 @@
           }
           if (currentUser && googleIdToken) showToast(translations[currentLang].offlineSyncFailed, "error");
         } finally {
+          const progressSection = document.getElementById("offlineSyncProgress");
+          if (progressSection) progressSection.hidden = true;
           isSyncingOfflineQueue = false;
           await updateOfflineStatus();
           if (currentActiveViewId === "offlineQueueView") await renderOfflineQueue();
@@ -1157,15 +1160,8 @@
       async function syncFromToolbar() {
         if (!currentUser) return;
         await openOfflineQueueView();
-        if (!navigator.onLine) {
-          showToast(translations[currentLang].offlineQueueStatus, "info");
-          return;
-        }
-        if (!googleIdToken) {
-          showToast(translations[currentLang].offlineNeedsLogin, "info");
-          return;
-        }
-        await syncOfflineQueue();
+        if (!navigator.onLine || !googleIdToken) return;
+        await syncOfflineQueue("", true);
       }
 
       async function renderOfflineQueue() {
@@ -1175,13 +1171,16 @@
         try {
           const events = await getOfflineEvents();
           container.replaceChildren();
-          if (!events.length) {
+          const failedEvents = events.filter((event) => event.lastSyncError);
+          if (!failedEvents.length) {
             const empty = document.createElement("p");
             empty.className = "search-empty";
-            empty.textContent = translations[currentLang].noOfflineEvents;
+            empty.textContent = events.length
+              ? translations[currentLang].noSyncFailures
+              : translations[currentLang].noOfflineEvents;
             container.appendChild(empty);
           }
-          events.forEach((event) => {
+          failedEvents.forEach((event) => {
             const item = document.createElement("div");
             item.className = "admin-item";
             const details = document.createElement("div");
@@ -1294,6 +1293,10 @@
         const viewChanged = currentActiveViewId !== viewId;
         if (currentActiveViewId && currentActiveViewId !== viewId)
           resetView(currentActiveViewId);
+        if (viewId !== "currentAttendeesView" && currentAttendeesRefreshTimer) {
+          window.clearInterval(currentAttendeesRefreshTimer);
+          currentAttendeesRefreshTimer = 0;
+        }
 
         if (viewId !== "adminSettingsView") {
           const lockEl = document.getElementById("adminSettingsLock");
@@ -1321,9 +1324,11 @@
           "cardPreviewView",
           "addView",
           "adminSettingsView",
+          "appSettingsView",
           "scheduleSettingsView",
           "resultView",
           "attendanceReportView",
+          "currentAttendeesView",
           "offlineQueueView",
         ].forEach((id) => {
           const el = document.getElementById(id);
@@ -1344,11 +1349,15 @@
         const homeBtn = document.getElementById("homeBtn");
         const adminToolbarButton = document.getElementById("adminToolbarButton");
         const syncToolbarButton = document.getElementById("syncNowToolbarButton");
+        const appSettingsToolbarButton = document.getElementById("appSettingsToolbarButton");
         if (adminToolbarButton) {
           adminToolbarButton.hidden = !currentUser || viewId === "loginView";
         }
         if (syncToolbarButton) {
           syncToolbarButton.hidden = !currentUser || viewId === "loginView";
+        }
+        if (appSettingsToolbarButton) {
+          appSettingsToolbarButton.hidden = !currentUser || viewId === "loginView";
         }
         if (viewId === "dashboardView" || viewId === "loginView") {
           homeBtn.style.display = "none";
@@ -1369,6 +1378,13 @@
 
         if (viewId === "attendanceReportView" && viewChanged) {
           selectAttendanceReportTab(attendanceReportTab);
+        }
+        if (viewId === "currentAttendeesView" && viewChanged) {
+          loadCurrentAttendees();
+          currentAttendeesRefreshTimer = window.setInterval(
+            () => loadCurrentAttendees(false),
+            30000,
+          );
         }
         if (viewId === "scanView") {
           isProcessingScan = false;
@@ -1391,8 +1407,160 @@
         if (alreadyOpen) selectAttendanceReportTab(tab);
       }
 
-      function openFollowupView() {
-        openAttendanceReport("followups");
+      function openAppSettings() {
+        if (!currentUser) return;
+        showView("appSettingsView");
+      }
+
+      function openCurrentAttendeesView() {
+        const alreadyOpen = currentActiveViewId === "currentAttendeesView";
+        showView("currentAttendeesView");
+        if (alreadyOpen) loadCurrentAttendees();
+      }
+
+      async function loadCurrentAttendees(showLoading = true) {
+        const availability = document.getElementById("currentAttendeesAvailability");
+        const container = document.getElementById("currentAttendeesResults");
+        if (currentActiveViewId !== "currentAttendeesView") return;
+        if (
+          !showLoading &&
+          (document.hidden || document.querySelector(".emergency-checkout-form"))
+        ) return;
+        const requestId = ++currentAttendeesRequestId;
+        const mainContainer = document.getElementById("mainContainer");
+        const scrollPosition = mainContainer.scrollTop;
+        container.replaceChildren();
+        if (showLoading) showLoader();
+        try {
+          const result = await apiCall("get_current_attendees");
+          if (showLoading) hideLoader();
+          if (requestId !== currentAttendeesRequestId || currentActiveViewId !== "currentAttendeesView") return;
+          if (!result || !result.success || !Array.isArray(result.attendees)) {
+            throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+          }
+          availability.replaceChildren();
+          availability.textContent = result.windowOpen
+            ? translations[currentLang].attendanceWindowOpen
+            : translations[currentLang].attendanceWindowClosed;
+          availability.classList.toggle("is-open", result.windowOpen);
+          availability.classList.toggle("is-closed", !result.windowOpen);
+          if (!result.windowOpen || !result.attendees.length) {
+            const empty = document.createElement("p");
+            empty.className = "report-note";
+            empty.textContent = result.windowOpen
+              ? translations[currentLang].noCurrentAttendees
+              : translations[currentLang].attendanceWindowClosed;
+            container.appendChild(empty);
+            return;
+          }
+          const panel = document.createElement("section");
+          panel.className = "report-panel";
+          const heading = document.createElement("div");
+          heading.className = "report-panel-heading";
+          const title = document.createElement("strong");
+          title.textContent = `${translations[currentLang].currentAttendeesTitle} · ${result.attendees.length}`;
+          heading.appendChild(title);
+          panel.appendChild(heading);
+          result.attendees.forEach((person) => {
+            const item = document.createElement("article");
+            item.className = "attendance-person-card";
+            const details = document.createElement("div");
+            const name = document.createElement("strong");
+            name.textContent = person.name;
+            const metadata = document.createElement("small");
+            const checkinTime = person.checkinTime
+              ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "";
+            metadata.textContent = [checkinTime, person.checkedInBy].filter(Boolean).join(" · ");
+            details.append(name, metadata);
+            const actions = document.createElement("div");
+            actions.className = "attendance-person-actions";
+            if (result.checkoutOpen) {
+              const checkoutButton = document.createElement("button");
+              checkoutButton.type = "button";
+              checkoutButton.className = "btn secondary";
+              checkoutButton.textContent = translations[currentLang].attendanceCheckout;
+              checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
+              actions.appendChild(checkoutButton);
+            }
+            const emergencyButton = document.createElement("button");
+            emergencyButton.type = "button";
+            emergencyButton.className = "btn secondary emergency-checkout-button";
+            emergencyButton.textContent = translations[currentLang].emergencyCheckout;
+            emergencyButton.addEventListener("click", () => showEmergencyCheckoutForm(item, person.id));
+            actions.appendChild(emergencyButton);
+            const cancelButton = document.createElement("button");
+            cancelButton.type = "button";
+            cancelButton.className = "btn secondary attendance-cancel-button";
+            cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
+            cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
+            actions.appendChild(cancelButton);
+            item.append(details, actions);
+            panel.appendChild(item);
+          });
+          container.appendChild(panel);
+          mainContainer.scrollTop = scrollPosition;
+        } catch (error) {
+          if (showLoading) hideLoader();
+          if (requestId !== currentAttendeesRequestId) return;
+          availability.textContent = error.message || translations[currentLang].offlineSyncFailed;
+          availability.classList.add("is-closed");
+          if (showLoading) showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      function showEmergencyCheckoutForm(item, id) {
+        if (item.querySelector(".emergency-checkout-form")) return;
+        const form = document.createElement("form");
+        form.className = "emergency-checkout-form";
+        const reason = document.createElement("textarea");
+        reason.required = true;
+        reason.minLength = 5;
+        reason.maxLength = 500;
+        reason.rows = 3;
+        reason.placeholder = translations[currentLang].emergencyCheckoutReason;
+        reason.setAttribute("aria-label", translations[currentLang].emergencyCheckoutReason);
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.className = "btn emergency-checkout-submit";
+        submit.textContent = translations[currentLang].emergencyCheckout;
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "btn secondary";
+        cancel.textContent = translations[currentLang].cancelEmergencyCheckout;
+        cancel.addEventListener("click", () => form.remove());
+        form.append(reason, submit, cancel);
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const cleanReason = reason.value.replace(/\s+/g, " ").trim();
+          if (cleanReason.length < 5 || cleanReason.length > 500) {
+            reason.setCustomValidity(translations[currentLang].emergencyCheckoutReason);
+            reason.reportValidity();
+            return;
+          }
+          reason.setCustomValidity("");
+          if (!window.confirm(translations[currentLang].confirmEmergencyCheckout)) return;
+          submit.disabled = true;
+          try {
+            const result = await apiCall("emergency_checkout_attendance", {
+              id: id,
+              reason: cleanReason,
+            });
+            if (!result || result.kind !== "out") {
+              throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+            }
+            showToast(translations[currentLang].emergencyCheckoutCompleted, "success");
+            await loadCurrentAttendees();
+          } catch (error) {
+            submit.disabled = false;
+            showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+          }
+        });
+        item.appendChild(form);
+        reason.focus();
       }
 
       function selectAttendanceReportTab(tab) {
@@ -1490,9 +1658,15 @@
             container.appendChild(empty);
             return;
           }
+          const panel = document.createElement("section");
+          panel.className = "report-panel";
+          const heading = document.createElement("div");
+          heading.className = "report-panel-heading";
+          heading.textContent = translations[currentLang].followupsTitle;
+          panel.appendChild(heading);
           result.followups.forEach((person) => {
-            const item = document.createElement("div");
-            item.className = "admin-item";
+            const item = document.createElement("article");
+            item.className = "attendance-person-card followup-person-card";
             const details = document.createElement("div");
             const name = document.createElement("strong");
             name.textContent = person.name;
@@ -1507,8 +1681,9 @@
             completeButton.textContent = translations[currentLang].markFollowupComplete;
             completeButton.addEventListener("click", () => completeAttendanceFollowup(person.id));
             item.append(details, completeButton);
-            container.appendChild(item);
+            panel.appendChild(item);
           });
+          container.appendChild(panel);
         } catch (error) {
           hideLoader();
           if (requestId !== attendanceReportRequestId) return;
@@ -1534,23 +1709,29 @@
         searchResult.replaceChildren();
 
         const summary = document.createElement("p");
-        summary.className = "report-note";
+        summary.className = "report-panel-heading";
         summary.textContent = `${report.date} · ${report.count}`;
-        list.appendChild(summary);
+        const panel = document.createElement("section");
+        panel.className = "report-panel";
+        panel.appendChild(summary);
         report.people.forEach((person) => {
-          const item = document.createElement("div");
-          item.className = "admin-item";
+          const item = document.createElement("article");
+          item.className = "attendance-report-row";
           const name = document.createElement("strong");
           name.textContent = person.name;
           const details = document.createElement("small");
-          details.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
           const checkinTime = person.checkinTime
             ? new Date(person.checkinTime).toLocaleTimeString(currentLang === "ar" ? "ar" : "en", { hour: "2-digit", minute: "2-digit" })
             : "";
-          details.textContent = [person.mark, checkinTime, person.delay].filter(Boolean).join(" · ");
-          item.append(name, details, createAttendanceActions(person, report.date));
-          list.appendChild(item);
+          details.textContent = [
+            translations[currentLang].attended,
+            checkinTime,
+            person.delay,
+          ].filter(Boolean).join(" · ");
+          item.append(name, details, createAttendanceActions(person, report.date, report.checkoutOpen));
+          panel.appendChild(item);
         });
+        list.appendChild(panel);
 
         if (query) {
           if (!report.matches.length) {
@@ -1561,9 +1742,9 @@
           }
           report.matches.forEach((person) => {
             const item = document.createElement("div");
-            item.className = "status-tag";
+            item.className = "attendance-report-match";
             item.textContent = `${person.name} · ${person.attended ? translations[currentLang].attended : translations[currentLang].absent}`;
-            item.appendChild(createAttendanceActions(person, report.date));
+            item.appendChild(createAttendanceActions(person, report.date, report.checkoutOpen));
             searchResult.appendChild(item);
           });
         }
@@ -1578,24 +1759,24 @@
         }
       }
 
-      function createAttendanceActions(person, reportDate) {
+      function createAttendanceActions(person, reportDate, checkoutOpen = false) {
         const actions = document.createElement("div");
         actions.className = "attendance-person-actions";
         if (!person.activeCheckin || reportDate !== localDateInputValue(new Date())) return actions;
-        const checkoutButton = document.createElement("button");
-        checkoutButton.type = "button";
-        checkoutButton.className = "btn secondary";
-        checkoutButton.textContent = translations[currentLang].attendanceCheckout;
-        checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
-        actions.appendChild(checkoutButton);
-        if (currentUser && currentUser.isOwner) {
-          const cancelButton = document.createElement("button");
-          cancelButton.type = "button";
-          cancelButton.className = "btn secondary attendance-cancel-button";
-          cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
-          cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
-          actions.appendChild(cancelButton);
+        if (checkoutOpen) {
+          const checkoutButton = document.createElement("button");
+          checkoutButton.type = "button";
+          checkoutButton.className = "btn secondary";
+          checkoutButton.textContent = translations[currentLang].attendanceCheckout;
+          checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
+          actions.appendChild(checkoutButton);
         }
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "btn secondary attendance-cancel-button";
+        cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
+        cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
+        actions.appendChild(cancelButton);
         return actions;
       }
 
@@ -1642,7 +1823,8 @@
             throw new Error(result && result.message ? result.message : translations[currentLang].attendanceCheckout);
           }
           showToast(translations[currentLang].attendanceCheckoutCompleted, "success");
-          await loadAttendanceReport();
+          if (currentActiveViewId === "currentAttendeesView") await loadCurrentAttendees();
+          else await loadAttendanceReport();
         } catch (error) {
           hideLoader();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
@@ -1650,10 +1832,7 @@
       }
 
       async function cancelAttendanceCheckin(id) {
-        if (!currentUser || !currentUser.isOwner) {
-          showToast(translations[currentLang].ownerOnlyCancel, "error");
-          return;
-        }
+        if (!currentUser) return;
         if (!window.confirm(translations[currentLang].confirmCancelCheckin)) return;
         showLoader();
         try {
@@ -1666,7 +1845,8 @@
             throw new Error(result && result.message);
           }
           showToast(translations[currentLang].attendanceCancelSuccess, "success");
-          await loadAttendanceReport();
+          if (currentActiveViewId === "currentAttendeesView") await loadCurrentAttendees();
+          else await loadAttendanceReport();
         } catch (error) {
           hideLoader();
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
@@ -1708,6 +1888,10 @@
           document.getElementById("followupTabButton").classList.remove("is-active");
           document.getElementById("attendanceTabButton").setAttribute("aria-selected", "true");
           document.getElementById("followupTabButton").setAttribute("aria-selected", "false");
+        } else if (viewId === "currentAttendeesView") {
+          currentAttendeesRequestId++;
+          document.getElementById("currentAttendeesAvailability").replaceChildren();
+          document.getElementById("currentAttendeesResults").replaceChildren();
         }
       }
 

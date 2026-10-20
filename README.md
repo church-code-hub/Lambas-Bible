@@ -29,6 +29,12 @@ After one successful online load, a previously authenticated user can scan QR ca
 
 Multiple online devices can use the app at once. Attendance, roster ID allocation, and administrative writes are serialized by the Apps Script project lock; transient lock contention returns a retryable response, and queued sync retries it automatically. Offline queues are device-local and sync when that device reconnects, so actions created on separate devices cannot be globally ordered until each device reconnects. Use online attendance when the order of check-in/check-out matters across devices.
 
+## Attendance Management
+
+The dashboard's **Current Attendees** view is available for the configured meeting window, from meeting start until one hour after the scheduled end. It refreshes while open, offers regular check-out only during the configured checkout window, and allows any authorized user to cancel an active check-in. Authorized users can record an emergency check-out during the management window by entering a reason; the check-out follows the same attendance update path and its reason is retained in the `Emergency Check-out` audit sheet. Follow-up is available as a tab in Attendance Reports and lists only people with at least one recorded attendance who missed three or more consecutive meeting dates. Language and theme preferences are available in the password-free App Settings view after sign-in.
+
+The saved-actions view lists failed sync events for review and retry. The progress bar appears only while a user-triggered sync is running; each processed event also produces a timed toast.
+
 The QR decoder is bundled locally for offline camera scanning. Google sign-in and Font Awesome still load externally. Offline sync does not create or use an `Offline Events` spreadsheet tab.
 
 ## Open From GitHub

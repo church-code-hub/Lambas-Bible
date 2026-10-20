@@ -17,29 +17,16 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/PWA-ICON-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=21" />
+    <link rel="stylesheet" href="./css/styles.css?v=23" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
       <span class="ambient-blob ambient-blob-pink"></span>
       <span class="ambient-blob ambient-blob-blue"></span>
       <span class="ambient-blob ambient-blob-green"></span>
+      <span class="ambient-blob ambient-blob-violet"></span>
     </div>
     <div id="toastContainer" class="toast-container"></div>
-    <div id="offlineOverlay" data-i18n="offlineMsg">
-      ⚠️ لا يوجد اتصال بالإنترنت، يرجى التحقق من الشبكة
-    </div>
-    <button
-      id="syncStatus"
-      class="sync-status"
-      type="button"
-      onclick="openOfflineQueueView()"
-      aria-live="polite"
-      title="مراجعة الإجراءات دون اتصال"
-      data-i18n-title="offlineQueueTitle"
-      hidden
-    ></button>
-
     <header class="top-app-bar">
       <div class="brand">
         <img
@@ -50,25 +37,6 @@
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
-        <button
-          class="icon-btn"
-          id="langToggleBtn"
-          onclick="toggleLanguage()"
-          title="تغيير اللغة / Switch Language"
-        >
-          <span class="language-label" style="font-weight: bold; font-size: 12px" id="langLabel"
-            >EN</span
-          >
-        </button>
-        <button
-          class="icon-btn"
-          id="themeToggleBtn"
-          onclick="toggleTheme()"
-          title="تبديل الثيم"
-          data-i18n-title="themeTooltip"
-        >
-          <i class="fa-solid fa-moon"></i>
-        </button>
         <button
           class="icon-btn sync-now-btn"
           id="syncNowToolbarButton"
@@ -93,6 +61,18 @@
         >
           <i class="fa-solid fa-user-shield"></i>
         </button>
+        <button
+          class="icon-btn"
+          id="appSettingsToolbarButton"
+          onclick="openAppSettings()"
+          title="إعدادات التطبيق"
+          data-i18n-title="appSettingsTitle"
+          aria-label="إعدادات التطبيق"
+          data-i18n-aria-label="appSettingsTitle"
+          hidden
+        >
+          <i class="fa-solid fa-sliders"></i>
+        </button>
       </div>
     </header>
 
@@ -110,6 +90,8 @@
         <div class="tech-loader">
           <div></div>
           <div></div>
+          <span></span>
+          <span></span>
         </div>
         <div id="loaderText" data-i18n="loading">جاري معالجة الطلب...</div>
       </div>
@@ -196,11 +178,49 @@
             <span class="ico"><i class="fa-solid fa-calendar-check"></i></span
             ><span data-i18n="attendanceReports">تقارير الحضور</span>
           </button>
-          <button class="tile" onclick="openFollowupView()">
-            <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
-            ><span data-i18n="followupsTitle">الافتقاد</span>
+          <button class="tile" onclick="openCurrentAttendeesView()">
+            <span class="ico"><i class="fa-solid fa-people-group"></i></span
+            ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
           </button>
         </div>
+      </div>
+
+      <div id="appSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-sliders"></i>
+          <span data-i18n="appSettingsTitle">إعدادات التطبيق</span>
+        </h2>
+        <section class="app-preference-group" aria-labelledby="appLanguageTitle">
+          <h3 id="appLanguageTitle" data-i18n="languageSettingTitle">اللغة</h3>
+          <div class="preference-options" role="group" aria-labelledby="appLanguageTitle">
+            <button id="languageArabicOption" type="button" class="preference-option" onclick="setLanguage('ar')">
+              <span>ع</span><span data-i18n="arabicLanguage">العربية</span>
+            </button>
+            <button id="languageEnglishOption" type="button" class="preference-option" onclick="setLanguage('en')">
+              <span>EN</span><span data-i18n="englishLanguage">English</span>
+            </button>
+          </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="appThemeTitle">
+          <h3 id="appThemeTitle" data-i18n="themeSettingTitle">المظهر</h3>
+          <div class="preference-options" role="group" aria-labelledby="appThemeTitle">
+            <button id="themeLightOption" type="button" class="preference-option" onclick="applyTheme('light')">
+              <i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">فاتح</span>
+            </button>
+            <button id="themeDarkOption" type="button" class="preference-option" onclick="applyTheme('dark')">
+              <i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div id="currentAttendeesView" style="display: none">
+        <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
+        <button class="btn secondary" type="button" onclick="loadCurrentAttendees()" data-i18n="refreshCurrentAttendees">
+          تحديث الحضور
+        </button>
+        <div id="currentAttendeesAvailability" class="attendance-window-note" aria-live="polite"></div>
+        <div id="currentAttendeesResults" class="report-list" aria-live="polite"></div>
       </div>
 
       <div id="attendanceReportView" style="display: none">
@@ -234,7 +254,7 @@
           <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
         </section>
         <section id="followupTabPanel" role="tabpanel" aria-labelledby="followupTabButton" hidden>
-          <p class="report-note" data-i18n="followupsNote">أشخاص غابوا عن اجتماعين متتاليين.</p>
+          <p class="report-note" data-i18n="followupsNote">أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.</p>
           <button class="btn secondary" onclick="loadFollowups()" data-i18n="refreshFollowupsBtn">
             تحديث القائمة
           </button>
@@ -254,7 +274,7 @@
           <div id="offlineSyncProgressResults" class="sync-progress-results"></div>
         </section>
         <div id="offlineQueueResults" class="report-list" aria-live="polite"></div>
-        <button id="syncOfflineEventsButton" class="btn" onclick="syncOfflineQueue()" data-i18n="syncNow">
+        <button id="syncOfflineEventsButton" class="btn" onclick="syncOfflineQueue('', true)" data-i18n="syncNow">
           مزامنة الآن
         </button>
       </div>
@@ -690,6 +710,6 @@
       </div>
     </div>
 
-    <script src="./js/app.js?v=21"></script>
+    <script src="./js/app.js?v=23"></script>
   </body>
 </html>

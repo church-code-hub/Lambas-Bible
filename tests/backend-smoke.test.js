@@ -288,13 +288,13 @@ test("builds a daily attendance report and can find an absent person by name", (
   assert.equal(sheets.get("Attendance 2026-10-18").rows[1][1], "Alice");
 });
 
-test("adds people missing two meetings to follow-up and closes completed follow-up", () => {
+test("adds previously attending people missing three meetings to follow-up", () => {
   const { context, rosterSheet } = createBackendContext([
     ["ID", "Name", "Card URL"],
     [1, "Alice", ""],
     [2, "Bob", ""],
   ]);
-  const dates = [14, 7, 0].map((daysAgo) => {
+  const dates = [21, 14, 7, 0].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     date.setHours(12, 0, 0, 0);
@@ -322,8 +322,8 @@ test("adds people missing two meetings to follow-up and closes completed follow-
   });
   const attendanceSheet = makeSheet([
     ["ID", "Name", ...dates],
-    [1, "Alice", "-", "", ""],
-    [2, "Bob", "", "", ""],
+    [1, "Alice", "-", "", "", ""],
+    [2, "Bob", "", "", "", ""],
   ]);
   const sheets = new Map([
     ["Attendance", attendanceSheet],
@@ -341,13 +341,13 @@ test("adds people missing two meetings to follow-up and closes completed follow-
   const firstList = context.getFollowupCandidates_();
   assert.deepEqual(
     Array.from(firstList.followups, (person) => [person.id, person.missedMeetings]),
-    [["1", 2], ["2", 3]],
+    [["1", 3]],
   );
   assert.equal(context.completeFollowup_("1", "admin@example.com").success, true);
   const refreshedList = context.getFollowupCandidates_();
   assert.deepEqual(
     Array.from(refreshedList.followups, (person) => person.id),
-    ["2"],
+    [],
   );
 });
 
@@ -401,7 +401,7 @@ test("cancels today's check-in without deleting its audit history", () => {
   assert.equal(context.cancelCheckin_(7, "admin@example.com").code, "CHECKIN_NOT_FOUND");
 });
 
-test("allows only the spreadsheet owner to use the check-in cancellation API", () => {
+test("allows authorized users to use the check-in cancellation API", () => {
   const { context, tokenResponses } = createBackendContext();
   const ownerEmail = "owner@example.com";
   const createTokenInfo = (email) => ({
@@ -413,7 +413,8 @@ test("allows only the spreadsheet owner to use the check-in cancellation API", (
   });
   tokenResponses.set("owner-token", createTokenInfo(ownerEmail));
   tokenResponses.set("admin-token", createTokenInfo("admin@example.com"));
-  context.isEmailAllowed = () => true;
+  tokenResponses.set("unauthorized-token", createTokenInfo("other@example.com"));
+  context.isEmailAllowed = (email) => email === ownerEmail || email === "admin@example.com";
   context.SpreadsheetApp.getActiveSpreadsheet = () => ({
     getOwner: () => ({ getEmail: () => ownerEmail }),
     getSheetByName: () => null,
@@ -437,10 +438,12 @@ test("allows only the spreadsheet owner to use the check-in cancellation API", (
 
   const ownerResult = send("owner-token");
   const adminResult = send("admin-token");
+  const unauthorizedResult = send("unauthorized-token");
 
   assert.equal(ownerResult.success, true);
-  assert.equal(adminResult.success, false);
-  assert.equal(cancellationCount, 1);
+  assert.equal(adminResult.success, true);
+  assert.equal(unauthorizedResult.success, false);
+  assert.equal(cancellationCount, 2);
 });
 
 test("verifies token audience and caches successful Google token checks", () => {
@@ -694,6 +697,115 @@ test("checks for an active check-in before delegating report check-out to scan f
   assert.equal(checkedOut.token, "qr:1");
   assert.equal(alreadyCheckedOut.kind, "error");
   assert.equal(processScanCount, 1);
+});
+
+test("logs an emergency check-out reason and rejects a missing reason", () => {
+  const { context } = createBackendContext();
+  const now = new Date();
+  const formatTime = (date) =>
+    `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  let schedule = {
+    startTime: formatTime(new Date(now.getTime() + 2 * 60 * 60 * 1000)),
+    endTime: formatTime(new Date(now.getTime() + 3 * 60 * 60 * 1000)),
+    allowedDays: [now.getDay()],
+  };
+  context.getSettings = () => schedule;
+  const checkinDate = vm.runInContext("new Date()", context);
+  const rows = [[
+    "1",
+    "Attendee",
+    checkinDate,
+    "Test Admin",
+    "",
+    "",
+    "",
+    "Active",
+  ]];
+  const auditRows = [];
+  const checkinSheet = {
+    getLastRow: () => rows.length + 1,
+    getRange: () => ({ getValues: () => rows }),
+  };
+  const auditSheet = { appendRow: (row) => auditRows.push(row) };
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => {
+      if (name === "Check-in & Check-out") return checkinSheet;
+      if (name === "Emergency Check-out") return auditSheet;
+      return null;
+    },
+    insertSheet: (name) => {
+      assert.equal(name, "Emergency Check-out");
+      return auditSheet;
+    },
+  });
+  context.encryptId = (id) => `qr:${id}`;
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.processScan = (token, email, timestamp, emergency) => ({
+    kind: emergency ? "out" : "warn",
+    token,
+    email,
+    name: "Attendee",
+  });
+
+  const missingReason = context.checkoutAttendance_("1", "admin@example.com", "", true);
+  const closedWindow = context.checkoutAttendance_(
+    "1",
+    "admin@example.com",
+    "Medical emergency",
+    true,
+  );
+  schedule = {
+    startTime: formatTime(new Date(now.getTime() - 60 * 60 * 1000)),
+    endTime: formatTime(new Date(now.getTime() + 60 * 60 * 1000)),
+    allowedDays: [new Date(now.getTime() - 60 * 60 * 1000).getDay()],
+  };
+  const result = context.checkoutAttendance_(
+    "1",
+    "admin@example.com",
+    "Medical emergency",
+    true,
+  );
+
+  assert.equal(missingReason.code, "INVALID_EMERGENCY_REASON");
+  assert.equal(closedWindow.code, "ATTENDANCE_WINDOW_CLOSED");
+  assert.equal(result.kind, "out");
+  assert.equal(auditRows.length, 1);
+  assert.equal(auditRows[0][4], "Medical emergency");
+});
+
+test("returns only active check-ins with schedule-window state", () => {
+  const { context } = createBackendContext();
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const addMinutes = (date, minutes) => {
+    const value = new Date(date.getTime() + minutes * 60000);
+    return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  };
+  context.getSettings = () => ({
+    startTime: addMinutes(now, -60),
+    endTime: addMinutes(now, 15),
+    allowedDays: [now.getDay()],
+  });
+  const rows = [
+    ["1", "Active person", vm.runInContext("new Date()", context), "A", "", "", "", "Active"],
+    ["2", "Cancelled person", vm.runInContext("new Date()", context), "A", "", "", "", "Cancelled"],
+    ["3", "Checked out person", vm.runInContext("new Date()", context), "A", new Date(), "A", "", "Active"],
+  ];
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Check-in & Check-out"
+      ? {
+          getLastRow: () => rows.length + 1,
+          getRange: () => ({ getValues: () => rows }),
+        }
+      : null,
+  });
+
+  const result = context.getCurrentAttendees_();
+
+  assert.equal(result.success, true);
+  assert.deepEqual(Array.from(result.attendees, (person) => person.id), ["1"]);
+  assert.equal(result.windowOpen, true);
+  assert.equal(result.checkoutOpen, true);
 });
 
 test("stops an offline batch when an earlier event is still pending", () => {
