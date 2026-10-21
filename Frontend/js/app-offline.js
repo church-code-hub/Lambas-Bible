@@ -2,13 +2,16 @@
         if (!window.indexedDB) return Promise.reject(new Error("IndexedDB unavailable"));
         if (!offlineDatabasePromise) {
           offlineDatabasePromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open("lambas-attendance-offline", 2);
+            const request = indexedDB.open("lambas-attendance-offline", 3);
             request.onupgradeneeded = () => {
               if (!request.result.objectStoreNames.contains("events")) {
                 request.result.createObjectStore("events", { keyPath: "eventId" });
               }
               if (!request.result.objectStoreNames.contains("roster")) {
                 request.result.createObjectStore("roster", { keyPath: "id" });
+              }
+              if (!request.result.objectStoreNames.contains("metadata")) {
+                request.result.createObjectStore("metadata", { keyPath: "key" });
               }
             };
             request.onsuccess = () => resolve(request.result);
@@ -69,16 +72,31 @@
       async function saveCachedRoster(roster) {
         const database = await openOfflineDatabase();
         await new Promise((resolve, reject) => {
-          const transaction = database.transaction("roster", "readwrite");
+          const transaction = database.transaction(["roster", "metadata"], "readwrite");
           const store = transaction.objectStore("roster");
           store.clear();
           roster.forEach((person) => store.put(person));
+          transaction.objectStore("metadata").put({
+            key: "roster",
+            syncedAt: new Date().toISOString(),
+            count: roster.length,
+          });
           transaction.oncomplete = resolve;
           transaction.onerror = () => reject(transaction.error || new Error("Could not save roster"));
           transaction.onabort = () => reject(transaction.error || new Error("Roster cache update was cancelled"));
         });
         offlineRosterSearchCache = null;
         cachedRosterPromise = Promise.resolve(roster);
+      }
+
+      async function getCachedRosterMetadata() {
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = database.transaction("metadata", "readonly");
+          const request = transaction.objectStore("metadata").get("roster");
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error || new Error("Could not read roster cache details"));
+        });
       }
 
       async function refreshRosterCache() {
@@ -96,10 +114,22 @@
             qrId: String(person.qrId || "").trim(),
           }));
           await saveCachedRoster(roster);
+          await updateOfflineStatus();
           return true;
         } catch (error) {
-          showToast(translations[currentLang].offlineSearchCacheFailed, "info");
+          console.error("Could not refresh the saved offline roster.", error);
+          showToast(
+            `${translations[currentLang].offlineSearchCacheFailed} ${error.message || ""}`.trim(),
+            "info",
+            8000,
+          );
           return false;
+        }
+      }
+
+      async function manuallyRefreshRosterCache() {
+        if (await refreshRosterCache()) {
+          showToast(translations[currentLang].offlineRosterUpdated, "success");
         }
       }
 
@@ -286,9 +316,26 @@
             toolbarCount.hidden = count === 0;
             toolbarCount.textContent = count > 99 ? "99+" : String(count);
           }
+          const rosterStatus = document.getElementById("offlineRosterStatus");
+          if (rosterStatus) {
+            const metadata = await getCachedRosterMetadata();
+            rosterStatus.textContent = metadata
+              ? translations[currentLang].offlineRosterLastUpdated
+                  .replace("{count}", String(metadata.count))
+                  .replace(
+                    "{date}",
+                    new Date(metadata.syncedAt).toLocaleString(
+                      currentLang === "ar" ? "ar" : "en",
+                      { dateStyle: "medium", timeStyle: "short" },
+                    ),
+                  )
+              : translations[currentLang].offlineRosterNotSaved;
+          }
         } catch (error) {
           if (toolbarCount) toolbarCount.hidden = true;
-          console.error("Could not read saved sync count.", error);
+          console.error("Could not read local offline readiness data.", error);
+          const rosterStatus = document.getElementById("offlineRosterStatus");
+          if (rosterStatus) rosterStatus.textContent = translations[currentLang].offlineRosterStatusFailed;
         }
       }
 
@@ -307,8 +354,10 @@
         });
         const currentAttendeesTile = document.getElementById("currentAttendeesTile");
         if (currentAttendeesTile) {
-          currentAttendeesTile.disabled =
-            !navigator.onLine || !currentAttendeesWindowOpen;
+          currentAttendeesTile.disabled = !navigator.onLine;
+          if (typeof updateCurrentAttendeesTileState === "function") {
+            updateCurrentAttendeesTileState();
+          }
         }
       }
 

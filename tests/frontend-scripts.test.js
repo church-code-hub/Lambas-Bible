@@ -60,6 +60,59 @@ test("dashboard view does not use horizontal view-entry animation", () => {
   );
 });
 
+test("dashboard keeps check-in actions prominent and groups secondary tools", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+  const dashboardStart = html.indexOf('<div id="dashboardView"');
+  const dashboardEnd = html.indexOf('<div id="appSettingsView"', dashboardStart);
+  const dashboard = html.slice(dashboardStart, dashboardEnd);
+
+  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?data-i18n="scanQr"/);
+  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?data-i18n="searchName"/);
+  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?showView\('addView'\)/);
+  assert.equal((dashboard.match(/<details class="dashboard-tool-group">/g) || []).length, 3);
+  for (const key of ["peopleTools", "attendanceTools", "managementTools"]) {
+    assert.match(dashboard, new RegExp(`data-i18n="${key}"`));
+    assert.equal((translations.match(new RegExp(`${key}:`, "g")) || []).length, 2);
+  }
+  for (const action of [
+    "showView('addView')",
+    "showView('cardShareView')",
+    "openRosterManagement()",
+    "openAttendanceReport()",
+    "openSheet()",
+    "openCurrentAttendeesView()",
+    "openScheduleSettings()",
+  ]) {
+    assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
+  }
+  assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
+  assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
+  assert.match(html, /css\/styles\.css\?v=53/);
+  assert.match(serviceWorker, /lambas-bible-shell-v53/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=53/);
+});
+
+test("roster management and attendance correction/trend tools remain inside existing views", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
+
+  assert.match(html, /id="rosterView"[\s\S]*?id="rosterManagementResults"/);
+  assert.match(views, /async function loadRosterManagement\(\)/);
+  assert.match(views, /apiCall\("update_roster_person"/);
+  assert.match(html, /attendance-trends-panel[\s\S]*?id="attendanceTrendsResults"/);
+  assert.match(views, /apiCall\("get_attendance_trends"/);
+  assert.match(html, /id="attendanceCorrectionDialog"[\s\S]*?onsubmit="submitAttendanceCorrection\(event\)"/);
+  assert.match(views, /apiCall\("correct_attendance"/);
+  assert.match(views, /attendanceCorrectionReason[\s\S]*?reason:/);
+  for (const key of ["manageRoster", "attendanceTrendsTitle", "attendanceCorrectionTitle"]) {
+    assert.equal((translations.match(new RegExp(`${key}:`, "g")) || []).length, 2);
+  }
+});
+
 test("request loaders cover the view and prevent navigation until requests settle", () => {
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
@@ -182,7 +235,7 @@ test("home navigation confirms unsaved settings and supports continue or discard
   assert.equal(navigation.length, 3);
 });
 
-test("current attendees provide search, three-column actions, and an emergency dialog", () => {
+test("current attendees provide a compact table, search, and emergency actions", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
@@ -194,10 +247,114 @@ test("current attendees provide search, three-column actions, and an emergency d
   assert.match(views, /async function submitEmergencyCheckout\(event\)/);
   assert.match(views, /current-attendees-action-label/);
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?min-width:\s*0/);
-  assert.match(styles, /\.current-attendees-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(views, /currentAttendeesAdminTime[\s\S]*?currentAttendeesActions/);
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
+  assert.match(styles, /\.current-attendees-header\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
+  assert.doesNotMatch(styles, /\.current-attendees-header\s*\{\s*display:\s*none/);
+  assert.match(styles, /\.current-attendees-table\s*\{[^}]*overflow:\s*hidden/);
   assert.match(styles, /\.attendance-action-dialog::backdrop/);
+});
+
+test("attendance window errors preserve the last known open state and retry promptly", async () => {
+  let retryDelay = 0;
+  const tile = {
+    disabled: true,
+    classList: { toggle() {} },
+    setAttribute() {},
+    removeAttribute() {},
+  };
+  const browserContext = vm.createContext({
+    window: {
+      addEventListener() {},
+      clearTimeout() {},
+      setTimeout(_callback, delay) {
+        retryDelay = delay;
+        return 1;
+      },
+    },
+    document: { getElementById: () => tile },
+    navigator: { onLine: true },
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    console: { error() {} },
+    updateOfflineStatus() {},
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-views.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.currentActiveViewId = "dashboardView";
+  browserContext.currentAttendeesWindowOpen = true;
+  browserContext.apiCall = async () => { throw new Error("temporary network failure"); };
+
+  await browserContext.refreshCurrentAttendeesWindow();
+
+  assert.equal(browserContext.currentAttendeesWindowOpen, true);
+  assert.equal(tile.disabled, false);
+  assert.ok(retryDelay <= 10000);
+});
+
+test("current attendees stay closed and show a toast when clicked outside the attendance window", async () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  const i18n = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+
+  assert.match(html, /id="currentAttendeesTile"[^>]*onclick="openCurrentAttendeesView\(\)"/);
+  assert.match(html, /id="currentAttendeesClosedBadge"[^>]*data-i18n="attendanceWindowClosedBadge"/);
+  assert.match(views, /async function openCurrentAttendeesView\(\)/);
+  assert.match(views, /if \(!result\.windowOpen\) \{[\s\S]*?showToast\([\s\S]*?return;/);
+  assert.match(views, /attendanceWindowCloseMessage\(result\.closeReason\)/);
+  assert.match(views, /tile\.classList\.toggle\("is-window-closed", isClosed\)/);
+  assert.match(views, /tile\.setAttribute\("aria-disabled", String\(!navigator\.onLine\)\)/);
+  assert.match(offline, /currentAttendeesTile\.disabled = !navigator\.onLine/);
+  assert.doesNotMatch(offline, /currentAttendeesTile\.disabled =\s*!navigator\.onLine \|\| !currentAttendeesWindowOpen/);
+  assert.match(fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8"), /\.tile\.is-window-closed\s*\{[^}]*filter:\s*grayscale/);
+  for (const key of ["attendanceWindowBeforeMeeting", "attendanceWindowAfterMeeting", "attendanceWindowNoMeetingToday"]) {
+    assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 2);
+  }
+
+  const tile = {
+    disabled: false,
+    classList: { toggle() {} },
+    setAttribute() {},
+    removeAttribute() {},
+  };
+  const messages = [];
+  const openedViews = [];
+  const browserContext = vm.createContext({
+    window: { addEventListener() {} },
+    document: { getElementById: (id) => id === "currentAttendeesTile" ? tile : null },
+    navigator: { onLine: true },
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    showView: (id) => openedViews.push(id),
+    showToast: (message) => messages.push(message),
+    updateOfflineStatus() {},
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-views.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"), browserContext);
+  }
+  browserContext.showToast = (message) => messages.push(message);
+  browserContext.showView = (id) => openedViews.push(id);
+  browserContext.currentActiveViewId = "dashboardView";
+  browserContext.apiCall = async () => ({
+    success: true,
+    windowOpen: false,
+    closeReason: "after_meeting",
+  });
+  await browserContext.openCurrentAttendeesView();
+  assert.deepEqual(openedViews, []);
+  assert.match(messages[0], /لا يمكن فتح الحضور الحالي/);
+  assert.match(messages[0], /انتهى وقت إدارة الحضور/);
+
+  browserContext.apiCall = async () => ({ success: true, windowOpen: true });
+  await browserContext.openCurrentAttendeesView();
+  assert.deepEqual(openedViews, ["currentAttendeesView"]);
 });
 
 test("saving schedule settings returns to the dashboard", async () => {
@@ -263,7 +420,7 @@ test("attendance sheet action remains separate from display filters and sync que
     /syncOfflineQueue/,
   );
   assert.match(offline, /toolbarButton\.disabled = isSyncingOfflineQueue;/);
-  assert.match(backend, /people\.forEach\(\(person\) => reportRows\.push\(\[/);
+  assert.match(backend, /exportedPeople\.forEach\(\(person\) => reportRows\.push\(\[/);
   assert.doesNotMatch(backend, /attendees\.forEach\(\(person\) => reportRows\.push\(\[/);
 });
 

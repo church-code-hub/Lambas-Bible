@@ -104,9 +104,16 @@
           if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
           if (currentActiveViewId === "attendanceReportView") {
             if (attendanceReportTab === "followups") loadFollowups();
-            else loadAttendanceReportDates();
+            else {
+              loadAttendanceReportDates();
+              if (document.querySelector(".attendance-trends-panel").open) {
+                loadAttendanceTrends();
+              }
+            }
           }
           if (currentActiveViewId === "currentAttendeesView") loadCurrentAttendees();
+          if (currentActiveViewId === "rosterView") renderRosterManagement();
+          if (currentActiveViewId === "appSettingsView") updateOfflineStatus();
         };
         if (currentLang === lang) changeLanguage();
         else runAppearanceTransition(changeLanguage);

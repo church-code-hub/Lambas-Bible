@@ -117,6 +117,7 @@
           "addView",
           "adminSettingsView",
           "appSettingsView",
+          "rosterView",
           "scheduleSettingsView",
           "resultView",
           "attendanceReportView",
@@ -235,11 +236,150 @@
         showView("appSettingsView");
       }
 
-      function openCurrentAttendeesView() {
-        if (!currentAttendeesWindowOpen) return;
-        const alreadyOpen = currentActiveViewId === "currentAttendeesView";
-        showView("currentAttendeesView");
-        if (alreadyOpen) loadCurrentAttendees();
+      function openRosterManagement() {
+        showView("rosterView");
+        loadRosterManagement();
+      }
+
+      async function loadRosterManagement() {
+        const container = document.getElementById("rosterManagementResults");
+        showReportSkeleton(container);
+        try {
+          const result = await apiCall("get_roster_management");
+          if (
+            currentActiveViewId !== "rosterView" ||
+            !result ||
+            !result.success ||
+            !Array.isArray(result.people)
+          ) {
+            if (currentActiveViewId === "rosterView") {
+              throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+            }
+            return;
+          }
+          rosterManagementPeople = result.people;
+          renderRosterManagement();
+        } catch (error) {
+          if (currentActiveViewId !== "rosterView") return;
+          container.replaceChildren();
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      function filterRosterManagement() {
+        renderRosterManagement();
+      }
+
+      function renderRosterManagement() {
+        const container = document.getElementById("rosterManagementResults");
+        const query = normalizeSearchName(document.getElementById("rosterSearchInput").value);
+        const people = rosterManagementPeople.filter((person) =>
+          !query || normalizeSearchName(person.name).includes(query),
+        );
+        if (!people.length) {
+          const empty = document.createElement("p");
+          empty.className = "report-note";
+          empty.textContent = translations[currentLang].rosterNoMatches;
+          container.replaceChildren(empty);
+          return;
+        }
+        const panel = document.createElement("section");
+        panel.className = "report-panel";
+        people.forEach((person) => {
+          const row = document.createElement("form");
+          row.className = "roster-person-row";
+          row.addEventListener("submit", (event) => {
+            event.preventDefault();
+            saveRosterPerson(row, person);
+          });
+          const title = document.createElement("strong");
+          title.textContent = `${person.name} · #${person.id}`;
+          const nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.maxLength = 120;
+          nameInput.value = person.name;
+          nameInput.setAttribute("aria-label", translations[currentLang].rosterNameLabel);
+          const activeLabel = document.createElement("label");
+          const activeInput = document.createElement("input");
+          activeInput.type = "checkbox";
+          activeInput.checked = person.active;
+          activeInput.setAttribute("aria-label", translations[currentLang].rosterActiveLabel);
+          const activeText = document.createElement("span");
+          activeText.textContent = translations[currentLang].rosterActiveLabel;
+          activeLabel.append(activeInput, activeText);
+          const saveButton = document.createElement("button");
+          saveButton.type = "submit";
+          saveButton.className = "btn secondary";
+          saveButton.dataset.onlineOnly = "";
+          saveButton.textContent = translations[currentLang].saveChangesBtn;
+          row.append(title, nameInput, activeLabel, saveButton);
+          panel.appendChild(row);
+        });
+        container.replaceChildren(panel);
+        updateOnlineOnlyControls();
+      }
+
+      async function saveRosterPerson(form, person) {
+        const inputs = form.querySelectorAll("input");
+        const name = inputs[0].value.trim();
+        const active = inputs[1].checked;
+        try {
+          const result = await apiCall("update_roster_person", {
+            id: person.id,
+            name,
+            active,
+          });
+          if (!result || !result.success) throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+          showToast(translations[currentLang].rosterSaved, "success");
+          await loadRosterManagement();
+          await refreshRosterCache();
+        } catch (error) {
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      async function openCurrentAttendeesView() {
+        if (currentAttendeesOpenRequestInFlight || !navigator.onLine) return;
+        const sourceViewId = currentActiveViewId;
+        const tile = document.getElementById("currentAttendeesTile");
+        currentAttendeesOpenRequestInFlight = true;
+        if (tile) {
+          tile.disabled = true;
+          tile.setAttribute("aria-busy", "true");
+        }
+        try {
+          const result = await apiCall("get_attendance_window");
+          if (currentActiveViewId !== sourceViewId) return;
+          if (!result || !result.success || typeof result.windowOpen !== "boolean") {
+            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceWindowCheckFailed);
+          }
+          currentAttendeesWindowOpen = result.windowOpen;
+          currentAttendeesWindowCloseReason = result.closeReason || "";
+          updateCurrentAttendeesTileState();
+          if (!result.windowOpen) {
+            showToast(
+              translations[currentLang].currentAttendeesCannotOpen.replace(
+                "{reason}",
+                attendanceWindowCloseMessage(result.closeReason),
+              ),
+              "info",
+            );
+            return;
+          }
+          const alreadyOpen = currentActiveViewId === "currentAttendeesView";
+          showView("currentAttendeesView");
+          if (alreadyOpen) loadCurrentAttendees();
+        } catch (error) {
+          if (currentActiveViewId === sourceViewId) {
+            showToast(error.message || translations[currentLang].attendanceWindowCheckFailed, "error");
+          }
+        } finally {
+          currentAttendeesOpenRequestInFlight = false;
+          if (tile) {
+            tile.disabled = !navigator.onLine;
+            tile.removeAttribute("aria-busy");
+          }
+        }
       }
 
       function showCurrentAttendeesSkeleton() {
@@ -272,7 +412,6 @@
         let nextWindowCheckMs = 30000;
         const tile = document.getElementById("currentAttendeesTile");
         if (!tile) return;
-        currentAttendeesWindowOpen = false;
         tile.disabled = true;
         tile.setAttribute("aria-busy", "true");
         if (!currentUser || !navigator.onLine || currentActiveViewId !== "dashboardView") {
@@ -282,16 +421,21 @@
         try {
           const result = await apiCall("get_attendance_window");
           if (requestId !== currentAttendeesWindowRequestId) return;
-          currentAttendeesWindowOpen = Boolean(result && result.success && result.windowOpen);
+          if (!result || !result.success || typeof result.windowOpen !== "boolean") {
+            throw new Error(result && result.message ? result.message : "Invalid attendance window response");
+          }
+          currentAttendeesWindowOpen = result.windowOpen;
+          currentAttendeesWindowCloseReason = result.closeReason || "";
           if (Number.isFinite(Number(result?.nextCheckMs))) {
             nextWindowCheckMs = Number(result.nextCheckMs);
           }
         } catch (error) {
           console.error("Could not check the current-attendance window.", error);
-          currentAttendeesWindowOpen = false;
+          nextWindowCheckMs = 10000;
         } finally {
           if (requestId === currentAttendeesWindowRequestId) {
-            tile.disabled = !navigator.onLine || !currentAttendeesWindowOpen;
+            tile.disabled = !navigator.onLine;
+            updateCurrentAttendeesTileState();
             tile.removeAttribute("aria-busy");
             if (navigator.onLine && currentUser && currentActiveViewId === "dashboardView") {
               const delay = Math.max(1000, nextWindowCheckMs - (Date.now() - requestStartedAt));
@@ -302,6 +446,16 @@
             }
           }
         }
+      }
+
+      function updateCurrentAttendeesTileState() {
+        const tile = document.getElementById("currentAttendeesTile");
+        if (!tile) return;
+        const isClosed = !currentAttendeesWindowOpen;
+        tile.classList.toggle("is-window-closed", isClosed);
+        tile.setAttribute("aria-disabled", String(!navigator.onLine));
+        const badge = document.getElementById("currentAttendeesClosedBadge");
+        if (badge) badge.hidden = !isClosed;
       }
 
       async function loadCurrentAttendees(showLoading = true, loaderText = "Loading current attendance...") {
@@ -330,18 +484,19 @@
           const snapshot = JSON.stringify(result);
           availability.textContent = result.windowOpen
             ? translations[currentLang].attendanceWindowOpen
-            : translations[currentLang].attendanceWindowClosed;
+            : attendanceWindowCloseMessage(result.closeReason);
           availability.classList.toggle("is-open", result.windowOpen);
           availability.classList.toggle("is-closed", !result.windowOpen);
           const refreshButton = document.getElementById("refreshCurrentAttendeesButton");
           if (refreshButton) refreshButton.disabled = !navigator.onLine || !result.windowOpen;
           if (!result.windowOpen) {
             currentAttendeesWindowOpen = false;
+            currentAttendeesWindowCloseReason = result.closeReason || "";
             currentAttendeesCheckoutOpen = false;
             currentAttendeesData = [];
             const closed = document.createElement("p");
             closed.className = "report-note";
-            closed.textContent = translations[currentLang].attendanceWindowClosed;
+            closed.textContent = attendanceWindowCloseMessage(result.closeReason);
             container.replaceChildren(closed);
             currentAttendeesData = [];
             currentAttendeesSnapshot = snapshot;
@@ -368,6 +523,16 @@
           }
           if (showLoading) hideLoader();
         }
+      }
+
+      function attendanceWindowCloseMessage(reason) {
+        const messageKey = {
+          before_meeting: "attendanceWindowBeforeMeeting",
+          after_meeting: "attendanceWindowAfterMeeting",
+          no_meeting_today: "attendanceWindowNoMeetingToday",
+        }[reason];
+        return translations[currentLang][messageKey] ||
+          translations[currentLang].attendanceWindowClosed;
       }
 
       function renderCurrentAttendees(checkoutOpen) {
@@ -761,7 +926,10 @@
           const stateHeader = document.createElement("strong");
           stateHeader.setAttribute("role", "columnheader");
           stateHeader.textContent = translations[currentLang].attendanceStateLabel;
-          header.append(nameHeader, stateHeader);
+          const actionHeader = document.createElement("strong");
+          actionHeader.setAttribute("role", "columnheader");
+          actionHeader.textContent = translations[currentLang].attendanceActionsLabel;
+          header.append(nameHeader, stateHeader, actionHeader);
           table.appendChild(header);
           if (!visiblePeople.length) {
             const empty = document.createElement("p");
@@ -786,7 +954,8 @@
               : person.attended
                 ? translations[currentLang].attendanceOnTime
                 : translations[currentLang].absent;
-            item.append(name, state);
+            if (person.corrected) state.title = translations[currentLang].attendanceCorrectedLabel;
+            item.append(name, state, createAttendanceCorrectionButton(person));
             table.appendChild(item);
           });
           panel.appendChild(table);
@@ -814,12 +983,156 @@
               : person.attended
                 ? translations[currentLang].attendanceOnTime
                 : translations[currentLang].absent;
-            item.append(name, state);
+            if (person.corrected) state.title = translations[currentLang].attendanceCorrectedLabel;
+            item.append(name, state, createAttendanceCorrectionButton(person));
             resultPanel.appendChild(item);
           });
         }
         if (resultPanel) searchResult.appendChild(resultPanel);
         if (created && report.report) showAttendanceSheetResult(report);
+      }
+
+      function createAttendanceCorrectionButton(person) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn secondary attendance-correction-button";
+        button.dataset.onlineOnly = "";
+        button.textContent = translations[currentLang].attendanceCorrectionAction;
+        button.setAttribute(
+          "aria-label",
+          `${translations[currentLang].attendanceCorrectionAction}: ${person.name}`,
+        );
+        button.addEventListener("click", () =>
+          openAttendanceCorrection(person.id, person.name, person.state, person.delayMinutes),
+        );
+        return button;
+      }
+
+      function openAttendanceCorrection(id, name, state, delayMinutes) {
+        const dialog = document.getElementById("attendanceCorrectionDialog");
+        document.getElementById("attendanceCorrectionId").value = id;
+        document.getElementById("attendanceCorrectionPerson").textContent =
+          `${name} · ${document.getElementById("attendanceReportDate").value}`;
+        document.getElementById("attendanceCorrectionState").value =
+          ["on_time", "delayed", "absent"].includes(state) ? state : "absent";
+        document.getElementById("attendanceCorrectionDelay").value =
+          delayMinutes > 0 ? delayMinutes : "";
+        document.getElementById("attendanceCorrectionReason").value = "";
+        toggleAttendanceCorrectionDelay();
+        if (!dialog.open) dialog.showModal();
+      }
+
+      function toggleAttendanceCorrectionDelay() {
+        const visible =
+          document.getElementById("attendanceCorrectionState").value === "delayed";
+        const delayInput = document.getElementById("attendanceCorrectionDelay");
+        const delayLabel = document.getElementById("attendanceCorrectionDelayLabel");
+        delayInput.hidden = !visible;
+        delayLabel.hidden = !visible;
+        delayInput.required = visible;
+      }
+
+      function closeAttendanceCorrection() {
+        const dialog = document.getElementById("attendanceCorrectionDialog");
+        if (dialog.open) dialog.close();
+      }
+
+      async function submitAttendanceCorrection(event) {
+        event.preventDefault();
+        const submit = event.currentTarget.querySelector('[type="submit"]');
+        if (submit.disabled) return;
+        submit.disabled = true;
+        try {
+          const state = document.getElementById("attendanceCorrectionState").value;
+          const result = await apiCall("correct_attendance", {
+            date: document.getElementById("attendanceReportDate").value,
+            id: document.getElementById("attendanceCorrectionId").value,
+            state: state,
+            delayMinutes: state === "delayed"
+              ? Number(document.getElementById("attendanceCorrectionDelay").value)
+              : 0,
+            reason: document.getElementById("attendanceCorrectionReason").value.trim(),
+          });
+          if (!result || !result.success) {
+            throw new Error(
+              result && result.message
+                ? result.message
+                : translations[currentLang].attendanceCorrectionSaveFailed,
+            );
+          }
+          closeAttendanceCorrection();
+          showToast(translations[currentLang].attendanceCorrectionSaveSuccess, "success");
+          await loadAttendanceReport();
+          if (document.querySelector(".attendance-trends-panel").open) {
+            await loadAttendanceTrends();
+          }
+        } catch (error) {
+          showToast(error.message || translations[currentLang].attendanceCorrectionSaveFailed, "error");
+        } finally {
+          submit.disabled = !navigator.onLine;
+        }
+      }
+
+      async function loadAttendanceTrends() {
+        const container = document.getElementById("attendanceTrendsResults");
+        const requestId = ++attendanceTrendsRequestId;
+        showReportSkeleton(container, 3);
+        try {
+          const result = await apiCall("get_attendance_trends", {
+            meetings: Number(document.getElementById("attendanceTrendMeetings").value),
+          });
+          if (
+            requestId !== attendanceTrendsRequestId ||
+            currentActiveViewId !== "attendanceReportView" ||
+            attendanceReportTab !== "attendance"
+          ) return;
+          if (!result || !result.success || !Array.isArray(result.trends)) {
+            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceTrendNoData);
+          }
+          renderAttendanceTrends(result.trends);
+        } catch (error) {
+          if (requestId !== attendanceTrendsRequestId) return;
+          container.replaceChildren();
+          showToast(error.message || translations[currentLang].attendanceTrendNoData, "error");
+        }
+      }
+
+      function renderAttendanceTrends(trends) {
+        const container = document.getElementById("attendanceTrendsResults");
+        if (!trends.length) {
+          const empty = document.createElement("p");
+          empty.className = "report-note";
+          empty.textContent = translations[currentLang].attendanceTrendNoData;
+          container.replaceChildren(empty);
+          return;
+        }
+        const list = document.createElement("div");
+        list.className = "attendance-trend-list";
+        trends.forEach((trend) => {
+          const item = document.createElement("article");
+          item.className = "attendance-trend-item";
+          const date = document.createElement("strong");
+          date.textContent = formatAttendanceDateOption(
+            trend.date,
+            localDateInputValue(new Date()),
+          );
+          const stats = document.createElement("span");
+          stats.textContent = [
+            `${translations[currentLang].attendanceTrendAttendedLabel}: ${trend.attended}/${trend.total}`,
+            `${translations[currentLang].attendanceTrendAbsentLabel}: ${trend.absent}`,
+            `${translations[currentLang].attendanceTrendDelayedLabel}: ${trend.delayed}`,
+          ].join(" · ");
+          const rate = document.createElement("strong");
+          rate.className = "attendance-trend-rate";
+          rate.textContent = `${trend.attendanceRate}%`;
+          rate.setAttribute(
+            "aria-label",
+            `${translations[currentLang].attendanceTrendRateLabel}: ${trend.attendanceRate}%`,
+          );
+          item.append(date, stats, rate);
+          list.appendChild(item);
+        });
+        container.replaceChildren(list);
       }
 
       function startAttendanceSearchAgain() {
@@ -844,12 +1157,22 @@
       function showAttendanceSheetResult(report) {
         const dialog = document.getElementById("attendanceSheetResultDialog");
         const date = formatAttendanceDateOption(report.date, localDateInputValue(new Date()));
+        const selectedCount = Number(report.exportedCount) || 0;
+        const sheetType = report.report.type || "both";
+        const selectionLabel = translations[currentLang][
+          sheetType === "attendees"
+            ? "attendanceSheetAttendees"
+            : sheetType === "absents"
+              ? "attendanceSheetAbsents"
+              : "attendanceSheetBoth"
+        ];
         const sheetMessage = report.report.alreadyExists
           ? translations[currentLang].attendanceSheetAlreadyExistsMessage
           : translations[currentLang].attendanceSheetCreatedMessage
-              .replace("{total}", report.people.length)
-              .replace("{attended}", report.count);
-        document.getElementById("attendanceSheetResultMessage").textContent = `${sheetMessage} · ${date}`;
+              .replace("{total}", String(selectedCount))
+              .replace("{attended}", String(report.count));
+        document.getElementById("attendanceSheetResultMessage").textContent =
+          `${sheetMessage} · ${selectionLabel} · ${date}`;
         document.getElementById("attendanceSheetOpenLink").href =
           `${GOOGLE_SHEET_URL}#gid=${report.report.sheetId}`;
         if (!dialog.open) dialog.showModal();
@@ -860,7 +1183,7 @@
         if (dialog.open) dialog.close();
       }
 
-      async function loadAttendanceReport(createSheet = false) {
+      async function loadAttendanceReport(createSheet = false, sheetType = "both") {
         const requestId = ++attendanceReportRequestId;
         const date = document.getElementById("attendanceReportDate").value;
         const query = document.getElementById("attendancePersonQuery").value.trim();
@@ -892,7 +1215,7 @@
         try {
           const result = await apiCall(
             createSheet ? "create_daily_attendance_report" : "get_attendance_day",
-            { date: date, name: query },
+            { date: date, name: query, type: createSheet ? sheetType : undefined },
           );
           if (
             requestId !== attendanceReportRequestId ||
@@ -918,7 +1241,8 @@
       }
 
       function createAttendanceReportSheet() {
-        loadAttendanceReport(true);
+        const sheetType = document.getElementById("attendanceSheetType").value;
+        loadAttendanceReport(true, sheetType);
       }
 
       async function checkoutAttendance(id) {

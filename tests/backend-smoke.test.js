@@ -59,7 +59,25 @@ function createBackendContext(
       computeDigest: (_algorithm, value) =>
         Buffer.from(String(value)).subarray(0, 32),
       base64EncodeWebSafe: (value) => Buffer.from(value).toString("base64url"),
+      formatDate: (date, timeZone, pattern) => {
+        const parts = Object.fromEntries(
+          new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+            weekday: "short",
+          }).formatToParts(date).map((part) => [part.type, part.value]),
+        );
+        const weekday = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+        if (pattern !== "yyyy-MM-dd|HH|mm|u") throw new Error("Unsupported date format");
+        return `${parts.year}-${parts.month}-${parts.day}|${parts.hour}|${parts.minute}|${weekday[parts.weekday]}`;
+      },
     },
+    Session: { getScriptTimeZone: () => "UTC" },
     CacheService: {
       getScriptCache: () => ({
         get: (key) => tokenCache.get(key) || null,
@@ -92,6 +110,13 @@ function createBackendContext(
 
   vm.createContext(context);
   vm.runInContext(backendSource, context);
+  context.getSettings = () => ({
+    startTime: "10:00",
+    endTime: "12:00",
+    acceptedDelay: 15,
+    allowedDays: [0, 1, 2, 3, 4, 5, 6],
+    password: "current-password",
+  });
   context.getAdminNameByEmail = () => "Test Admin";
   context.isAttendanceTimeAllowed = () => false;
   if (stubCardGeneration) {
@@ -107,6 +132,45 @@ function createBackendContext(
     scriptPropertiesStore,
     tokenResponses,
     getTokenFetchCount: () => tokenFetchCount,
+  };
+}
+
+function createMutableSheet(rows) {
+  return {
+    rows,
+    getLastRow() {
+      return this.rows.length;
+    },
+    getLastColumn() {
+      return Math.max(0, ...this.rows.map((row) => row.length));
+    },
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      const sheet = this;
+      return {
+        getValues() {
+          return sheet.rows
+            .slice(row - 1, row - 1 + rowCount)
+            .map((values) => values.slice(column - 1, column - 1 + columnCount));
+        },
+        setValues(values) {
+          values.forEach((valuesRow, rowOffset) => {
+            const targetRow = row - 1 + rowOffset;
+            sheet.rows[targetRow] ||= [];
+            valuesRow.forEach((value, columnOffset) => {
+              sheet.rows[targetRow][column - 1 + columnOffset] = value;
+            });
+          });
+        },
+        setValue(value) {
+          sheet.rows[row - 1] ||= [];
+          sheet.rows[row - 1][column - 1] = value;
+        },
+        setBackground() {},
+      };
+    },
+    appendRow(values) {
+      this.rows.push(values);
+    },
   };
 }
 
@@ -129,6 +193,150 @@ test("blocks case/spacing and Arabic-diacritic duplicate names", () => {
   assert.equal(latinDuplicate.code, "DUPLICATE_NAME");
   assert.equal(arabicDuplicate.code, "DUPLICATE_NAME");
   assert.equal(rosterSheet.rows.length, 3);
+});
+
+test("manages roster names and archives people without removing historical rows", () => {
+  const rosterSheet = createMutableSheet([
+    ["ID", "Name", "Card URL", "Status"],
+    [1, "Alice", "", "Active"],
+    [2, "Bob", "", "Active"],
+  ]);
+  const sheets = new Map([["Roster", rosterSheet]]);
+  const { context } = createBackendContext();
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = createMutableSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  assert.deepEqual(
+    Array.from(context.getRosterManagement_().people, (person) => person.name),
+    ["Alice", "Bob"],
+  );
+  const saved = context.updateRosterPerson_("1", "Alice Smith", false, "admin@example.com");
+  assert.equal(saved.success, true);
+  assert.deepEqual(rosterSheet.rows[1], [1, "Alice Smith", "", "Inactive"]);
+  assert.deepEqual(
+    Array.from(context.getRosterSnapshot_(), (person) => [person.id, person.name]),
+    [["2", "Bob"]],
+  );
+  assert.equal(sheets.get("Roster Audit").rows.length, 2);
+});
+
+test("attendance corrections override reports and are recorded with their reason", () => {
+  const rosterSheet = createMutableSheet([
+    ["ID", "Name", "Card URL", "Status"],
+    [1, "Alice", "", "Active"],
+  ]);
+  const attendanceSheet = createMutableSheet([
+    ["ID", "Name", "2026-10-18"],
+    [1, "Alice", "++"],
+  ]);
+  const checkinSheet = createMutableSheet([
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    [1, "Alice", new Date(2026, 9, 18, 10), "Admin", "", "", "", "Active"],
+  ]);
+  const sheets = new Map([
+    ["Roster", rosterSheet],
+    ["Attendance", attendanceSheet],
+    ["Check-in & Check-out", checkinSheet],
+  ]);
+  const { context } = createBackendContext();
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = createMutableSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const corrected = context.correctAttendance_({
+    date: "2026-10-18",
+    id: "1",
+    state: "delayed",
+    delayMinutes: 12,
+    reason: "Manual sign-in was missed",
+  }, "admin@example.com");
+  assert.equal(corrected.success, true);
+  const report = context.getAttendanceDayReport_("2026-10-18", "");
+  assert.equal(report.people[0].state, "delayed");
+  assert.equal(report.people[0].delayMinutes, 12);
+  assert.equal(report.people[0].corrected, true);
+  assert.equal(attendanceSheet.rows[1][2], "+");
+  assert.equal(sheets.get("Attendance Corrections").rows[1][3], "on_time");
+  assert.equal(sheets.get("Attendance Corrections").rows[1][6], "Manual sign-in was missed");
+  assert.equal(context.correctAttendance_({
+    date: "2026-10-18",
+    id: "1",
+    state: "absent",
+    reason: "Attendance was entered on the wrong date",
+  }, "admin@example.com").success, true);
+  const correctedAbsentReport = context.getAttendanceDayReport_("2026-10-18", "");
+  assert.equal(correctedAbsentReport.people[0].state, "absent");
+  assert.equal(correctedAbsentReport.people[0].attended, false);
+  assert.equal(sheets.get("Attendance Corrections").rows[2][3], "delayed");
+});
+
+test("attendance trends summarize recent meeting attendance rates", () => {
+  const { context } = createBackendContext();
+  const today = context.attendanceSessionDateKey_(new Date(), context.getSettings());
+  const previous = context.previousAttendanceDateKey_(today);
+  const rosterSheet = createMutableSheet([
+    ["ID", "Name", "Card URL", "Status"],
+    [1, "Alice", "", "Active"],
+    [2, "Bob", "", "Active"],
+  ]);
+  const attendanceSheet = createMutableSheet([
+    ["ID", "Name", previous, today],
+    [1, "Alice", "++", "+"],
+    [2, "Bob", "", ""],
+  ]);
+  const sheets = new Map([
+    ["Roster", rosterSheet],
+    ["Attendance", attendanceSheet],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => sheets.get(name) || null,
+    insertSheet: (name) => {
+      const sheet = createMutableSheet([]);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  });
+
+  const result = context.getAttendanceTrends_(8);
+  assert.equal(result.success, true);
+  assert.equal(result.trends.length, 2);
+  assert.deepEqual(
+    [
+      result.trends[1].attended,
+      result.trends[1].absent,
+      result.trends[1].delayed,
+      result.trends[1].attendanceRate,
+    ],
+    [1, 1, 1, 50],
+  );
+  const corrected = context.correctAttendance_({
+    date: today,
+    id: "1",
+    state: "absent",
+    reason: "This meeting record belongs to another person",
+  }, "admin@example.com");
+  assert.equal(corrected.success, true);
+  const correctedTrends = context.getAttendanceTrends_(8);
+  assert.deepEqual(
+    [
+      correctedTrends.trends[1].attended,
+      correctedTrends.trends[1].absent,
+      correctedTrends.trends[1].delayed,
+      correctedTrends.trends[1].attendanceRate,
+    ],
+    [0, 2, 0, 0],
+  );
 });
 
 test("allocates the next ID after a successful unique attendee insert", () => {
@@ -503,7 +711,7 @@ test("builds a daily attendance report and can find an absent person by name", (
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[2]),
-    ["Bob", "-", ""],
+    ["Bob", "", ""],
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[3]),
@@ -511,7 +719,7 @@ test("builds a daily attendance report and can find an absent person by name", (
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").backgrounds, (row) => Array.from(row)),
-    [["#93c47d"], ["#ffe599"], ["#f6b26b"]],
+    [["#93c47d"], ["#ffffff"], ["#f6b26b"]],
   );
   assert.deepEqual(sheets.get("Attendance 2026-10-18").formatting, {
     horizontalAlignment: "center",
@@ -525,6 +733,32 @@ test("builds a daily attendance report and can find an absent person by name", (
   assert.equal(existingReport.report.alreadyExists, true);
   assert.equal(existingReport.report.sheetId, 77);
   assert.equal(JSON.stringify(sheets.get("Attendance 2026-10-18").rows), preservedRows);
+
+  const attendeeSheet = context.getAttendanceDayReport_(
+    "2026-10-18",
+    "",
+    true,
+    "attendees",
+  );
+  const absentSheet = context.getAttendanceDayReport_(
+    "2026-10-18",
+    "",
+    true,
+    "absents",
+  );
+  assert.equal(attendeeSheet.report.name, "Attendance 2026-10-18 - Attendees");
+  assert.equal(attendeeSheet.exportedCount, 2);
+  assert.equal(sheets.get(attendeeSheet.report.name).rows.length, 3);
+  assert.deepEqual(
+    Array.from(sheets.get(attendeeSheet.report.name).rows[2]),
+    ["Charlie", "+", "1 ساعة و15 دقيقة"],
+  );
+  assert.equal(absentSheet.report.name, "Attendance 2026-10-18 - Absentees");
+  assert.equal(absentSheet.exportedCount, 1);
+  assert.deepEqual(
+    Array.from(sheets.get(absentSheet.report.name).rows[1]),
+    ["Bob", "", ""],
+  );
 });
 
 test("adds previously attending people missing three meetings to follow-up", () => {
@@ -895,6 +1129,59 @@ test("evaluates the meeting schedule against the captured event timestamp", () =
     context.isAttendanceTimeAllowedAt_(new Date(2026, 9, 18, 13, 0, 0), settings),
     false,
   );
+});
+
+test("evaluates attendance windows and dates in the spreadsheet timezone", () => {
+  const { context } = createBackendContext();
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSpreadsheetTimeZone: () => "America/Los_Angeles",
+    getSheetByName: () => null,
+  });
+
+  test("explains why the attendance window is closed", () => {
+    const { context } = createBackendContext();
+    const settings = {
+      startTime: "10:00",
+      endTime: "12:00",
+      allowedDays: [0, 1, 2, 3, 4, 5, 6],
+    };
+    assert.equal(
+      context.attendanceWindowCloseReason_(new Date("2026-10-21T08:00:00Z"), settings),
+      "before_meeting",
+    );
+    assert.equal(
+      context.attendanceWindowCloseReason_(new Date("2026-10-21T14:00:00Z"), settings),
+      "after_meeting",
+    );
+    assert.equal(
+      context.attendanceWindowCloseReason_(
+        new Date("2026-10-21T08:00:00Z"),
+        { ...settings, allowedDays: [] },
+      ),
+      "no_meeting_today",
+    );
+  });
+  const sundayMeeting = {
+    startTime: "10:00",
+    endTime: "12:00",
+    allowedDays: [0],
+  };
+  const duringMeeting = new Date("2026-10-18T18:00:00.000Z");
+  const afterMeeting = new Date("2026-10-18T21:30:00.000Z");
+
+  assert.equal(context.isCurrentAttendanceWindowOpen_(duringMeeting, sundayMeeting), true);
+  assert.equal(context.isAttendanceTimeAllowedAt_(duringMeeting, sundayMeeting), true);
+  assert.equal(context.isCurrentAttendanceWindowOpen_(afterMeeting, sundayMeeting), false);
+
+  const overnightMeeting = {
+    startTime: "22:00",
+    endTime: "01:00",
+    allowedDays: [0],
+  };
+  const afterMidnight = new Date("2026-10-19T06:00:00.000Z");
+  assert.equal(context.isAttendanceTimeAllowedAt_(afterMidnight, overnightMeeting), true);
+  assert.equal(context.attendanceSessionDateKey_(afterMidnight, overnightMeeting), "2026-10-18");
+  assert.equal(context.attendanceDateKey_(afterMidnight), "2026-10-18");
 });
 
 test("ranks exact, multi-word, and typo-tolerant name search results", () => {

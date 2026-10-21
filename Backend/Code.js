@@ -133,6 +133,7 @@ function doGet(e) {
     else if (action === "get_admins")
       result = { success: true, admins: getAdminsData() };
   } catch (err) {
+    console.error("GET API action failed: " + String(action || "unknown"), err);
     result = {
       success: false,
       code: "SERVER_ERROR",
@@ -143,6 +144,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let action = "unknown";
   let result = {
     success: false,
     code: "INVALID_REQUEST",
@@ -157,7 +159,7 @@ function doPost(e) {
     const identity = verifyGoogleIdToken_(data.idToken);
     if (!identity.success) return responseJSON_(identity);
 
-    const action = data.action;
+    action = data.action;
     if (action === "check_auth") {
       const authorized = isEmailAllowed(identity.email);
       result = {
@@ -175,6 +177,12 @@ function doPost(e) {
       result = getAttendanceDayReport_(data.date, data.name || "");
     } else if (action === "get_attendance_dates") {
       result = getAttendanceDates_();
+    } else if (action === "get_attendance_trends") {
+      result = getAttendanceTrends_(data.meetings);
+    } else if (action === "correct_attendance") {
+      result = withScriptLock_(() =>
+        correctAttendance_(data, identity.email),
+      );
     } else if (action === "get_attendance_window") {
       result = getAttendanceWindow_();
     } else if (action === "get_current_attendees") {
@@ -188,7 +196,7 @@ function doPost(e) {
         checkoutAttendance_(data.id, identity.email, data.reason, true),
       );
     } else if (action === "create_daily_attendance_report") {
-      result = getAttendanceDayReport_(data.date, "", true);
+      result = getAttendanceDayReport_(data.date, "", true, data.type || "both");
     } else if (action === "get_followups") {
       result = getFollowupCandidates_();
     } else if (action === "complete_followup") {
@@ -211,6 +219,12 @@ function doPost(e) {
             code: "ROSTER_MISSING",
             message: "شيت Roster غير موجود.",
           };
+    } else if (action === "get_roster_management") {
+      result = getRosterManagement_();
+    } else if (action === "update_roster_person") {
+      result = withScriptLock_(() =>
+        updateRosterPerson_(data.id, data.name, data.active, identity.email),
+      );
     } else if (action === "search")
       result = verifyOrSuggestName(data.name || "");
     else if (action === "get_settings")
@@ -252,6 +266,7 @@ function doPost(e) {
     else if (action === "share_move_card")
       result = withScriptLock_(() => shareAndMoveCard(data.fileId));
   } catch (err) {
+    console.error("POST API action failed: " + String(action || "unknown"), err);
     result = {
       success: false,
       code: "SERVER_ERROR",
@@ -915,12 +930,12 @@ function searchCardForShare(name, sharingState) {
 
   const lastRow = rosterSheet.getLastRow();
   const data =
-    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
+    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
   const cleanInput = normalizeName_(name);
   let matches = [];
 
   for (let i = 0; i < data.length && matches.length < 5; i++) {
-    if (!data[i][0] || !data[i][1]) continue;
+    if (!data[i][0] || !data[i][1] || String(data[i][3] || "").toLowerCase() === "inactive") continue;
     let rowId = data[i][0].toString().trim();
     let rowName = data[i][1].toString().trim();
     let rowUrl = data[i][2] ? data[i][2].toString().trim() : "";
@@ -1110,89 +1125,107 @@ function isAttendanceTimeAllowed() {
   return isAttendanceTimeAllowedAt_(new Date(), getSettings());
 }
 
+function attendanceTimeParts_(date) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const timeZone =
+    spreadsheet && spreadsheet.getSpreadsheetTimeZone
+      ? spreadsheet.getSpreadsheetTimeZone()
+      : Session.getScriptTimeZone();
+  const parts = Utilities.formatDate(date, timeZone, "yyyy-MM-dd|HH|mm|u").split("|");
+  return {
+    dateKey: parts[0],
+    day: Number(parts[3]) % 7,
+    minute: Number(parts[1]) * 60 + Number(parts[2]),
+  };
+}
+
+function previousAttendanceDateKey_(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const previousDate = new Date(Date.UTC(year, month - 1, day - 1));
+  return [
+    previousDate.getUTCFullYear(),
+    String(previousDate.getUTCMonth() + 1).padStart(2, "0"),
+    String(previousDate.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function meetingOccurrenceAt_(date, settings) {
+  const local = attendanceTimeParts_(date);
+  const [startHour, startMinute] = settings.startTime.split(":").map(Number);
+  const [endHour, endMinute] = settings.endTime.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  let end = endHour * 60 + endMinute;
+  if (end <= start) end += 24 * 60;
+  const candidates = [
+    { dateKey: local.dateKey, day: local.day, minute: local.minute },
+    {
+      dateKey: previousAttendanceDateKey_(local.dateKey),
+      day: (local.day + 6) % 7,
+      minute: local.minute + 24 * 60,
+    },
+  ];
+  return candidates.find((candidate) =>
+    settings.allowedDays.indexOf(candidate.day) !== -1 &&
+    candidate.minute >= start &&
+    candidate.minute <= end + 60,
+  ) || null;
+}
+
 function isAttendanceTimeAllowedAt_(date, settings) {
-  if (settings.allowedDays.indexOf(date.getDay()) === -1) return false;
-  const currMin = date.getHours() * 60 + date.getMinutes();
-  const startParts = settings.startTime.split(":");
-  const endParts = settings.endTime.split(":");
-  const startMin =
-    parseInt(startParts[0], 10) * 60 + parseInt(startParts[1], 10);
-  const endMin = parseInt(endParts[0], 10) * 60 + parseInt(endParts[1], 10);
-  if (endMin < startMin) return currMin >= startMin || currMin <= endMin;
-  return currMin >= startMin && currMin <= endMin;
+  const occurrence = meetingOccurrenceAt_(date, settings);
+  if (!occurrence) return false;
+  const [startHour, startMinute] = settings.startTime.split(":").map(Number);
+  const [endHour, endMinute] = settings.endTime.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  let end = endHour * 60 + endMinute;
+  if (end <= start) end += 24 * 60;
+  return occurrence.minute <= end;
 }
 
 function isCheckoutAllowed(checkoutDate, settings) {
-  const parts = settings.endTime.split(":");
-  const endTime = new Date(checkoutDate);
-  endTime.setHours(
-    parseInt(parts[0], 10) || 0,
-    parseInt(parts[1], 10) || 0,
-    0,
-    0,
-  );
-  const startWin = new Date(endTime);
-  startWin.setMinutes(startWin.getMinutes() - 30);
-  const endWin = new Date(endTime);
-  endWin.setHours(endWin.getHours() + 1);
-  return checkoutDate >= startWin && checkoutDate <= endWin;
+  const occurrence = meetingOccurrenceAt_(checkoutDate, settings);
+  if (!occurrence) return false;
+  const [startHour, startMinute] = settings.startTime.split(":").map(Number);
+  const [endHour, endMinute] = settings.endTime.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  let end = endHour * 60 + endMinute;
+  if (end <= start) end += 24 * 60;
+  return occurrence.minute >= end - 30 && occurrence.minute <= end + 60;
 }
 
 function isCurrentAttendanceWindowOpen_(date, settings) {
-  const startDay = new Date(date);
+  return Boolean(meetingOccurrenceAt_(date, settings));
+}
+
+function attendanceWindowCloseReason_(date, settings) {
+  const local = attendanceTimeParts_(date);
   const [startHour, startMinute] = settings.startTime.split(":").map(Number);
   const [endHour, endMinute] = settings.endTime.split(":").map(Number);
-  startDay.setHours(0, 0, 0, 0);
-  const startTime = new Date(startDay);
-  startTime.setHours(startHour, startMinute, 0, 0);
-  const endTime = new Date(startDay);
-  endTime.setHours(endHour, endMinute, 0, 0);
-  if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
-  endTime.setHours(endTime.getHours() + 1);
-  if (date < startTime) {
-    startDay.setDate(startDay.getDate() - 1);
-    if (settings.allowedDays.indexOf(startDay.getDay()) === -1) return false;
-    const priorStart = new Date(startDay);
-    priorStart.setHours(startHour, startMinute, 0, 0);
-    const priorEnd = new Date(startDay);
-    priorEnd.setHours(endHour, endMinute, 0, 0);
-    if (priorEnd <= priorStart) priorEnd.setDate(priorEnd.getDate() + 1);
-    priorEnd.setHours(priorEnd.getHours() + 1);
-    return date >= priorStart && date <= priorEnd;
-  }
-  return settings.allowedDays.indexOf(startDay.getDay()) !== -1 &&
-    date >= startTime && date <= endTime;
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  if (
+    end <= start &&
+    settings.allowedDays.indexOf((local.day + 6) % 7) !== -1 &&
+    local.minute > end + 60
+  ) return "after_meeting";
+  if (settings.allowedDays.indexOf(local.day) === -1) return "no_meeting_today";
+  return local.minute < start ? "before_meeting" : "after_meeting";
+}
+
+function attendanceSessionDateKey_(date, settings) {
+  const occurrence = meetingOccurrenceAt_(date, settings);
+  return occurrence ? occurrence.dateKey : attendanceTimeParts_(date).dateKey;
 }
 
 function getAttendanceWindow_() {
   const now = new Date();
   const settings = getSettings();
-  let nextTransitionMs = Infinity;
-  const [startHour, startMinute] = settings.startTime.split(":").map(Number);
-  const [endHour, endMinute] = settings.endTime.split(":").map(Number);
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
-  for (let dayOffset = -1; dayOffset <= 7; dayOffset++) {
-    const meetingDay = new Date(midnight);
-    meetingDay.setDate(meetingDay.getDate() + dayOffset);
-    if (settings.allowedDays.indexOf(meetingDay.getDay()) === -1) continue;
-    const start = new Date(meetingDay);
-    start.setHours(startHour, startMinute, 0, 0);
-    const close = new Date(meetingDay);
-    close.setHours(endHour, endMinute, 0, 0);
-    if (close <= start) close.setDate(close.getDate() + 1);
-    close.setHours(close.getHours() + 1);
-    [start, close].forEach((boundary) => {
-      const delta = boundary.getTime() - now.getTime();
-      if (delta > 0) nextTransitionMs = Math.min(nextTransitionMs, delta);
-    });
-  }
+  const windowOpen = isCurrentAttendanceWindowOpen_(now, settings);
   return {
     success: true,
-    windowOpen: isCurrentAttendanceWindowOpen_(now, settings),
-    nextCheckMs: Number.isFinite(nextTransitionMs)
-      ? Math.max(1000, Math.ceil(nextTransitionMs))
-      : 60 * 60 * 1000,
+    windowOpen: windowOpen,
+    closeReason: windowOpen ? "" : attendanceWindowCloseReason_(now, settings),
+    nextCheckMs: 30 * 1000,
   };
 }
 
@@ -1205,7 +1238,7 @@ function getCurrentAttendees_() {
   const rows = checkinSheet && lastRow >= 2
     ? checkinSheet.getRange(2, 1, lastRow - 1, 8).getValues()
     : [];
-  const todayKey = attendanceDateKey_(now);
+  const todayKey = attendanceSessionDateKey_(now, settings);
   const attendees = rows
     .filter((row) =>
       row[0] &&
@@ -1224,10 +1257,17 @@ function getCurrentAttendees_() {
     success: true,
     date: todayKey,
     windowOpen: isCurrentAttendanceWindowOpen_(now, settings),
+    closeReason: isCurrentAttendanceWindowOpen_(now, settings)
+      ? ""
+      : attendanceWindowCloseReason_(now, settings),
     checkoutOpen: isCheckoutAllowed(now, settings),
     attendees: attendees,
   };
 }
+
+/*
+ * Keep this section's time comparisons anchored to the spreadsheet's timezone.
+ */
 
 function getAttendanceAuditSheet_(spreadsheet) {
   let sheet = spreadsheet.getSheetByName("Attendance Audit");
@@ -1299,7 +1339,7 @@ function checkoutAttendance_(id, adminEmail, emergencyReason, emergency) {
   }
 
   const rows = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
-  const todayKey = attendanceDateKey_(now);
+  const todayKey = attendanceSessionDateKey_(now, settings);
   const index = rows.findIndex((row) =>
     String(row[0] || "").trim() === cleanId &&
     row[7] !== "Cancelled" &&
@@ -1381,13 +1421,9 @@ function setAttendanceMark_(sheet, id, date, mark) {
   const lastColumn = sheet.getLastColumn();
   if (lastRow < 2 || lastColumn < 3) return;
 
-  const targetDate = date.toDateString();
   const dateHeaders = sheet.getRange(1, 3, 1, lastColumn - 2).getValues()[0];
   const columnIndex = dateHeaders.findIndex((header) => {
-    const parsedDate = header instanceof Date ? header : new Date(header);
-    return (
-      !isNaN(parsedDate.getTime()) && parsedDate.toDateString() === targetDate
-    );
+    return attendanceDateKey_(header) === attendanceDateKey_(date);
   });
   const targetRow = findExactRowIndexByValue_(sheet, 1, id, 2);
   if (targetRow !== -1 && columnIndex !== -1) {
@@ -1428,13 +1464,12 @@ function parseAttendanceDate_(value) {
 }
 
 function attendanceDateKey_(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
   const date = value instanceof Date ? value : new Date(value);
   if (isNaN(date.getTime())) return "";
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
+  return attendanceTimeParts_(date).dateKey;
 }
 
 function getAttendanceDates_() {
@@ -1455,7 +1490,7 @@ function getAttendanceDates_() {
   return { success: true, dates: dates };
 }
 
-function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
+function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedSheetType) {
   const targetDate = parseAttendanceDate_(dateValue);
   if (!targetDate) {
     return {
@@ -1478,7 +1513,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
 
   const attendanceLastRow = attendanceSheet.getLastRow();
   const attendanceLastColumn = attendanceSheet.getLastColumn();
-  const targetKey = attendanceDateKey_(targetDate);
+  const targetKey = String(dateValue);
   const dateHeaders = attendanceSheet.getRange(
     1,
     3,
@@ -1498,7 +1533,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
 
   const rosterLastRow = rosterSheet.getLastRow();
   const rosterRows = rosterLastRow >= 2
-    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 2).getValues()
+    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
     : [];
   const attendanceRows = attendanceLastRow >= 2
     ? attendanceSheet.getRange(2, 1, attendanceLastRow - 1, 1).getValues()
@@ -1534,6 +1569,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
     ) return;
     checkinsById.set(String(row[0]).trim(), row);
   });
+  const correctionsById = getAttendanceCorrectionsById_(spreadsheet, targetKey);
 
   const people = rosterRows
     .filter((row) => row[0] !== "" && row[0] !== null && row[1])
@@ -1541,24 +1577,17 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       const id = String(row[0]).trim();
       const mark = marksById.get(id) || "";
       const checkin = checkinsById.get(id) || [];
-      const delayMinutes = parseDelayMinutes_(checkin[6]);
-      const markDelayMinutes = parseDelayMinutes_(mark.replace(/^\+\s*/, ""));
-      const effectiveDelayMinutes = delayMinutes || markDelayMinutes;
-      const state = checkin[2] || mark === "-" || mark === "++"
-        ? effectiveDelayMinutes > 0 || /^\+\s*(?!\+)/.test(mark)
-          ? "delayed"
-          : "on_time"
-        : mark.startsWith("+")
-          ? "delayed"
-          : "absent";
+      const correction = correctionsById.get(id);
+      const attendanceState = resolveAttendanceState_(mark, checkin, correction);
       return {
         id: id,
         name: String(row[1]),
-        mark: mark,
-        attended: state !== "absent",
-        state: state,
-        delayMinutes: effectiveDelayMinutes,
-        delay: effectiveDelayMinutes > 0 ? formatDuration_(effectiveDelayMinutes) : "",
+        mark: attendanceState.mark,
+        attended: attendanceState.state !== "absent",
+        state: attendanceState.state,
+        delayMinutes: attendanceState.delayMinutes,
+        delay: attendanceState.delayMinutes > 0 ? formatDuration_(attendanceState.delayMinutes) : "",
+        corrected: Boolean(correction),
       };
     });
   const attendees = people.filter((person) => person.attended);
@@ -1583,16 +1612,32 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
   };
 
   if (createSheet) {
-    const sheetName = "Attendance " + targetKey;
+    const sheetType = ["attendees", "absents", "both"].includes(requestedSheetType)
+      ? requestedSheetType
+      : ["attendees", "absents", "both"].includes(createSheet)
+        ? createSheet
+      : "both";
+    const sheetSuffix = sheetType === "both"
+      ? ""
+      : sheetType === "attendees"
+        ? " - Attendees"
+        : " - Absentees";
+    const sheetName = "Attendance " + targetKey + sheetSuffix;
     let reportSheet = spreadsheet.getSheetByName(sheetName);
     const alreadyExists = Boolean(reportSheet);
+    const exportedPeople = people.filter((person) =>
+      sheetType === "both" ||
+      (sheetType === "attendees" && person.attended) ||
+      (sheetType === "absents" && !person.attended),
+    );
+    response.exportedCount = exportedPeople.length;
     if (!reportSheet) {
       reportSheet = spreadsheet.insertSheet(sheetName);
       const reportRows = [["Name", "Attendance Mark", "Delay"]];
-      people.forEach((person) => reportRows.push([
+      exportedPeople.forEach((person) => reportRows.push([
         person.name,
-        person.state === "delayed" ? "+" : person.attended ? "++" : "-",
-        person.delay,
+        person.attended ? person.state === "delayed" ? "+" : "++" : "",
+        person.state === "delayed" ? person.delay : "",
       ]));
       reportSheet.getRange(1, 1, reportRows.length, 3).setValues(reportRows);
       const reportRange = reportSheet.getRange(1, 1, reportRows.length, 3);
@@ -1604,12 +1649,12 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
         .setBackground("#f5bd55")
         .setFontColor("#182333")
         .setFontWeight("bold");
-      if (people.length) {
+      if (exportedPeople.length) {
         reportSheet
-          .getRange(2, 2, people.length, 1)
-          .setBackgrounds(people.map((person) => [
+          .getRange(2, 2, exportedPeople.length, 1)
+          .setBackgrounds(exportedPeople.map((person) => [
             attendanceMarkColor_(
-              person.state === "delayed" ? "+" : person.attended ? "++" : "-",
+              person.attended ? person.state === "delayed" ? "+" : "++" : "",
             ),
           ]));
       }
@@ -1618,9 +1663,244 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
       name: sheetName,
       sheetId: reportSheet.getSheetId(),
       alreadyExists: alreadyExists,
+      type: sheetType,
     };
   }
   return response;
+}
+
+function getAttendanceCorrectionsById_(spreadsheet, dateKey) {
+  const corrections = getAttendanceCorrectionsByDate_(spreadsheet);
+  return corrections.get(dateKey) || new Map();
+}
+
+function getAttendanceCorrectionsByDate_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName("Attendance Corrections");
+  if (!sheet || sheet.getLastRow() < 2) return new Map();
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  const correctionsByDate = new Map();
+  rows.forEach((row) => {
+    const dateKey = attendanceDateKey_(row[0]);
+    if (!dateKey || !row[1]) return;
+    const state = String(row[4] || "");
+    if (!["on_time", "delayed", "absent"].includes(state)) return;
+    if (!correctionsByDate.has(dateKey)) correctionsByDate.set(dateKey, new Map());
+    correctionsByDate.get(dateKey).set(String(row[1]).trim(), {
+      state: state,
+      delayMinutes: Number(row[5]) || 0,
+    });
+  });
+  return correctionsByDate;
+}
+
+function resolveAttendanceState_(mark, checkin, correction) {
+  if (correction) {
+    return {
+      state: correction.state,
+      delayMinutes: correction.state === "delayed" ? correction.delayMinutes : 0,
+      mark: correction.state === "on_time" ? "++" : correction.state === "delayed" ? "+" : "-",
+    };
+  }
+  const delayMinutes = parseDelayMinutes_(checkin[6]);
+  const markDelayMinutes = parseDelayMinutes_(mark.replace(/^\+\s*/, ""));
+  const effectiveDelayMinutes = delayMinutes || markDelayMinutes;
+  const hasCheckin = Boolean(checkin[2] && typeof checkin[2].getTime === "function");
+  const state = hasCheckin || mark === "++"
+    ? effectiveDelayMinutes > 0 || /^\+\s*(?!\+)/.test(mark)
+      ? "delayed"
+      : "on_time"
+    : mark.startsWith("+")
+      ? "delayed"
+      : "absent";
+  return { state: state, delayMinutes: effectiveDelayMinutes, mark: mark };
+}
+
+function correctAttendance_(data, adminEmail) {
+  const date = String(data.date || "");
+  const id = String(data.id || "").trim();
+  const state = String(data.state || "");
+  const reason = String(data.reason || "").trim();
+  const delayMinutes = Number(data.delayMinutes);
+  if (
+    !parseAttendanceDate_(date) ||
+    !id ||
+    !["on_time", "delayed", "absent"].includes(state) ||
+    reason.length < 5 ||
+    reason.length > 500 ||
+    (state === "delayed" && (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 1440))
+  ) {
+    return {
+      success: false,
+      code: "INVALID_ATTENDANCE_CORRECTION",
+      message: "يرجى إدخال حالة وسبب صالحين، ومدة تأخير من دقيقة إلى 1440 دقيقة.",
+    };
+  }
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const rosterSheet = spreadsheet.getSheetByName("Roster");
+  const attendanceSheet = spreadsheet.getSheetByName("Attendance");
+  if (!rosterSheet || !attendanceSheet) {
+    return {
+      success: false,
+      code: "ATTENDANCE_SHEETS_MISSING",
+      message: "تعذر العثور على شيت الحضور أو قائمة المخدومين.",
+    };
+  }
+  const rosterLastRow = rosterSheet.getLastRow();
+  const rosterRows = rosterLastRow >= 2
+    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
+    : [];
+  const person = rosterRows.find((row) => String(row[0]).trim() === id);
+  if (!person) {
+    return { success: false, code: "PERSON_NOT_FOUND", message: "لم يتم العثور على الشخص." };
+  }
+  const lastColumn = attendanceSheet.getLastColumn();
+  const dateHeaders = lastColumn >= 3
+    ? attendanceSheet.getRange(1, 3, 1, lastColumn - 2).getValues()[0]
+    : [];
+  const dateColumnOffset = dateHeaders.findIndex((header) => attendanceDateKey_(header) === date);
+  const attendanceRow = findExactRowIndexByValue_(attendanceSheet, 1, id, 2);
+  if (dateColumnOffset === -1 || attendanceRow === -1) {
+    return {
+      success: false,
+      code: "ATTENDANCE_DATE_NOT_FOUND",
+      message: "لا يوجد سجل حضور لهذا الشخص في التاريخ المحدد.",
+    };
+  }
+
+  const mark = state === "on_time" ? "++" : state === "delayed" ? "+" : "-";
+  const oldMark = String(
+    attendanceSheet
+      .getRange(attendanceRow, dateColumnOffset + 3)
+      .getValues()[0][0] || "",
+  ).trim();
+  const checkinSheet = spreadsheet.getSheetByName("Check-in & Check-out");
+  const checkinRows = checkinSheet && checkinSheet.getLastRow() >= 2
+    ? checkinSheet.getRange(2, 1, checkinSheet.getLastRow() - 1, 8).getValues()
+    : [];
+  const priorCheckin = checkinRows.find((row) =>
+    String(row[0] || "").trim() === id &&
+    row[7] !== "Cancelled" &&
+    row[2] &&
+    typeof row[2].getTime === "function" &&
+    attendanceDateKey_(row[2]) === date,
+  ) || [];
+  const previousCorrection = getAttendanceCorrectionsById_(spreadsheet, date).get(id);
+  const previousState = resolveAttendanceState_(oldMark, priorCheckin, previousCorrection).state;
+  let auditSheet = spreadsheet.getSheetByName("Attendance Corrections");
+  if (!auditSheet) {
+    auditSheet = spreadsheet.insertSheet("Attendance Corrections");
+    auditSheet.getRange(1, 1, 1, 9).setValues([[
+      "Attendance Date",
+      "ID",
+      "Name",
+      "Previous State",
+      "Corrected State",
+      "Delay Minutes",
+      "Reason",
+      "Updated At",
+      "Updated By",
+    ]]);
+  }
+  auditSheet.appendRow([
+    date,
+    id,
+    String(person[1]),
+    previousState,
+    state,
+    state === "delayed" ? delayMinutes : "",
+    reason,
+    new Date(),
+    getAdminNameByEmail(adminEmail),
+  ]);
+  const markRange = attendanceSheet.getRange(attendanceRow, dateColumnOffset + 3);
+  markRange.setValue(mark);
+  if (typeof markRange.setBackground === "function") {
+    markRange.setBackground(attendanceMarkColor_(mark));
+  }
+  return {
+    success: true,
+    correction: {
+      date: date,
+      id: id,
+      name: String(person[1]),
+      state: state,
+      delayMinutes: state === "delayed" ? delayMinutes : 0,
+    },
+  };
+}
+
+function getAttendanceTrends_(requestedMeetings) {
+  const meetings = Number.isInteger(Number(requestedMeetings))
+    ? Math.min(24, Math.max(1, Number(requestedMeetings)))
+    : 8;
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const attendanceSheet = spreadsheet.getSheetByName("Attendance");
+  const rosterSheet = spreadsheet.getSheetByName("Roster");
+  if (!attendanceSheet || !rosterSheet || attendanceSheet.getLastColumn() < 3) {
+    return {
+      success: false,
+      code: "ATTENDANCE_SHEETS_MISSING",
+      message: "تعذر العثور على شيت الحضور أو قائمة المخدومين.",
+    };
+  }
+  const lastColumn = attendanceSheet.getLastColumn();
+  const headers = attendanceSheet.getRange(1, 3, 1, lastColumn - 2).getValues()[0];
+  const todayKey = attendanceSessionDateKey_(new Date(), getSettings());
+  const dates = Array.from(new Set(
+    headers.map((header) => attendanceDateKey_(header))
+      .filter((date) => date && date <= todayKey),
+  )).sort().slice(-meetings);
+  const attendanceLastRow = attendanceSheet.getLastRow();
+  const attendanceRows = attendanceLastRow >= 2
+    ? attendanceSheet.getRange(2, 1, attendanceLastRow - 1, lastColumn).getValues()
+    : [];
+  const rosterLastRow = rosterSheet.getLastRow();
+  const rosterRows = rosterLastRow >= 2
+    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
+    : [];
+  const rosterIds = new Set(rosterRows.filter((row) => row[0] && row[1]).map((row) => String(row[0]).trim()));
+  const rowsById = new Map(attendanceRows.map((row) => [String(row[0] || "").trim(), row]));
+  const checkinSheet = spreadsheet.getSheetByName("Check-in & Check-out");
+  const checkinLastRow = checkinSheet ? checkinSheet.getLastRow() : 0;
+  const checkinRows = checkinSheet && checkinLastRow >= 2
+    ? checkinSheet.getRange(2, 1, checkinLastRow - 1, 8).getValues()
+    : [];
+  const checkinsByDateAndId = new Map();
+  checkinRows.forEach((row) => {
+    if (
+      !row[0] ||
+      row[7] === "Cancelled" ||
+      !row[2] ||
+      typeof row[2].getTime !== "function"
+    ) return;
+    const key = attendanceDateKey_(row[2]) + "|" + String(row[0]).trim();
+    checkinsByDateAndId.set(key, row);
+  });
+
+  const correctionsByDate = getAttendanceCorrectionsByDate_(spreadsheet);
+  const trends = dates.map((date) => {
+    const dateOffset = headers.findIndex((header) => attendanceDateKey_(header) === date);
+    const corrections = correctionsByDate.get(date) || new Map();
+    let attended = 0;
+    let delayed = 0;
+    rosterIds.forEach((id) => {
+      const attendanceRow = rowsById.get(id) || [];
+      const mark = String(attendanceRow[dateOffset + 2] || "").trim();
+      const checkin = checkinsByDateAndId.get(date + "|" + id) || [];
+      const state = resolveAttendanceState_(mark, checkin, corrections.get(id));
+      if (state.state !== "absent") attended++;
+      if (state.state === "delayed") delayed++;
+    });
+    return {
+      date: date,
+      attended: attended,
+      absent: rosterIds.size - attended,
+      delayed: delayed,
+      total: rosterIds.size,
+      attendanceRate: rosterIds.size ? Math.round(attended * 100 / rosterIds.size) : 0,
+    };
+  });
+  return { success: true, trends: trends };
 }
 
 function getFollowupCandidates_() {
@@ -1643,7 +1923,8 @@ function getFollowupCandidates_() {
   const attendanceRows = attendanceSheet
     .getRange(1, 1, attendanceLastRow, attendanceLastColumn)
     .getValues();
-  const todayKey = attendanceDateKey_(new Date());
+  const currentTimestamp = new Date();
+  const todayKey = attendanceSessionDateKey_(currentTimestamp, getSettings());
   const meetingColumns = attendanceRows[0]
     .map((header, index) => ({ date: attendanceDateKey_(header), index: index }))
     .filter((column) => column.index >= 2 && column.date && column.date <= todayKey)
@@ -1660,20 +1941,27 @@ function getFollowupCandidates_() {
     if (id) attendanceById.set(id, row);
   });
   const candidates = [];
+  const correctionsByDate = getAttendanceCorrectionsByDate_(spreadsheet);
+  const isPresentForDate = (id, column, attendanceRow) => {
+    const corrections = correctionsByDate.get(column.date) || new Map();
+    const correction = corrections.get(id);
+    if (correction) return correction.state !== "absent";
+    return Boolean(String(attendanceRow[column.index] || "").trim());
+  };
   rosterRows.forEach((row) => {
-    if (!row[0] || !row[1]) return;
+    if (!row[0] || !row[1] || String(row[3] || "").toLowerCase() === "inactive") return;
     const id = String(row[0]).trim();
     const attendanceRow = attendanceById.get(id);
     if (!attendanceRow) return;
     let missedMeetings = 0;
     let lastAttended = "";
     for (const column of meetingColumns) {
-      if (String(attendanceRow[column.index] || "").trim()) break;
+      if (isPresentForDate(id, column, attendanceRow)) break;
       missedMeetings++;
     }
     if (missedMeetings < 2) return;
     for (const column of meetingColumns.slice(missedMeetings)) {
-      if (String(attendanceRow[column.index] || "").trim()) {
+      if (isPresentForDate(id, column, attendanceRow)) {
         lastAttended = column.date;
         break;
       }
@@ -1831,7 +2119,8 @@ function cancelCheckin_(id, adminEmail) {
   if (!cleanId || !sheet || sheet.getLastRow() < 2) {
     return { success: false, code: "CHECKIN_NOT_FOUND" };
   }
-  const todayKey = attendanceDateKey_(new Date());
+  const now = new Date();
+  const todayKey = attendanceSessionDateKey_(now, getSettings());
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).getValues();
   const index = rows.findIndex(
     (row) =>
@@ -1918,7 +2207,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
         message: "تعذر التحقق من وقت المسح.",
       };
     }
-    const todayStr = timestamp.toDateString();
+    const todayStr = attendanceSessionDateKey_(timestamp, getSettings());
     const settings = getSettings();
     const checkinLastRow = checkinSheet.getLastRow();
     const attendanceData =
@@ -1934,7 +2223,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
         attendanceData[j][0] &&
         attendanceData[j][0].toString().trim() === realId &&
         attendanceData[j][2] instanceof Date &&
-        attendanceData[j][2].toDateString() === todayStr
+        attendanceSessionDateKey_(attendanceData[j][2], getSettings()) === todayStr
       ) {
         rowIdx = j + 2;
         existingCheckIn = attendanceData[j][2];
@@ -2076,13 +2365,134 @@ function getRosterSnapshot_() {
   if (!rosterSheet) return null;
   const lastRow = rosterSheet.getLastRow();
   const data =
-    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 2).getValues() : [];
+    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
   return data
-    .filter((row) => row[0] !== "" && row[0] !== null && row[1])
+    .filter((row) =>
+      row[0] !== "" &&
+      row[0] !== null &&
+      row[1] &&
+      String(row[3] || "").toLowerCase() !== "inactive",
+    )
     .map((row) => ({
       id: String(row[0]).trim(),
       name: String(row[1]).trim(),
     }));
+}
+
+function getRosterManagement_() {
+  const rosterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
+  if (!rosterSheet) {
+    return {
+      success: false,
+      code: "ROSTER_MISSING",
+      message: "شيت Roster غير موجود.",
+    };
+  }
+  const lastRow = rosterSheet.getLastRow();
+  const rows = lastRow >= 2
+    ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues()
+    : [];
+  return {
+    success: true,
+    people: rows
+      .filter((row) => row[0] !== "" && row[0] !== null && row[1])
+      .map((row) => ({
+        id: String(row[0]).trim(),
+        name: String(row[1]).trim(),
+        active: String(row[3] || "").toLowerCase() !== "inactive",
+      })),
+  };
+}
+
+function updateRosterPerson_(id, name, active, adminEmail) {
+  const cleanId = String(id || "").trim();
+  const cleanName = String(name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (!cleanId || !cleanName || cleanName.startsWith("=") || cleanName.length > 120) {
+    return {
+      success: false,
+      code: "INVALID_ROSTER_UPDATE",
+      message: "يرجى إدخال اسم صالح لا يتجاوز 120 حرفاً.",
+    };
+  }
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const rosterSheet = spreadsheet.getSheetByName("Roster");
+  if (!rosterSheet || rosterSheet.getLastRow() < 2) {
+    return { success: false, code: "ROSTER_MISSING", message: "شيت Roster غير موجود." };
+  }
+  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getValues();
+  const rowIndex = rows.findIndex((row) => String(row[0]).trim() === cleanId);
+  if (rowIndex === -1) {
+    return { success: false, code: "PERSON_NOT_FOUND", message: "لم يتم العثور على الشخص." };
+  }
+  const normalizedName = normalizeName_(cleanName);
+  const isActive = active !== false;
+  const duplicate = isActive && rows.find((row, index) =>
+    index !== rowIndex &&
+    row[1] &&
+    String(row[3] || "").toLowerCase() !== "inactive" &&
+    normalizeName_(row[1]) === normalizedName,
+  );
+  if (duplicate) {
+    return {
+      success: false,
+      code: "DUPLICATE_NAME",
+      name: String(duplicate[1]),
+      id: String(duplicate[0]),
+      message: "يوجد شخص نشط مسجل بهذا الاسم بالفعل.",
+    };
+  }
+
+  const current = rows[rowIndex];
+  const oldName = String(current[1]);
+  const oldActive = String(current[3] || "").toLowerCase() !== "inactive";
+  if (rosterSheet.getLastColumn() < 4) rosterSheet.getRange(1, 4).setValue("Status");
+  const rosterRowNumber = rowIndex + 2;
+  rosterSheet.getRange(rosterRowNumber, 2).setValue(cleanName);
+  rosterSheet.getRange(rosterRowNumber, 4).setValue(isActive ? "Active" : "Inactive");
+
+  if (oldName !== cleanName) {
+    [
+      ["Attendance", 2],
+      ["Check-in & Check-out", 2],
+      ["Follow-up", 2],
+    ].forEach(([sheetName, nameColumn]) => {
+      const sheet = spreadsheet.getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() < 2) return;
+      const nameRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, nameColumn).getValues();
+      nameRows.forEach((row, index) => {
+        if (String(row[0]).trim() === cleanId) {
+          sheet.getRange(index + 2, nameColumn).setValue(cleanName);
+        }
+      });
+    });
+  }
+
+  let auditSheet = spreadsheet.getSheetByName("Roster Audit");
+  if (!auditSheet) {
+    auditSheet = spreadsheet.insertSheet("Roster Audit");
+    auditSheet.getRange(1, 1, 1, 7).setValues([[
+      "ID",
+      "Previous Name",
+      "New Name",
+      "Previous Status",
+      "New Status",
+      "Updated At",
+      "Updated By",
+    ]]);
+  }
+  auditSheet.appendRow([
+    cleanId,
+    oldName,
+    cleanName,
+    oldActive ? "Active" : "Inactive",
+    isActive ? "Active" : "Inactive",
+    new Date(),
+    getAdminNameByEmail(adminEmail),
+  ]);
+  return {
+    success: true,
+    person: { id: cleanId, name: cleanName, active: isActive },
+  };
 }
 
 function findExactRowIndexByValue_(sheet, column, value, startRow) {
@@ -2239,11 +2649,15 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
     const lastRow = rosterSheet.getLastRow();
     const rosterData =
       lastRow >= 2
-        ? rosterSheet.getRange(2, 1, lastRow - 1, 2).getValues()
+        ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues()
         : [];
     const normalizedName = normalizeName_(cleanName);
     for (const row of rosterData) {
-      if (row[1] && normalizeName_(row[1]) === normalizedName) {
+      if (
+        row[1] &&
+        String(row[3] || "").toLowerCase() !== "inactive" &&
+        normalizeName_(row[1]) === normalizedName
+      ) {
         return {
           success: false,
           code: "DUPLICATE_NAME",
@@ -2339,9 +2753,9 @@ function generateStudentCard_(studentId) {
     };
   }
 
-  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 3).getValues();
+  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getValues();
   const student = rows.find((row) => String(row[0]) === normalizedId);
-  if (!student) {
+  if (!student || String(student[3] || "").toLowerCase() === "inactive") {
     return {
       success: false,
       code: "STUDENT_NOT_FOUND",
@@ -2380,7 +2794,7 @@ function generateAllCardsFromRoster(targetStudentId) {
     const rosterSheet = ss.getSheetByName("Roster");
     const rosterLastRow = rosterSheet.getLastRow();
     if (rosterLastRow < 2) return { success: true, cards: [] };
-    const data = rosterSheet.getRange(2, 1, rosterLastRow - 1, 3).getValues();
+    const data = rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues();
     const folder = DriveApp.getFolderById(folderId);
     const templateImageBlob = DriveApp.getFileById(
       squareTemplateImageId,
@@ -2392,6 +2806,7 @@ function generateAllCardsFromRoster(targetStudentId) {
       const studentName = data[i][1];
       if (targetStudentId && String(targetStudentId) !== String(studentId))
         continue;
+      if (String(data[i][3] || "").toLowerCase() === "inactive") continue;
       if (data[i][2] && String(data[i][2]).includes("drive.google.com"))
         continue;
 

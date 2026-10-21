@@ -32,8 +32,10 @@
       var currentActiveViewId = "loginView";
       var attendanceReportTab = "attendance";
       var attendanceReportRequestId = 0;
+      var attendanceTrendsRequestId = 0;
       var attendanceReportData = null;
       var followupReportPeople = [];
+      var rosterManagementPeople = [];
       var currentAttendeesRequestId = 0;
       var currentAttendeesSnapshot = "";
       var currentAttendeesData = [];
@@ -44,6 +46,8 @@
       var currentAttendeesWindowTimer = 0;
       var currentAttendeesWindowRequestId = 0;
       var currentAttendeesWindowOpen = false;
+      var currentAttendeesWindowCloseReason = "";
+      var currentAttendeesOpenRequestInFlight = false;
       var currentAttendeeActionsInFlight = new Set();
       var currentEmergencyCheckoutId = "";
       var appearanceTransitionTimeout = 0;
