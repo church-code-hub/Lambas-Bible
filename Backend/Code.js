@@ -2326,7 +2326,7 @@ function generateAllCardsFromRoster(targetStudentId) {
         continue;
 
       const encryptedToken = encryptId(studentId);
-      const qrSizePx = 1000;
+      const qrSizePx = 350;
       const qrApiUrl =
         "https://api.qrserver.com/v1/create-qr-code/?size=" +
         qrSizePx + "x" + qrSizePx +
