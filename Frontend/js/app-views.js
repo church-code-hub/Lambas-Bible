@@ -121,6 +121,7 @@
           "scheduleSettingsView",
           "resultView",
           "attendanceReportView",
+          "followupView",
           "currentAttendeesView",
           "offlineQueueView",
         ].forEach((id) => {
@@ -175,6 +176,9 @@
         if (viewId === "attendanceReportView" && viewChanged) {
           selectAttendanceReportTab(attendanceReportTab, true);
         }
+        if (viewId === "followupView" && viewChanged) {
+          loadFollowups();
+        }
         if (viewId === "currentAttendeesView" && viewChanged) {
           showCurrentAttendeesSkeleton();
           loadCurrentAttendees(false);
@@ -226,9 +230,15 @@
 
       function openAttendanceReport(tab = "attendance") {
         const alreadyOpen = currentActiveViewId === "attendanceReportView";
-        attendanceReportTab = tab;
+        attendanceReportTab = tab === "trends" ? "trends" : "attendance";
         showView("attendanceReportView");
         if (alreadyOpen) selectAttendanceReportTab(tab);
+      }
+
+      function openFollowupView() {
+        const alreadyOpen = currentActiveViewId === "followupView";
+        showView("followupView");
+        if (alreadyOpen) loadFollowups();
       }
 
       function openAppSettings() {
@@ -700,24 +710,24 @@
       }
 
       function selectAttendanceReportTab(tab, forceReload = false) {
-        attendanceReportTab = tab === "followups" ? "followups" : "attendance";
+        attendanceReportTab = tab === "trends" ? "trends" : "attendance";
         const attendancePanel = document.getElementById("attendanceTabPanel");
-        const followupPanel = document.getElementById("followupTabPanel");
+        const trendsPanel = document.getElementById("trendsTabPanel");
         const attendanceButton = document.getElementById("attendanceTabButton");
-        const followupButton = document.getElementById("followupTabButton");
+        const trendsButton = document.getElementById("trendsTabButton");
         const tabs = document.querySelector(".report-tabs");
-        const isFollowups = attendanceReportTab === "followups";
+        const isTrends = attendanceReportTab === "trends";
         tabs.dataset.activeTab = attendanceReportTab;
-        attendancePanel.hidden = isFollowups;
-        followupPanel.hidden = !isFollowups;
-        const activePanel = isFollowups ? followupPanel : attendancePanel;
+        attendancePanel.hidden = isTrends;
+        trendsPanel.hidden = !isTrends;
+        const activePanel = isTrends ? trendsPanel : attendancePanel;
         activePanel.classList.remove("report-panel-enter");
         window.requestAnimationFrame(() => activePanel.classList.add("report-panel-enter"));
-        attendanceButton.classList.toggle("is-active", !isFollowups);
-        followupButton.classList.toggle("is-active", isFollowups);
-        attendanceButton.setAttribute("aria-selected", String(!isFollowups));
-        followupButton.setAttribute("aria-selected", String(isFollowups));
-        if (isFollowups) loadFollowups();
+        attendanceButton.classList.toggle("is-active", !isTrends);
+        trendsButton.classList.toggle("is-active", isTrends);
+        attendanceButton.setAttribute("aria-selected", String(!isTrends));
+        trendsButton.setAttribute("aria-selected", String(isTrends));
+        if (isTrends) loadAttendanceTrends();
         else if (forceReload || document.getElementById("attendanceReportDate").options.length <= 1) {
           loadAttendanceReportDates();
         }
@@ -793,8 +803,7 @@
           const result = await apiCall("get_followups");
           if (
             requestId !== attendanceReportRequestId ||
-            currentActiveViewId !== "attendanceReportView" ||
-            attendanceReportTab !== "followups"
+            currentActiveViewId !== "followupView"
           ) return;
           if (!result || !result.success) throw new Error(result && result.message);
           followupReportPeople = Array.isArray(result.followups) ? result.followups : [];
@@ -926,10 +935,7 @@
           const stateHeader = document.createElement("strong");
           stateHeader.setAttribute("role", "columnheader");
           stateHeader.textContent = translations[currentLang].attendanceStateLabel;
-          const actionHeader = document.createElement("strong");
-          actionHeader.setAttribute("role", "columnheader");
-          actionHeader.textContent = translations[currentLang].attendanceActionsLabel;
-          header.append(nameHeader, stateHeader, actionHeader);
+          header.append(nameHeader, stateHeader);
           table.appendChild(header);
           if (!visiblePeople.length) {
             const empty = document.createElement("p");
@@ -954,8 +960,7 @@
               : person.attended
                 ? translations[currentLang].attendanceOnTime
                 : translations[currentLang].absent;
-            if (person.corrected) state.title = translations[currentLang].attendanceCorrectedLabel;
-            item.append(name, state, createAttendanceCorrectionButton(person));
+            item.append(name, state);
             table.appendChild(item);
           });
           panel.appendChild(table);
@@ -983,94 +988,12 @@
               : person.attended
                 ? translations[currentLang].attendanceOnTime
                 : translations[currentLang].absent;
-            if (person.corrected) state.title = translations[currentLang].attendanceCorrectedLabel;
-            item.append(name, state, createAttendanceCorrectionButton(person));
+            item.append(name, state);
             resultPanel.appendChild(item);
           });
         }
         if (resultPanel) searchResult.appendChild(resultPanel);
         if (created && report.report) showAttendanceSheetResult(report);
-      }
-
-      function createAttendanceCorrectionButton(person) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "btn secondary attendance-correction-button";
-        button.dataset.onlineOnly = "";
-        button.textContent = translations[currentLang].attendanceCorrectionAction;
-        button.setAttribute(
-          "aria-label",
-          `${translations[currentLang].attendanceCorrectionAction}: ${person.name}`,
-        );
-        button.addEventListener("click", () =>
-          openAttendanceCorrection(person.id, person.name, person.state, person.delayMinutes),
-        );
-        return button;
-      }
-
-      function openAttendanceCorrection(id, name, state, delayMinutes) {
-        const dialog = document.getElementById("attendanceCorrectionDialog");
-        document.getElementById("attendanceCorrectionId").value = id;
-        document.getElementById("attendanceCorrectionPerson").textContent =
-          `${name} · ${document.getElementById("attendanceReportDate").value}`;
-        document.getElementById("attendanceCorrectionState").value =
-          ["on_time", "delayed", "absent"].includes(state) ? state : "absent";
-        document.getElementById("attendanceCorrectionDelay").value =
-          delayMinutes > 0 ? delayMinutes : "";
-        document.getElementById("attendanceCorrectionReason").value = "";
-        toggleAttendanceCorrectionDelay();
-        if (!dialog.open) dialog.showModal();
-      }
-
-      function toggleAttendanceCorrectionDelay() {
-        const visible =
-          document.getElementById("attendanceCorrectionState").value === "delayed";
-        const delayInput = document.getElementById("attendanceCorrectionDelay");
-        const delayLabel = document.getElementById("attendanceCorrectionDelayLabel");
-        delayInput.hidden = !visible;
-        delayLabel.hidden = !visible;
-        delayInput.required = visible;
-      }
-
-      function closeAttendanceCorrection() {
-        const dialog = document.getElementById("attendanceCorrectionDialog");
-        if (dialog.open) dialog.close();
-      }
-
-      async function submitAttendanceCorrection(event) {
-        event.preventDefault();
-        const submit = event.currentTarget.querySelector('[type="submit"]');
-        if (submit.disabled) return;
-        submit.disabled = true;
-        try {
-          const state = document.getElementById("attendanceCorrectionState").value;
-          const result = await apiCall("correct_attendance", {
-            date: document.getElementById("attendanceReportDate").value,
-            id: document.getElementById("attendanceCorrectionId").value,
-            state: state,
-            delayMinutes: state === "delayed"
-              ? Number(document.getElementById("attendanceCorrectionDelay").value)
-              : 0,
-            reason: document.getElementById("attendanceCorrectionReason").value.trim(),
-          });
-          if (!result || !result.success) {
-            throw new Error(
-              result && result.message
-                ? result.message
-                : translations[currentLang].attendanceCorrectionSaveFailed,
-            );
-          }
-          closeAttendanceCorrection();
-          showToast(translations[currentLang].attendanceCorrectionSaveSuccess, "success");
-          await loadAttendanceReport();
-          if (document.querySelector(".attendance-trends-panel").open) {
-            await loadAttendanceTrends();
-          }
-        } catch (error) {
-          showToast(error.message || translations[currentLang].attendanceCorrectionSaveFailed, "error");
-        } finally {
-          submit.disabled = !navigator.onLine;
-        }
       }
 
       async function loadAttendanceTrends() {
@@ -1084,7 +1007,7 @@
           if (
             requestId !== attendanceTrendsRequestId ||
             currentActiveViewId !== "attendanceReportView" ||
-            attendanceReportTab !== "attendance"
+            attendanceReportTab !== "trends"
           ) return;
           if (!result || !result.success || !Array.isArray(result.trends)) {
             throw new Error(result && result.message ? result.message : translations[currentLang].attendanceTrendNoData);
@@ -1328,18 +1251,22 @@
           document.getElementById("attendanceReportResults").hidden = false;
           document.getElementById("attendanceSearchResult").hidden = true;
           document.getElementById("attendanceSearchAgainButton").hidden = true;
-          document.getElementById("followupResults").replaceChildren();
+          document.getElementById("attendanceTrendsResults").replaceChildren();
           const select = document.getElementById("attendanceReportDate");
           const placeholder = document.createElement("option");
           placeholder.value = "";
           placeholder.textContent = translations[currentLang].attendanceDatesLoading;
           select.replaceChildren(placeholder);
           document.getElementById("attendanceTabPanel").hidden = false;
-          document.getElementById("followupTabPanel").hidden = true;
+          document.getElementById("trendsTabPanel").hidden = true;
           document.getElementById("attendanceTabButton").classList.add("is-active");
-          document.getElementById("followupTabButton").classList.remove("is-active");
+          document.getElementById("trendsTabButton").classList.remove("is-active");
           document.getElementById("attendanceTabButton").setAttribute("aria-selected", "true");
-          document.getElementById("followupTabButton").setAttribute("aria-selected", "false");
+          document.getElementById("trendsTabButton").setAttribute("aria-selected", "false");
+        } else if (viewId === "followupView") {
+          attendanceReportRequestId++;
+          document.getElementById("followupPersonQuery").value = "";
+          document.getElementById("followupResults").replaceChildren();
         } else if (viewId === "currentAttendeesView") {
           currentAttendeesRequestId++;
           currentAttendeesSnapshot = "";

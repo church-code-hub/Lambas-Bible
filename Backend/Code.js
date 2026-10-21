@@ -179,10 +179,6 @@ function doPost(e) {
       result = getAttendanceDates_();
     } else if (action === "get_attendance_trends") {
       result = getAttendanceTrends_(data.meetings);
-    } else if (action === "correct_attendance") {
-      result = withScriptLock_(() =>
-        correctAttendance_(data, identity.email),
-      );
     } else if (action === "get_attendance_window") {
       result = getAttendanceWindow_();
     } else if (action === "get_current_attendees") {
@@ -1569,16 +1565,13 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
     ) return;
     checkinsById.set(String(row[0]).trim(), row);
   });
-  const correctionsById = getAttendanceCorrectionsById_(spreadsheet, targetKey);
-
   const people = rosterRows
     .filter((row) => row[0] !== "" && row[0] !== null && row[1])
     .map((row) => {
       const id = String(row[0]).trim();
       const mark = marksById.get(id) || "";
       const checkin = checkinsById.get(id) || [];
-      const correction = correctionsById.get(id);
-      const attendanceState = resolveAttendanceState_(mark, checkin, correction);
+      const attendanceState = resolveAttendanceState_(mark, checkin);
       return {
         id: id,
         name: String(row[1]),
@@ -1587,7 +1580,6 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
         state: attendanceState.state,
         delayMinutes: attendanceState.delayMinutes,
         delay: attendanceState.delayMinutes > 0 ? formatDuration_(attendanceState.delayMinutes) : "",
-        corrected: Boolean(correction),
       };
     });
   const attendees = people.filter((person) => person.attended);
@@ -1669,38 +1661,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
   return response;
 }
 
-function getAttendanceCorrectionsById_(spreadsheet, dateKey) {
-  const corrections = getAttendanceCorrectionsByDate_(spreadsheet);
-  return corrections.get(dateKey) || new Map();
-}
-
-function getAttendanceCorrectionsByDate_(spreadsheet) {
-  const sheet = spreadsheet.getSheetByName("Attendance Corrections");
-  if (!sheet || sheet.getLastRow() < 2) return new Map();
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
-  const correctionsByDate = new Map();
-  rows.forEach((row) => {
-    const dateKey = attendanceDateKey_(row[0]);
-    if (!dateKey || !row[1]) return;
-    const state = String(row[4] || "");
-    if (!["on_time", "delayed", "absent"].includes(state)) return;
-    if (!correctionsByDate.has(dateKey)) correctionsByDate.set(dateKey, new Map());
-    correctionsByDate.get(dateKey).set(String(row[1]).trim(), {
-      state: state,
-      delayMinutes: Number(row[5]) || 0,
-    });
-  });
-  return correctionsByDate;
-}
-
-function resolveAttendanceState_(mark, checkin, correction) {
-  if (correction) {
-    return {
-      state: correction.state,
-      delayMinutes: correction.state === "delayed" ? correction.delayMinutes : 0,
-      mark: correction.state === "on_time" ? "++" : correction.state === "delayed" ? "+" : "-",
-    };
-  }
+function resolveAttendanceState_(mark, checkin) {
   const delayMinutes = parseDelayMinutes_(checkin[6]);
   const markDelayMinutes = parseDelayMinutes_(mark.replace(/^\+\s*/, ""));
   const effectiveDelayMinutes = delayMinutes || markDelayMinutes;
@@ -1713,120 +1674,6 @@ function resolveAttendanceState_(mark, checkin, correction) {
       ? "delayed"
       : "absent";
   return { state: state, delayMinutes: effectiveDelayMinutes, mark: mark };
-}
-
-function correctAttendance_(data, adminEmail) {
-  const date = String(data.date || "");
-  const id = String(data.id || "").trim();
-  const state = String(data.state || "");
-  const reason = String(data.reason || "").trim();
-  const delayMinutes = Number(data.delayMinutes);
-  if (
-    !parseAttendanceDate_(date) ||
-    !id ||
-    !["on_time", "delayed", "absent"].includes(state) ||
-    reason.length < 5 ||
-    reason.length > 500 ||
-    (state === "delayed" && (!Number.isInteger(delayMinutes) || delayMinutes < 1 || delayMinutes > 1440))
-  ) {
-    return {
-      success: false,
-      code: "INVALID_ATTENDANCE_CORRECTION",
-      message: "يرجى إدخال حالة وسبب صالحين، ومدة تأخير من دقيقة إلى 1440 دقيقة.",
-    };
-  }
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const rosterSheet = spreadsheet.getSheetByName("Roster");
-  const attendanceSheet = spreadsheet.getSheetByName("Attendance");
-  if (!rosterSheet || !attendanceSheet) {
-    return {
-      success: false,
-      code: "ATTENDANCE_SHEETS_MISSING",
-      message: "تعذر العثور على شيت الحضور أو قائمة المخدومين.",
-    };
-  }
-  const rosterLastRow = rosterSheet.getLastRow();
-  const rosterRows = rosterLastRow >= 2
-    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
-    : [];
-  const person = rosterRows.find((row) => String(row[0]).trim() === id);
-  if (!person) {
-    return { success: false, code: "PERSON_NOT_FOUND", message: "لم يتم العثور على الشخص." };
-  }
-  const lastColumn = attendanceSheet.getLastColumn();
-  const dateHeaders = lastColumn >= 3
-    ? attendanceSheet.getRange(1, 3, 1, lastColumn - 2).getValues()[0]
-    : [];
-  const dateColumnOffset = dateHeaders.findIndex((header) => attendanceDateKey_(header) === date);
-  const attendanceRow = findExactRowIndexByValue_(attendanceSheet, 1, id, 2);
-  if (dateColumnOffset === -1 || attendanceRow === -1) {
-    return {
-      success: false,
-      code: "ATTENDANCE_DATE_NOT_FOUND",
-      message: "لا يوجد سجل حضور لهذا الشخص في التاريخ المحدد.",
-    };
-  }
-
-  const mark = state === "on_time" ? "++" : state === "delayed" ? "+" : "-";
-  const oldMark = String(
-    attendanceSheet
-      .getRange(attendanceRow, dateColumnOffset + 3)
-      .getValues()[0][0] || "",
-  ).trim();
-  const checkinSheet = spreadsheet.getSheetByName("Check-in & Check-out");
-  const checkinRows = checkinSheet && checkinSheet.getLastRow() >= 2
-    ? checkinSheet.getRange(2, 1, checkinSheet.getLastRow() - 1, 8).getValues()
-    : [];
-  const priorCheckin = checkinRows.find((row) =>
-    String(row[0] || "").trim() === id &&
-    row[7] !== "Cancelled" &&
-    row[2] &&
-    typeof row[2].getTime === "function" &&
-    attendanceDateKey_(row[2]) === date,
-  ) || [];
-  const previousCorrection = getAttendanceCorrectionsById_(spreadsheet, date).get(id);
-  const previousState = resolveAttendanceState_(oldMark, priorCheckin, previousCorrection).state;
-  let auditSheet = spreadsheet.getSheetByName("Attendance Corrections");
-  if (!auditSheet) {
-    auditSheet = spreadsheet.insertSheet("Attendance Corrections");
-    auditSheet.getRange(1, 1, 1, 9).setValues([[
-      "Attendance Date",
-      "ID",
-      "Name",
-      "Previous State",
-      "Corrected State",
-      "Delay Minutes",
-      "Reason",
-      "Updated At",
-      "Updated By",
-    ]]);
-  }
-  auditSheet.appendRow([
-    date,
-    id,
-    String(person[1]),
-    previousState,
-    state,
-    state === "delayed" ? delayMinutes : "",
-    reason,
-    new Date(),
-    getAdminNameByEmail(adminEmail),
-  ]);
-  const markRange = attendanceSheet.getRange(attendanceRow, dateColumnOffset + 3);
-  markRange.setValue(mark);
-  if (typeof markRange.setBackground === "function") {
-    markRange.setBackground(attendanceMarkColor_(mark));
-  }
-  return {
-    success: true,
-    correction: {
-      date: date,
-      id: id,
-      name: String(person[1]),
-      state: state,
-      delayMinutes: state === "delayed" ? delayMinutes : 0,
-    },
-  };
 }
 
 function getAttendanceTrends_(requestedMeetings) {
@@ -1877,17 +1724,15 @@ function getAttendanceTrends_(requestedMeetings) {
     checkinsByDateAndId.set(key, row);
   });
 
-  const correctionsByDate = getAttendanceCorrectionsByDate_(spreadsheet);
   const trends = dates.map((date) => {
     const dateOffset = headers.findIndex((header) => attendanceDateKey_(header) === date);
-    const corrections = correctionsByDate.get(date) || new Map();
     let attended = 0;
     let delayed = 0;
     rosterIds.forEach((id) => {
       const attendanceRow = rowsById.get(id) || [];
       const mark = String(attendanceRow[dateOffset + 2] || "").trim();
       const checkin = checkinsByDateAndId.get(date + "|" + id) || [];
-      const state = resolveAttendanceState_(mark, checkin, corrections.get(id));
+      const state = resolveAttendanceState_(mark, checkin);
       if (state.state !== "absent") attended++;
       if (state.state === "delayed") delayed++;
     });
@@ -1941,11 +1786,7 @@ function getFollowupCandidates_() {
     if (id) attendanceById.set(id, row);
   });
   const candidates = [];
-  const correctionsByDate = getAttendanceCorrectionsByDate_(spreadsheet);
   const isPresentForDate = (id, column, attendanceRow) => {
-    const corrections = correctionsByDate.get(column.date) || new Map();
-    const correction = corrections.get(id);
-    if (correction) return correction.state !== "absent";
     return Boolean(String(attendanceRow[column.index] || "").trim());
   };
   rosterRows.forEach((row) => {

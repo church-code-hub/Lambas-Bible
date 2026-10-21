@@ -90,12 +90,12 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   }
   assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=53/);
-  assert.match(serviceWorker, /lambas-bible-shell-v53/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=53/);
+  assert.match(html, /css\/styles\.css\?v=54/);
+  assert.match(serviceWorker, /lambas-bible-shell-v54/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=54/);
 });
 
-test("roster management and attendance correction/trend tools remain inside existing views", () => {
+test("roster management, attendance trends, and follow-up have dedicated views", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
@@ -103,12 +103,14 @@ test("roster management and attendance correction/trend tools remain inside exis
   assert.match(html, /id="rosterView"[\s\S]*?id="rosterManagementResults"/);
   assert.match(views, /async function loadRosterManagement\(\)/);
   assert.match(views, /apiCall\("update_roster_person"/);
-  assert.match(html, /attendance-trends-panel[\s\S]*?id="attendanceTrendsResults"/);
+  assert.match(html, /id="trendsTabButton"[\s\S]*?data-i18n="attendanceTrendsTitle"/);
+  assert.match(html, /id="trendsTabPanel"[\s\S]*?id="attendanceTrendsResults"/);
   assert.match(views, /apiCall\("get_attendance_trends"/);
-  assert.match(html, /id="attendanceCorrectionDialog"[\s\S]*?onsubmit="submitAttendanceCorrection\(event\)"/);
-  assert.match(views, /apiCall\("correct_attendance"/);
-  assert.match(views, /attendanceCorrectionReason[\s\S]*?reason:/);
-  for (const key of ["manageRoster", "attendanceTrendsTitle", "attendanceCorrectionTitle"]) {
+  assert.match(html, /onclick="openFollowupView\(\)"/);
+  assert.match(html, /id="followupView"[\s\S]*?id="followupResults"/);
+  assert.match(views, /function openFollowupView\(\)/);
+  assert.doesNotMatch(html + views, /attendanceCorrection|correct_attendance/);
+  for (const key of ["manageRoster", "attendanceTrendsTitle"]) {
     assert.equal((translations.match(new RegExp(`${key}:`, "g")) || []).length, 2);
   }
 });

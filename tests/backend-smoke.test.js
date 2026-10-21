@@ -226,61 +226,6 @@ test("manages roster names and archives people without removing historical rows"
   assert.equal(sheets.get("Roster Audit").rows.length, 2);
 });
 
-test("attendance corrections override reports and are recorded with their reason", () => {
-  const rosterSheet = createMutableSheet([
-    ["ID", "Name", "Card URL", "Status"],
-    [1, "Alice", "", "Active"],
-  ]);
-  const attendanceSheet = createMutableSheet([
-    ["ID", "Name", "2026-10-18"],
-    [1, "Alice", "++"],
-  ]);
-  const checkinSheet = createMutableSheet([
-    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
-    [1, "Alice", new Date(2026, 9, 18, 10), "Admin", "", "", "", "Active"],
-  ]);
-  const sheets = new Map([
-    ["Roster", rosterSheet],
-    ["Attendance", attendanceSheet],
-    ["Check-in & Check-out", checkinSheet],
-  ]);
-  const { context } = createBackendContext();
-  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
-    getSheetByName: (name) => sheets.get(name) || null,
-    insertSheet: (name) => {
-      const sheet = createMutableSheet([]);
-      sheets.set(name, sheet);
-      return sheet;
-    },
-  });
-
-  const corrected = context.correctAttendance_({
-    date: "2026-10-18",
-    id: "1",
-    state: "delayed",
-    delayMinutes: 12,
-    reason: "Manual sign-in was missed",
-  }, "admin@example.com");
-  assert.equal(corrected.success, true);
-  const report = context.getAttendanceDayReport_("2026-10-18", "");
-  assert.equal(report.people[0].state, "delayed");
-  assert.equal(report.people[0].delayMinutes, 12);
-  assert.equal(report.people[0].corrected, true);
-  assert.equal(attendanceSheet.rows[1][2], "+");
-  assert.equal(sheets.get("Attendance Corrections").rows[1][3], "on_time");
-  assert.equal(sheets.get("Attendance Corrections").rows[1][6], "Manual sign-in was missed");
-  assert.equal(context.correctAttendance_({
-    date: "2026-10-18",
-    id: "1",
-    state: "absent",
-    reason: "Attendance was entered on the wrong date",
-  }, "admin@example.com").success, true);
-  const correctedAbsentReport = context.getAttendanceDayReport_("2026-10-18", "");
-  assert.equal(correctedAbsentReport.people[0].state, "absent");
-  assert.equal(correctedAbsentReport.people[0].attended, false);
-  assert.equal(sheets.get("Attendance Corrections").rows[2][3], "delayed");
-});
-
 test("attendance trends summarize recent meeting attendance rates", () => {
   const { context } = createBackendContext();
   const today = context.attendanceSessionDateKey_(new Date(), context.getSettings());
@@ -319,23 +264,6 @@ test("attendance trends summarize recent meeting attendance rates", () => {
       result.trends[1].attendanceRate,
     ],
     [1, 1, 1, 50],
-  );
-  const corrected = context.correctAttendance_({
-    date: today,
-    id: "1",
-    state: "absent",
-    reason: "This meeting record belongs to another person",
-  }, "admin@example.com");
-  assert.equal(corrected.success, true);
-  const correctedTrends = context.getAttendanceTrends_(8);
-  assert.deepEqual(
-    [
-      correctedTrends.trends[1].attended,
-      correctedTrends.trends[1].absent,
-      correctedTrends.trends[1].delayed,
-      correctedTrends.trends[1].attendanceRate,
-    ],
-    [0, 2, 0, 0],
   );
 });
 

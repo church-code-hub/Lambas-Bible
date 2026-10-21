@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=53" />
+    <link rel="stylesheet" href="./css/styles.css?v=54" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -223,6 +223,10 @@
                 <span class="ico"><i class="fa-solid fa-chart-column"></i></span
                 ><span data-i18n="attendanceReports">تقارير الحضور</span>
               </button>
+              <button class="tile" data-online-only onclick="openFollowupView()">
+                <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
+                ><span data-i18n="followupsTitle">الافتقاد</span>
+              </button>
               <button class="tile" data-online-only onclick="openSheet()">
                 <span class="ico"><i class="fa-solid fa-table"></i></span
                 ><span data-i18n="openSheet">فتح الشيت</span>
@@ -333,9 +337,9 @@
           <button id="attendanceTabButton" class="report-tab is-active" data-online-only type="button" role="tab"
             aria-selected="true" aria-controls="attendanceTabPanel" onclick="selectAttendanceReportTab('attendance')"
             data-i18n="attendanceTab">الحضور</button>
-          <button id="followupTabButton" class="report-tab" data-online-only type="button" role="tab"
-            aria-selected="false" aria-controls="followupTabPanel" onclick="selectAttendanceReportTab('followups')"
-            data-i18n="followupsTitle">الافتقاد</button>
+          <button id="trendsTabButton" class="report-tab" data-online-only type="button" role="tab"
+            aria-selected="false" aria-controls="trendsTabPanel" onclick="selectAttendanceReportTab('trends')"
+            data-i18n="attendanceTrendsTitle">اتجاهات الحضور</button>
         </div>
         <section id="attendanceTabPanel" role="tabpanel" aria-labelledby="attendanceTabButton">
           <label class="date-picker-label" for="attendanceReportDate" data-i18n="attendanceDateLabel">تاريخ الاجتماع</label>
@@ -383,8 +387,9 @@
           </div>
           <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
           <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
-          <details class="attendance-trends-panel" ontoggle="if(this.open)loadAttendanceTrends()">
-            <summary data-i18n="attendanceTrendsTitle">Attendance trends</summary>
+        </section>
+        <section id="trendsTabPanel" class="attendance-trends-panel" role="tabpanel" aria-labelledby="trendsTabButton" hidden>
+            <h3 data-i18n="attendanceTrendsTitle">Attendance trends</h3>
             <div class="attendance-trend-controls">
               <label for="attendanceTrendMeetings" data-i18n="attendanceTrendMeetingsLabel">Meetings</label>
               <select id="attendanceTrendMeetings" class="attendance-filter-select" data-online-only onchange="loadAttendanceTrends()">
@@ -396,9 +401,12 @@
               <button class="btn secondary" data-online-only type="button" onclick="loadAttendanceTrends()" data-i18n="refreshTrendsBtn">Refresh</button>
             </div>
             <div id="attendanceTrendsResults" class="attendance-trends-results" aria-live="polite"></div>
-          </details>
         </section>
-        <section id="followupTabPanel" role="tabpanel" aria-labelledby="followupTabButton" hidden>
+      </div>
+
+      <div id="followupView" style="display: none">
+        <h2 data-i18n="followupsTitle">قائمة الافتقاد</h2>
+        <section id="followupPanel">
           <p class="report-note" data-i18n="followupsNote">أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.</p>
           <div class="followup-search-controls">
             <input id="followupPersonQuery" type="search" data-i18n-placeholder="followupSearchPlaceholder" placeholder="ابحث في قائمة الافتقاد" oninput="filterFollowups()" onkeydown="if(event.key === 'Enter'){event.preventDefault();filterFollowups();}" />
@@ -414,28 +422,6 @@
           <div id="followupResults" class="report-list" aria-live="polite"></div>
         </section>
       </div>
-
-      <dialog id="attendanceCorrectionDialog" class="attendance-correction-dialog" aria-labelledby="attendanceCorrectionTitle">
-        <form class="attendance-correction-form" onsubmit="submitAttendanceCorrection(event)">
-          <h2 id="attendanceCorrectionTitle" data-i18n="attendanceCorrectionTitle">Correct attendance</h2>
-          <p id="attendanceCorrectionPerson" class="report-note"></p>
-          <input id="attendanceCorrectionId" type="hidden" />
-          <label for="attendanceCorrectionState" data-i18n="attendanceCorrectionStateLabel">Correct status</label>
-          <select id="attendanceCorrectionState" required onchange="toggleAttendanceCorrectionDelay()">
-            <option value="on_time" data-i18n="attendanceOnTime">Attended on time</option>
-            <option value="delayed" data-i18n="attendanceDelayed">Attended late</option>
-            <option value="absent" data-i18n="absent">Absent</option>
-          </select>
-          <label id="attendanceCorrectionDelayLabel" for="attendanceCorrectionDelay" data-i18n="attendanceCorrectionDelayLabel" hidden>Delay (minutes)</label>
-          <input id="attendanceCorrectionDelay" type="number" min="1" max="1440" step="1" hidden />
-          <label for="attendanceCorrectionReason" data-i18n="attendanceCorrectionReasonLabel">Reason (required)</label>
-          <textarea id="attendanceCorrectionReason" required minlength="5" maxlength="500" rows="3"></textarea>
-          <div class="attendance-correction-actions">
-            <button class="btn secondary" type="button" onclick="closeAttendanceCorrection()" data-i18n="cancelBtn">Cancel</button>
-            <button class="btn" data-online-only type="submit" data-i18n="saveChangesBtn">Save changes</button>
-          </div>
-        </form>
-      </dialog>
 
       <dialog id="attendanceSheetResultDialog" class="attendance-sheet-dialog" aria-labelledby="attendanceSheetResultTitle">
         <div class="attendance-sheet-dialog-content">
@@ -971,13 +957,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=53"></script>
-    <script src="./js/app-i18n.js?v=53"></script>
-    <script src="./js/app-core.js?v=53"></script>
-    <script src="./js/app-offline.js?v=53"></script>
-    <script src="./js/app-views.js?v=53"></script>
-    <script src="./js/app-auth.js?v=53"></script>
-    <script src="./js/app-scanner-search.js?v=53"></script>
-    <script src="./js/app-cards-admin.js?v=53"></script>
+    <script src="./js/app-state.js?v=54"></script>
+    <script src="./js/app-i18n.js?v=54"></script>
+    <script src="./js/app-core.js?v=54"></script>
+    <script src="./js/app-offline.js?v=54"></script>
+    <script src="./js/app-views.js?v=54"></script>
+    <script src="./js/app-auth.js?v=54"></script>
+    <script src="./js/app-scanner-search.js?v=54"></script>
+    <script src="./js/app-cards-admin.js?v=54"></script>
   </body>
 </html>

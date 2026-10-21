@@ -1166,7 +1166,7 @@
 
       .attendance-report-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) auto;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         align-items: center;
         gap: 12px;
         padding: 12px 16px;
@@ -1184,7 +1184,7 @@
 
       .attendance-report-match {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) auto;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         align-items: center;
         gap: 12px;
         margin-bottom: 8px;
@@ -1220,27 +1220,18 @@
         color: var(--text-sub);
       }
 
-      .attendance-correction-button {
-        min-height: 34px;
-        margin: 0;
-        padding: 6px 9px;
-        font-size: 12px;
-        white-space: nowrap;
-      }
-
       .attendance-trends-panel {
-        margin-top: 16px;
-        padding: 0 14px;
+        margin-top: 8px;
+        padding: 16px 14px;
         border: 1px solid var(--card-border);
         border-radius: 16px;
         background: var(--glass-surface);
       }
 
-      .attendance-trends-panel > summary {
-        padding: 16px 0;
+      .attendance-trends-panel > h3 {
+        margin: 0 0 14px;
         color: var(--text-main);
         font-weight: 700;
-        cursor: pointer;
       }
 
       .attendance-trend-controls {
@@ -1279,51 +1270,6 @@
         color: var(--text-main);
       }
 
-      .attendance-correction-dialog {
-        width: min(480px, calc(100vw - 28px));
-        max-height: min(90vh, 700px);
-        padding: 0;
-        overflow-y: auto;
-        border: 1px solid var(--card-border);
-        border-radius: 20px;
-        background: var(--glass-surface);
-        color: var(--text-main);
-      }
-
-      .attendance-correction-dialog::backdrop {
-        background: rgb(0 0 0 / 58%);
-        backdrop-filter: blur(4px);
-      }
-
-      .attendance-correction-form {
-        display: grid;
-        gap: 10px;
-        padding: 22px;
-      }
-
-      .attendance-correction-form h2,
-      .attendance-correction-form p {
-        margin: 0;
-      }
-
-      .attendance-correction-form input,
-      .attendance-correction-form select,
-      .attendance-correction-form textarea {
-        width: 100%;
-        min-width: 0;
-        margin: 0;
-      }
-
-      .attendance-correction-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 8px;
-      }
-
-      .attendance-correction-actions .btn {
-        margin: 0;
-      }
-
       .report-tabs {
         position: relative;
         display: grid;
@@ -1352,11 +1298,11 @@
         transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
       }
 
-      .report-tabs[data-active-tab="followups"]:dir(rtl)::before {
+      .report-tabs[data-active-tab="trends"]:dir(rtl)::before {
         transform: translateX(-100%);
       }
 
-      .report-tabs[data-active-tab="followups"]:dir(ltr)::before {
+      .report-tabs[data-active-tab="trends"]:dir(ltr)::before {
         transform: translateX(100%);
       }
 

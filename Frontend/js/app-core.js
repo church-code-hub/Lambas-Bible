@@ -103,14 +103,10 @@
           if (loginError.dataset.message) loginError.innerText = translateText(loginError.dataset.message);
           if (currentActiveViewId === "offlineQueueView") renderOfflineQueue();
           if (currentActiveViewId === "attendanceReportView") {
-            if (attendanceReportTab === "followups") loadFollowups();
-            else {
-              loadAttendanceReportDates();
-              if (document.querySelector(".attendance-trends-panel").open) {
-                loadAttendanceTrends();
-              }
-            }
+            if (attendanceReportTab === "trends") loadAttendanceTrends();
+            else loadAttendanceReportDates();
           }
+          if (currentActiveViewId === "followupView") renderFollowupResults();
           if (currentActiveViewId === "currentAttendeesView") loadCurrentAttendees();
           if (currentActiveViewId === "rosterView") renderRosterManagement();
           if (currentActiveViewId === "appSettingsView") updateOfflineStatus();
