@@ -235,8 +235,10 @@
         isNameSearchRunning = true;
         const searchButton = document.getElementById("btnSearch");
         searchButton.disabled = true;
+        let finishOfflineSearch = null;
         try {
           if (!navigator.onLine) {
+            finishOfflineSearch = beginUserActionRequest();
             showSearchLoader(resDiv);
             const roster = await getCachedRoster();
             if (!roster.length) {
@@ -281,6 +283,7 @@
         } finally {
           isNameSearchRunning = false;
           searchButton.disabled = false;
+          if (finishOfflineSearch) finishOfflineSearch();
           if (currentActiveViewId === "searchView") {
             addSearchAgainButton(resDiv, document.getElementById("searchNameInput"));
           }

@@ -309,14 +309,48 @@ test("updates only the matching date and attendee in the attendance matrix", () 
         setValue: (value) => {
           rows[row - 1][column - 1] = value;
         },
+        setBackground: (color) => {
+          sheet.backgrounds ||= {};
+          sheet.backgrounds[`${row}:${column}`] = color;
+        },
       };
     },
+    backgrounds: {},
   };
 
   context.setAttendanceMark_(sheet, 18, new Date(), "+");
 
   assert.deepEqual(rows[1], [17, "Alice", "", ""]);
   assert.deepEqual(rows[2], [18, "Bob", "+", ""]);
+  assert.equal(sheet.backgrounds["3:3"], "#f6b26b");
+});
+
+test("attendance marks discard embedded delay text and apply the requested colors", () => {
+  const { context } = createBackendContext();
+  const date = new Date();
+  const rows = [["ID", "Name", date], [7, "Sam", ""]];
+  const backgrounds = [];
+  const sheet = {
+    getLastRow: () => rows.length,
+    getLastColumn: () => rows[0].length,
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues: () => rows
+          .slice(row - 1, row - 1 + rowCount)
+          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValue: (value) => { rows[row - 1][column - 1] = value; },
+        setBackground: (color) => backgrounds.push(color),
+      };
+    },
+  };
+
+  context.setAttendanceMark_(sheet, 7, date, "+ 30 دقيقة");
+  assert.equal(rows[1][2], "+");
+  context.setAttendanceMark_(sheet, 7, date, "++");
+  context.setAttendanceMark_(sheet, 7, date, "-");
+
+  assert.equal(rows[1][2], "-");
+  assert.deepEqual(backgrounds, ["#f6b26b", "#93c47d", "#ffe599"]);
 });
 
 test("records each delay by attendance date and retains the aggregate summary", () => {
@@ -377,23 +411,50 @@ test("builds a daily attendance report and can find an absent person by name", (
     [3, "Charlie", ""],
   ]);
   const meetingDate = new Date(2026, 9, 18, 12);
-  const makeSheet = (rows, sheetId = 0) => ({
-    rows,
-    getLastRow: () => rows.length,
-    getLastColumn: () => Math.max(...rows.map((row) => row.length)),
-    getSheetId: () => sheetId,
-    clearContents: () => { rows.length = 0; },
-    getRange(row, column, rowCount, columnCount) {
-      return {
-        getValues: () => rows
-          .slice(row - 1, row - 1 + rowCount)
-          .map((values) => values.slice(column - 1, column - 1 + columnCount)),
-        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
-          rows[row - 1 + rowOffset] = valuesRow.slice();
-        }),
-      };
-    },
-  });
+  const makeSheet = (rows, sheetId = 0) => {
+    const sheet = {
+      rows,
+      backgrounds: [],
+      getLastRow: () => rows.length,
+      getLastColumn: () => Math.max(...rows.map((row) => row.length)),
+      getSheetId: () => sheetId,
+      clearContents: () => { rows.length = 0; },
+      formatting: {},
+      getRange(row, column, rowCount, columnCount) {
+        const range = {
+          getValues: () => rows
+            .slice(row - 1, row - 1 + rowCount)
+            .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+          setValues: (values) => values.forEach((valuesRow, rowOffset) => {
+            rows[row - 1 + rowOffset] = valuesRow.slice();
+          }),
+          setBackgrounds: (values) => { sheet.backgrounds = values; },
+          setHorizontalAlignment: (value) => {
+            sheet.formatting.horizontalAlignment = value;
+            return range;
+          },
+          setVerticalAlignment: (value) => {
+            sheet.formatting.verticalAlignment = value;
+            return range;
+          },
+          setBackground: (value) => {
+            sheet.formatting.headerBackground = value;
+            return range;
+          },
+          setFontColor: (value) => {
+            sheet.formatting.headerFontColor = value;
+            return range;
+          },
+          setFontWeight: (value) => {
+            sheet.formatting.headerFontWeight = value;
+            return range;
+          },
+        };
+        return range;
+      },
+    };
+    return sheet;
+  };
   const attendanceSheet = makeSheet([
     ["ID", "Name", meetingDate],
     [1, "Alice", "-"],
@@ -434,20 +495,31 @@ test("builds a daily attendance report and can find an absent person by name", (
   assert.equal(sheets.get("Attendance 2026-10-18").rows.length, 4);
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[0]),
-    ["Name", "Attendance Status", "Delay"],
+    ["Name", "Attendance Mark", "Delay"],
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[1]),
-    ["Alice", "Attended on time", ""],
+    ["Alice", "++", ""],
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[2]),
-    ["Bob", "Absent", ""],
+    ["Bob", "-", ""],
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[3]),
-    ["Charlie", "Attended with delay", "1 ساعة و15 دقيقة"],
+    ["Charlie", "+", "1 ساعة و15 دقيقة"],
   );
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18").backgrounds, (row) => Array.from(row)),
+    [["#93c47d"], ["#ffe599"], ["#f6b26b"]],
+  );
+  assert.deepEqual(sheets.get("Attendance 2026-10-18").formatting, {
+    horizontalAlignment: "center",
+    verticalAlignment: "middle",
+    headerBackground: "#f5bd55",
+    headerFontColor: "#182333",
+    headerFontWeight: "bold",
+  });
   const preservedRows = JSON.stringify(sheets.get("Attendance 2026-10-18").rows);
   const existingReport = context.getAttendanceDayReport_("2026-10-18", "", true);
   assert.equal(existingReport.report.alreadyExists, true);
@@ -469,6 +541,8 @@ test("adds previously attending people missing three meetings to follow-up", () 
   });
   const makeSheet = (rows) => ({
     rows,
+    writeCount: 0,
+    appendCount: 0,
     getLastRow: () => rows.length,
     getLastColumn: () => Math.max(...rows.map((row) => row.length)),
     getRange(row, column, rowCount, columnCount) {
@@ -476,16 +550,22 @@ test("adds previously attending people missing three meetings to follow-up", () 
         getValues: () => rows
           .slice(row - 1, row - 1 + rowCount)
           .map((values) => values.slice(column - 1, column - 1 + columnCount)),
-        setValues: (values) => values.forEach((valuesRow, rowOffset) => {
-          const targetRow = row - 1 + rowOffset;
-          rows[targetRow] ||= [];
-          valuesRow.forEach((value, columnOffset) => {
-            rows[targetRow][column - 1 + columnOffset] = value;
+        setValues: (values) => {
+          this.writeCount++;
+          values.forEach((valuesRow, rowOffset) => {
+            const targetRow = row - 1 + rowOffset;
+            rows[targetRow] ||= [];
+            valuesRow.forEach((value, columnOffset) => {
+              rows[targetRow][column - 1 + columnOffset] = value;
+            });
           });
-        }),
+        },
       };
     },
-    appendRow: (values) => rows.push(values),
+    appendRow(values) {
+      this.appendCount++;
+      rows.push(values);
+    },
   });
   const attendanceSheet = makeSheet([
     ["ID", "Name", ...dates],
@@ -510,12 +590,16 @@ test("adds previously attending people missing three meetings to follow-up", () 
     Array.from(firstList.followups, (person) => [person.id, person.missedMeetings]),
     [["1", 3]],
   );
+  const followupSheet = sheets.get("Follow-up");
+  assert.equal(followupSheet.writeCount, 2);
+  assert.equal(followupSheet.appendCount, 0);
   assert.equal(context.completeFollowup_("1", "admin@example.com").success, true);
   const refreshedList = context.getFollowupCandidates_();
   assert.deepEqual(
     Array.from(refreshedList.followups, (person) => person.id),
     [],
   );
+  assert.equal(followupSheet.writeCount, 4);
 });
 
 test("cancels today's check-in by removing its row and retaining an audit record", () => {
@@ -756,6 +840,46 @@ test("cached roster includes the original QR token while retaining its attendee 
   );
 });
 
+test("finds one roster row through an exact sheet text search", () => {
+  const { context } = createBackendContext();
+  let finderValue = "";
+  let exactMatchEnabled = false;
+  let caseSensitiveEnabled = false;
+  const sheet = {
+    getLastRow: () => 5,
+    getRange(row, column, rowCount, columnCount) {
+      if (column === 1 && rowCount === 4) {
+        return {
+          createTextFinder: (value) => {
+            finderValue = value;
+            return {
+              matchEntireCell(value) {
+                exactMatchEnabled = value;
+                return this;
+              },
+              matchCase(value) {
+                caseSensitiveEnabled = value;
+                return this;
+              },
+              findNext: () => ({ getRow: () => 4 }),
+            };
+          },
+          getValues: () => assert.fail("The entire roster should not be read"),
+        };
+      }
+      assert.deepEqual([row, column, rowCount, columnCount], [4, 1, 1, 2]);
+      return { getValues: () => [[7, "Alice"]] };
+    },
+  };
+
+  const result = context.findExactRowByValue_(sheet, 1, 7, 2, 2);
+
+  assert.deepEqual(Array.from(result), [7, "Alice"]);
+  assert.equal(finderValue, "7");
+  assert.equal(exactMatchEnabled, true);
+  assert.equal(caseSensitiveEnabled, true);
+});
+
 test("evaluates the meeting schedule against the captured event timestamp", () => {
   const { context } = createBackendContext();
   const eventTime = new Date(2026, 9, 18, 11, 0, 0);
@@ -988,7 +1112,7 @@ test("checks out directly from the current-attendee action and audits the action
 
   assert.equal(checkedOut.kind, "out", checkedOut.message);
   assert.equal(checkinRows[1][5], "Test Admin");
-  assert.equal(attendanceRows[1][2], "+ 40 دقيقة");
+  assert.equal(attendanceRows[1][2], "+");
   assert.equal(sheets.get("Attendance Audit").rows[1][5], "Check-out");
   assert.equal(alreadyCheckedOut.kind, "error");
 });

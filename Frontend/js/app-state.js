@@ -18,6 +18,7 @@
       var isNameSearchRunning = false;
       var isCardSearchRunning = false;
       var isSyncingOfflineQueue = false;
+      var userActionRequestCount = 0;
       var activeApiRequestCount = 0;
       var googleSignInInitialized = false;
       var pendingSessionRestoreEmail = "";
@@ -36,6 +37,8 @@
       var currentAttendeesRequestId = 0;
       var currentAttendeesSnapshot = "";
       var currentAttendeesData = [];
+      var currentAttendeesRequestInFlight = false;
+      var currentAttendeesRefreshPending = false;
       var currentAttendeesCheckoutOpen = false;
       var currentAttendeesRefreshTimer = 0;
       var currentAttendeesWindowTimer = 0;
@@ -52,5 +55,15 @@
         window.matchMedia("(prefers-color-scheme: light)").matches
           ? "light"
           : "dark");
+
+      function beginUserActionRequest() {
+        userActionRequestCount++;
+        let completed = false;
+        return () => {
+          if (completed) return;
+          completed = true;
+          userActionRequestCount = Math.max(0, userActionRequestCount - 1);
+        };
+      }
 
       var activePreviewCard = { fileId: "", driveUrl: "", name: "" };

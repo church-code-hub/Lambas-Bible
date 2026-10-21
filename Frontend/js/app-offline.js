@@ -244,24 +244,31 @@
       }
 
       async function queueOfflineEvent(event) {
-        if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a previously authenticated session.");
-        let personName = event.personName || "";
-        if (event.type === "scan" && !personName) {
-          try {
-            personName = await getCachedPersonName(event.qrText);
-          } catch (error) {
-            console.warn("Could not find the scanned ID in the saved roster.", error);
+        const finishUserAction = beginUserActionRequest();
+        try {
+          if (!currentUser || (navigator.onLine && !googleIdToken)) {
+            throw new Error("Offline actions require a previously authenticated session.");
           }
+          let personName = event.personName || "";
+          if (event.type === "scan" && !personName) {
+            try {
+              personName = await getCachedPersonName(event.qrText);
+            } catch (error) {
+              console.warn("Could not find the scanned ID in the saved roster.", error);
+            }
+          }
+          const queuedEvent = {
+            ...event,
+            ...(personName ? { personName } : {}),
+            eventId: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            queuedBy: currentUser.email,
+          };
+          await saveOfflineEvent(queuedEvent);
+          return queuedEvent;
+        } finally {
+          finishUserAction();
         }
-        const queuedEvent = {
-          ...event,
-          ...(personName ? { personName } : {}),
-          eventId: crypto.randomUUID(),
-          timestamp: new Date().toISOString(),
-          queuedBy: currentUser.email,
-        };
-        await saveOfflineEvent(queuedEvent);
-        return queuedEvent;
       }
 
       async function updateOfflineStatus() {
@@ -269,7 +276,7 @@
         const toolbarCount = document.getElementById("syncNowCount");
         if (toolbarButton) {
           toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView";
-          toolbarButton.disabled = isSyncingOfflineQueue || !navigator.onLine;
+          toolbarButton.disabled = isSyncingOfflineQueue;
           toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
         }
         updateOnlineOnlyControls();
@@ -378,7 +385,7 @@
           empty.textContent = translations[currentLang].noOfflineEvents;
           results.appendChild(empty);
         }
-        return { entries, progressBar, count, lane, results, total: events.length, completed: 0 };
+        return { entries, progressBar, count, lane, results, total: events.length, completed: 0, failed: 0 };
       }
 
       function updateOfflineSyncProgress(progress, eventId, state, message = "") {
@@ -416,6 +423,7 @@
         if (state !== "Waiting" && state !== "Syncing" && !entry.finished) {
           entry.finished = true;
           progress.completed++;
+          if (state === "Failed" || state === "NotSynced") progress.failed++;
           progress.progressBar.value = progress.completed;
           progress.count.textContent = translations[currentLang].offlineSyncProgressCount
             .replace("{completed}", String(progress.completed))
@@ -443,17 +451,22 @@
       }
 
       function getOfflineSyncBatch(events, targetEventId, groupType, accountEmail) {
-        if (!events.length || events[0].queuedBy !== accountEmail) return null;
-        const first = events[0];
         if (targetEventId) {
-          return first.eventId === targetEventId ? [first] : null;
+          const target = events.find((event) => event.eventId === targetEventId);
+          return target && target.queuedBy === accountEmail ? [target] : null;
         }
-        if (groupType && first.type !== groupType) return null;
+        const eligibleEvents = events.filter((event) => event.queuedBy === accountEmail);
+        if (groupType) {
+          return eligibleEvents
+            .filter((event) => event.type === groupType)
+            .slice(0, 20);
+        }
+        if (!eligibleEvents.length) return null;
+        const first = eligibleEvents[0];
         const batch = [];
-        for (const event of events) {
+        for (const event of eligibleEvents) {
           if (
             batch.length >= 20 ||
-            event.queuedBy !== accountEmail ||
             event.type !== first.type
           ) break;
           batch.push(event);
@@ -470,11 +483,12 @@
           await updateOfflineStatus();
           let events = await hydrateOfflinePersonNames(await getOfflineEvents());
           const selectedBatch = getOfflineSyncBatch(events, targetEventId, groupType, currentUser.email);
-          if ((targetEventId || groupType) && !selectedBatch) {
-            showToast(translations[currentLang].offlineSyncOrderBlocked, "info");
-            return null;
-          }
-          const progressEvents = targetEventId || groupType ? selectedBatch : events;
+          if ((targetEventId || groupType) && !selectedBatch) return null;
+          const progressEvents = targetEventId
+            ? selectedBatch
+            : groupType
+              ? events.filter((event) => event.queuedBy === currentUser.email && event.type === groupType)
+              : events.filter((event) => event.queuedBy === currentUser.email);
           progress = showProgress ? createOfflineSyncProgress(progressEvents) : null;
           while (events.length && navigator.onLine && currentUser && googleIdToken) {
             const batch = getOfflineSyncBatch(
@@ -485,6 +499,7 @@
             );
             if (!batch) break;
             const requestBatch = showProgress ? batch.slice(0, 1) : batch;
+            const batchStartedAt = Date.now();
             requestBatch.forEach((candidate) => updateOfflineSyncProgress(progress, candidate.eventId, "Syncing"));
             if (showProgress) {
               await new Promise((resolve) => {
@@ -500,6 +515,12 @@
               if (!response || !response.success || !Array.isArray(response.results)) break;
               if (!response.results.some((item) => item && item.status === "pending")) break;
             }
+            if (showProgress) {
+              const animationRemaining = Math.max(0, 750 - (Date.now() - batchStartedAt));
+              if (animationRemaining) {
+                await new Promise((resolve) => setTimeout(resolve, animationRemaining));
+              }
+            }
             if (!response || !response.success || !Array.isArray(response.results)) {
               for (const candidate of requestBatch) {
                 await saveOfflineSyncFailure(
@@ -513,14 +534,7 @@
                   translations[currentLang].offlineSyncProgressNoResult,
                 );
               }
-              if (showProgress) {
-                showToast(
-                  translations[currentLang].offlineSyncProgressNoResult,
-                  "error",
-                  5000,
-                );
-                await new Promise((resolve) => setTimeout(resolve, 5000));
-              }
+              showToast(translations[currentLang].offlineSyncProgressNoResult, "error");
               break;
             }
             let shouldStop = response.results.length !== requestBatch.length;
@@ -537,10 +551,7 @@
                   "Failed",
                   failureMessage,
                 );
-                showToast(failureMessage, "error", 5000);
-                if (showProgress) {
-                  await new Promise((resolve) => setTimeout(resolve, 5000));
-                }
+                showToast(failureMessage, "error");
                 shouldStop = true;
                 break;
               }
@@ -563,19 +574,8 @@
               if (completedEvent.type === "add_student" && result.success) {
                 await refreshRosterCache();
               }
-              const eventTitle = offlineEventDescription(completedEvent);
-              const eventMessage = [eventTitle, result.title, result.name, result.message]
-                .filter((part) => typeof part === "string" && part.trim())
-                .join(" · ");
-              showToast(
-                eventMessage || translations[currentLang].offlineSyncFailed,
-                failed ? "error" : result.cardGenerationFailed ? "info" : "success",
-                5000,
-              );
-              if (showProgress) {
-                await new Promise((resolve) => setTimeout(resolve, 5000));
-              }
               if (failed) {
+                showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
                 shouldStop = true;
                 break;
               }
@@ -615,6 +615,9 @@
                 );
               }
             }
+            if (progress && progress.completed > 0 && progress.failed === 0) {
+              showToast(translations[currentLang].offlineSyncComplete, "success");
+            }
           }
         } catch (error) {
           if (progress) {
@@ -635,6 +638,9 @@
           }
           if (currentUser && googleIdToken) showToast(translations[currentLang].offlineSyncFailed, "error");
         } finally {
+          if (progress && progress.completed > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 650));
+          }
           const progressSection = document.getElementById("offlineSyncProgress");
           if (progressSection) progressSection.hidden = true;
           isSyncingOfflineQueue = false;
@@ -687,9 +693,8 @@
             groupSync.className = "btn secondary offline-group-sync";
             groupSync.dataset.onlineOnly = "";
             groupSync.textContent = translations[currentLang].offlineSyncGroup;
-            groupSync.disabled = !events.length ||
-              events[0].type !== type ||
-              events[0].queuedBy !== currentUser?.email;
+            groupSync.disabled = !groupEvents.some((event) => event.queuedBy === currentUser?.email) ||
+              isSyncingOfflineQueue;
             groupSync.addEventListener("click", () => syncOfflineQueue("", true, type));
             heading.append(groupTitle, groupSync);
             groupPanel.appendChild(heading);
@@ -720,15 +725,15 @@
               retryButton.textContent = event.lastSyncError
                 ? translations[currentLang].offlineRetry
                 : translations[currentLang].offlineSyncEvent;
-              retryButton.disabled = !events.length ||
-                events[0].eventId !== event.eventId ||
-                event.queuedBy !== currentUser?.email;
+              retryButton.disabled = event.queuedBy !== currentUser?.email ||
+                isSyncingOfflineQueue;
               retryButton.addEventListener("click", () => syncOfflineQueue(event.eventId, true));
               actions.appendChild(retryButton);
               const deleteButton = document.createElement("button");
               deleteButton.type = "button";
               deleteButton.className = "admin-del-btn";
               deleteButton.textContent = translations[currentLang].deleteOfflineEventBtn;
+              deleteButton.disabled = isSyncingOfflineQueue;
               deleteButton.addEventListener("click", () => deleteQueuedOfflineEvent(event.eventId));
               actions.appendChild(deleteButton);
               item.append(details, actions);
@@ -749,6 +754,7 @@
       }
 
       async function deleteQueuedOfflineEvent(eventId) {
+        if (isSyncingOfflineQueue) return;
         if (!window.confirm(translations[currentLang].confirmDeleteOfflineEvent)) return;
         try {
           await removeOfflineEvent(eventId);

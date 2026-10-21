@@ -1383,19 +1383,32 @@ function setAttendanceMark_(sheet, id, date, mark) {
 
   const targetDate = date.toDateString();
   const dateHeaders = sheet.getRange(1, 3, 1, lastColumn - 2).getValues()[0];
-  const idValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   const columnIndex = dateHeaders.findIndex((header) => {
     const parsedDate = header instanceof Date ? header : new Date(header);
     return (
       !isNaN(parsedDate.getTime()) && parsedDate.toDateString() === targetDate
     );
   });
-  const rowIndex = idValues.findIndex(
-    (row) => String(row[0]).trim() === String(id).trim(),
-  );
-  if (rowIndex !== -1 && columnIndex !== -1) {
-    sheet.getRange(rowIndex + 2, columnIndex + 3).setValue(mark);
+  const targetRow = findExactRowIndexByValue_(sheet, 1, id, 2);
+  if (targetRow !== -1 && columnIndex !== -1) {
+    const attendanceMark = mark === "++"
+      ? "++"
+      : String(mark || "").startsWith("+")
+        ? "+"
+        : String(mark || "");
+    const markRange = sheet.getRange(targetRow, columnIndex + 3);
+    markRange.setValue(attendanceMark);
+    if (typeof markRange.setBackground === "function") {
+      markRange.setBackground(attendanceMarkColor_(attendanceMark));
+    }
   }
+}
+
+function attendanceMarkColor_(mark) {
+  if (mark === "++") return "#93c47d";
+  if (String(mark || "").startsWith("+")) return "#f6b26b";
+  if (mark === "-") return "#ffe599";
+  return "#ffffff";
 }
 
 function parseAttendanceDate_(value) {
@@ -1575,17 +1588,31 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet) {
     const alreadyExists = Boolean(reportSheet);
     if (!reportSheet) {
       reportSheet = spreadsheet.insertSheet(sheetName);
-      const reportRows = [["Name", "Attendance Status", "Delay"]];
+      const reportRows = [["Name", "Attendance Mark", "Delay"]];
       people.forEach((person) => reportRows.push([
         person.name,
-        person.state === "on_time"
-          ? "Attended on time"
-          : person.state === "delayed"
-            ? "Attended with delay"
-            : "Absent",
+        person.state === "delayed" ? "+" : person.attended ? "++" : "-",
         person.delay,
       ]));
       reportSheet.getRange(1, 1, reportRows.length, 3).setValues(reportRows);
+      const reportRange = reportSheet.getRange(1, 1, reportRows.length, 3);
+      reportRange
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+      reportSheet
+        .getRange(1, 1, 1, 3)
+        .setBackground("#f5bd55")
+        .setFontColor("#182333")
+        .setFontWeight("bold");
+      if (people.length) {
+        reportSheet
+          .getRange(2, 2, people.length, 1)
+          .setBackgrounds(people.map((person) => [
+            attendanceMarkColor_(
+              person.state === "delayed" ? "+" : person.attended ? "++" : "-",
+            ),
+          ]));
+      }
     }
     response.report = {
       name: sheetName,
@@ -1679,13 +1706,18 @@ function getFollowupCandidates_() {
   const savedRows = lastRow >= 2
     ? followupSheet.getRange(2, 1, lastRow - 1, 7).getValues()
     : [];
+  const savedIndexById = new Map();
+  savedRows.forEach((row, index) => {
+    const id = String(row[0] || "").trim();
+    if (id && !savedIndexById.has(id)) savedIndexById.set(id, index);
+  });
   const now = new Date();
+  const pendingUpdates = [];
+  const addedRows = [];
   candidates.forEach((candidate) => {
-    const rowIndex = savedRows.findIndex(
-      (row) => String(row[0] || "").trim() === candidate.id,
-    );
-    if (rowIndex === -1) {
-      followupSheet.appendRow([
+    const rowIndex = savedIndexById.get(candidate.id);
+    if (rowIndex === undefined) {
+      addedRows.push([
         candidate.id,
         candidate.name,
         candidate.missedMeetings,
@@ -1701,16 +1733,35 @@ function getFollowupCandidates_() {
     const status = saved[4] === "مكتمل" && saved[3] === candidate.lastAttended
       ? "مكتمل"
       : "مفتوح";
-    followupSheet.getRange(rowIndex + 2, 2, 1, 6).setValues([[
-      candidate.name,
-      candidate.missedMeetings,
-      candidate.lastAttended,
-      status,
-      now,
-      status === "مكتمل" ? saved[6] : "",
-    ]]);
+    pendingUpdates.push({
+      rowIndex: rowIndex,
+      values: [
+        candidate.name,
+        candidate.missedMeetings,
+        candidate.lastAttended,
+        status,
+        now,
+        status === "مكتمل" ? saved[6] : "",
+      ],
+    });
     candidate.status = status;
   });
+  pendingUpdates.sort((left, right) => left.rowIndex - right.rowIndex);
+  for (let index = 0; index < pendingUpdates.length;) {
+    const start = index;
+    const firstRowIndex = pendingUpdates[index].rowIndex;
+    index++;
+    while (
+      index < pendingUpdates.length &&
+      pendingUpdates[index].rowIndex === pendingUpdates[index - 1].rowIndex + 1
+    ) index++;
+    followupSheet
+      .getRange(firstRowIndex + 2, 2, index - start, 6)
+      .setValues(pendingUpdates.slice(start, index).map((update) => update.values));
+  }
+  if (addedRows.length) {
+    followupSheet.getRange(lastRow + 1, 1, addedRows.length, 7).setValues(addedRows);
+  }
 
   return {
     success: true,
@@ -1842,22 +1893,8 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
         message: "تحقق من وجود شيت Roster وCheck-in & Check-out.",
       };
     }
-    const rosterLastRow = rosterSheet.getLastRow();
-    const rosterData =
-      rosterLastRow >= 2
-        ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 2).getValues()
-        : [];
-    let personName = "";
-
-    for (let i = 0; i < rosterData.length; i++) {
-      if (
-        rosterData[i][0] &&
-        String(rosterData[i][0]).trim() === String(realId).trim()
-      ) {
-        personName = rosterData[i][1];
-        break;
-      }
-    }
+    const rosterRow = findExactRowByValue_(rosterSheet, 1, realId, 2, 2);
+    const personName = rosterRow ? rosterRow[1] : "";
     if (!personName)
       return {
         kind: "error",
@@ -1924,7 +1961,7 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
           ss.getSheetByName("Attendance"),
           realId,
           timestamp,
-          delayMin > 0 ? "+ " + formatDuration_(delayMin) : "++",
+          delayMin > 0 ? "+" : "++",
         );
         return {
           kind: "out",
@@ -1975,7 +2012,12 @@ function processScan(scannedInput, adminEmail, capturedTimestamp) {
       delayText,
       "Active",
     ]);
-    setAttendanceMark_(ss.getSheetByName("Attendance"), realId, timestamp, "-");
+    setAttendanceMark_(
+      ss.getSheetByName("Attendance"),
+      realId,
+      timestamp,
+      delayMin > 0 ? "+" : "++",
+    );
     if (delayMin > 0) {
       return {
         kind: "late",
@@ -2041,6 +2083,34 @@ function getRosterSnapshot_() {
       id: String(row[0]).trim(),
       name: String(row[1]).trim(),
     }));
+}
+
+function findExactRowIndexByValue_(sheet, column, value, startRow) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return -1;
+
+  const searchRange = sheet.getRange(startRow, column, lastRow - startRow + 1, 1);
+  if (typeof searchRange.createTextFinder === "function") {
+    const match = searchRange
+      .createTextFinder(String(value))
+      .matchEntireCell(true)
+      .matchCase(true)
+      .findNext();
+    return match ? match.getRow() : -1;
+  }
+
+  const values = searchRange.getValues();
+  const index = values.findIndex(
+    (row) => String(row[0] || "").trim() === String(value).trim(),
+  );
+  return index === -1 ? -1 : startRow + index;
+}
+
+function findExactRowByValue_(sheet, column, value, startRow, columnCount) {
+  const rowIndex = findExactRowIndexByValue_(sheet, column, value, startRow);
+  return rowIndex === -1
+    ? null
+    : sheet.getRange(rowIndex, 1, 1, columnCount).getValues()[0];
 }
 
 function editDistanceAtMostOne_(left, right) {
@@ -2230,7 +2300,7 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
         attendanceSheet,
         newId,
         checkinTime,
-        "-"
+        delayMin > 0 ? "+" : "++",
       );
       if (delayMin > 0)
         recordDelay_(

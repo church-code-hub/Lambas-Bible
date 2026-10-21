@@ -69,15 +69,51 @@ test("request loaders cover the view and prevent navigation until requests settl
   assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*absolute/);
   assert.match(styles, /\.loader-overlay\s*\{[^}]*inset:\s*0/);
   assert.match(styles, /\.container\.is-loading\s*\{[^}]*overflow:\s*hidden/);
-  assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
-  assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?activeApiRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
   assert.doesNotMatch(views, /function showView\([^)]*\)\s*\{\s*if\s*\(/);
   assert.match(core, /activeApiRequestCount\+\+/);
   assert.match(core, /activeApiRequestCount = Math\.max\(0, activeApiRequestCount - 1\)/);
   assert.match(html, /onclick="updateCurrentAttendees\(\)"/);
   assert.match(html, /id="offlineSyncProgressLane"/);
   assert.match(views, /showCurrentAttendeesSkeleton\(\)/);
+  assert.match(views, /if \(currentAttendeesRequestInFlight\) \{[\s\S]*?currentAttendeesRefreshPending = true;[\s\S]*?\}\s*currentAttendeesRequestInFlight = true;/);
+  assert.match(views, /currentAttendeesRequestInFlight\) \{[\s\S]*?currentAttendeesRefreshPending = true;/);
+  assert.match(views, /finally \{[\s\S]*?currentAttendeesRequestInFlight = false;/);
   assert.match(styles, /\.current-attendees-search\s*\{[^}]*background:/);
+});
+
+test("only user-started attendance actions block navigation", async () => {
+  const pendingResponses = [];
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null, removeItem() {} },
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    fetch: () => new Promise((resolve) => pendingResponses.push(resolve)),
+  });
+  for (const script of ["app-state.js", "app-core.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+
+  const scanRequest = browserContext.apiCall("scan");
+  const backgroundRequest = browserContext.apiCall("get_attendance_window");
+  assert.equal(browserContext.userActionRequestCount, 1);
+
+  pendingResponses[1]({ ok: true, json: async () => ({ success: true }) });
+  await backgroundRequest;
+  assert.equal(browserContext.userActionRequestCount, 1);
+
+  pendingResponses[0]({ ok: true, json: async () => ({ kind: "success" }) });
+  await scanRequest;
+  assert.equal(browserContext.userActionRequestCount, 0);
 });
 
 test("toast animation duration follows its configured visible duration", () => {
@@ -130,6 +166,20 @@ test("home navigation confirms unsaved settings and supports continue or discard
   browserContext.discardSettingsAndGoHome();
   assert.equal(dialog.open, false);
   assert.deepEqual(navigation, ["discard:scheduleSettingsView", "dashboardView"]);
+
+  browserContext.currentActiveViewId = "scanView";
+  browserContext.hasUnsavedSettingsChanges = () => false;
+  browserContext.activeApiRequestCount = 1;
+  browserContext.userActionRequestCount = 0;
+  browserContext.handleHomeNavigation();
+  assert.deepEqual(navigation, ["discard:scheduleSettingsView", "dashboardView", "dashboardView"]);
+
+  browserContext.currentActiveViewId = "addView";
+  browserContext.activeApiRequestCount = 0;
+  browserContext.userActionRequestCount = 1;
+  browserContext.showToast = () => {};
+  browserContext.handleHomeNavigation();
+  assert.equal(navigation.length, 3);
 });
 
 test("current attendees provide search, three-column actions, and an emergency dialog", () => {
@@ -142,6 +192,9 @@ test("current attendees provide search, three-column actions, and an emergency d
   assert.match(views, /function filterCurrentAttendees\(\)/);
   assert.match(views, /function showEmergencyCheckoutDialog\(person\)/);
   assert.match(views, /async function submitEmergencyCheckout\(event\)/);
+  assert.match(views, /current-attendees-action-label/);
+  assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?min-width:\s*0/);
+  assert.match(styles, /\.current-attendees-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(views, /currentAttendeesAdminTime[\s\S]*?currentAttendeesActions/);
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
   assert.match(styles, /\.attendance-action-dialog::backdrop/);
@@ -193,14 +246,23 @@ test("attendance sheet action remains separate from display filters and sync que
   const backend = fs.readFileSync(path.join(__dirname, "..", "Backend", "Code.js"), "utf8");
 
   assert.match(html, /id="attendanceStatusFilter"/);
+  assert.match(html, /id="attendanceSearchAgainButton"/);
+  assert.match(html, /attendancePersonQuery[\s\S]*?event\.key === 'Enter'/);
   assert.match(html, /id="attendanceSheetResultDialog"/);
   assert.match(views, /function filterAttendanceReport\(\)/);
+  assert.match(views, /list\.hidden = Boolean\(query\);[\s\S]*?searchResult\.hidden = !query;/);
+  assert.match(views, /if \(!query\) \{[\s\S]*?list\.appendChild\(panel\);[\s\S]*?\n        \}/);
+  assert.match(views, /function startAttendanceSearchAgain\(\)/);
+  assert.match(views, /attendanceSummaryAttended\.replace\("\{count\}", report\.count\)/);
+  assert.match(views, /attendanceSummaryAbsent\.replace\("\{count\}", absentCount\)/);
+  assert.match(views, /attendanceSummaryAll[\s\S]*?\.replace\("\{attended\}", report\.count\)[\s\S]*?\.replace\("\{absent\}", absentCount\)/);
   assert.match(views, /function showAttendanceSheetResult\(report\)/);
   assert.match(offline, /async function syncFromToolbar\(\)[\s\S]*?await openOfflineQueueView\(\);[\s\S]*?\n      }/);
   assert.doesNotMatch(
     offline.match(/async function syncFromToolbar\(\)[\s\S]*?\n      }/)[0],
     /syncOfflineQueue/,
   );
+  assert.match(offline, /toolbarButton\.disabled = isSyncingOfflineQueue;/);
   assert.match(backend, /people\.forEach\(\(person\) => reportRows\.push\(\[/);
   assert.doesNotMatch(backend, /attendees\.forEach\(\(person\) => reportRows\.push\(\[/);
 });
@@ -281,7 +343,7 @@ test("restores the Google sign-in token from local storage", () => {
   assert.equal(vm.runInContext("currentThemeMode", browserContext), "light");
 });
 
-test("offline name lookup and selected sync batches preserve queue order", () => {
+test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {
   const browserContext = vm.createContext({
     window: {},
     navigator: {},
@@ -301,9 +363,10 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
     const account = "admin@example.com";
     const queue = [
       { eventId: "scan-1", type: "scan", queuedBy: account },
-      { eventId: "scan-2", type: "scan", queuedBy: account },
+      { eventId: "scan-2", type: "scan", queuedBy: account, timestamp: "2026-10-21T10:00:00.000Z" },
       { eventId: "add-1", type: "add_student", queuedBy: account },
       { eventId: "scan-3", type: "scan", queuedBy: account },
+      { eventId: "other-account", type: "scan", queuedBy: "other@example.com" },
     ];
     const roster = [
       { id: "001", name: "Attendee One", qrId: "encrypted-001" },
@@ -314,11 +377,12 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
       foundQrName: findCachedPersonName(roster, "encrypted-001"),
       missingName: findCachedPersonName([{ id: "1", name: "Attendee One" }], "unknown"),
       exactCachedSearch: searchCachedRoster(roster, "Attendee One"),
-      fuzzyCachedSearch: searchCachedRoster(roster, "Attendee On"),
+      fuzzyCachedSearch: searchCachedRoster(roster, "Attendee Onew"),
       individualLater: getOfflineSyncBatch(queue, "scan-2", "", account),
       individualFirst: getOfflineSyncBatch(queue, "scan-1", "", account),
       scanGroup: getOfflineSyncBatch(queue, "", "scan", account),
-      addGroupBlocked: getOfflineSyncBatch(queue, "", "add_student", account),
+      addGroup: getOfflineSyncBatch(queue, "", "add_student", account),
+      timestamp: getOfflineSyncBatch(queue, "scan-2", "", account)[0].timestamp,
       addDescription: offlineEventDescription({
         type: "add_student", name: "New Attendee", attendIfOpen: false,
       }),
@@ -332,10 +396,21 @@ test("offline name lookup and selected sync batches preserve queue order", () =>
   assert.equal(result.exactCachedSearch.id, "001");
   assert.equal(result.fuzzyCachedSearch.status, "suggestions");
   assert.deepEqual(Array.from(result.fuzzyCachedSearch.matches, (person) => person.id), ["001"]);
-  assert.equal(result.individualLater, null);
+  assert.deepEqual(Array.from(result.individualLater, (event) => event.eventId), ["scan-2"]);
   assert.deepEqual(Array.from(result.individualFirst, (event) => event.eventId), ["scan-1"]);
-  assert.deepEqual(Array.from(result.scanGroup, (event) => event.eventId), ["scan-1", "scan-2"]);
-  assert.equal(result.addGroupBlocked, null);
+  assert.deepEqual(Array.from(result.scanGroup, (event) => event.eventId), ["scan-1", "scan-2", "scan-3"]);
+  assert.deepEqual(Array.from(result.addGroup, (event) => event.eventId), ["add-1"]);
+  assert.equal(result.timestamp, "2026-10-21T10:00:00.000Z");
   assert.match(result.addDescription, /New Attendee/);
   assert.match(result.addDescription, /Do not mark attendance/);
+});
+
+test("saved offline queue actions remain deletable when offline", () => {
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  const deletion = offline.match(/async function deleteQueuedOfflineEvent\(eventId\)[\s\S]*?\n      \}/)?.[0] || "";
+  const rendering = offline.match(/async function renderOfflineQueue\(\)[\s\S]*?\n      \}/)?.[0] || "";
+
+  assert.match(rendering, /deleteQueuedOfflineEvent\(event\.eventId\)/);
+  assert.match(deletion, /removeOfflineEvent\(eventId\)/);
+  assert.doesNotMatch(deletion, /navigator\.onLine/);
 });

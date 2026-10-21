@@ -152,6 +152,24 @@
         const controller = new AbortController();
         const timeoutMs = ["add_student", "generate_student_card", "sync_offline_events"].includes(action) ? 180000 : 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const isUserAction = [
+          "scan",
+          "search",
+          "search_card_share",
+          "share_move_card",
+          "add_student",
+          "generate_student_card",
+          "verify_settings_password",
+          "save_settings",
+          "add_admin",
+          "delete_admin",
+          "update_admin_profile",
+          "checkout_attendance",
+          "emergency_checkout_attendance",
+          "cancel_checkin",
+          "complete_followup",
+        ].includes(action);
+        const finishUserAction = isUserAction ? beginUserActionRequest() : null;
         activeApiRequestCount++;
         try {
           const response = await fetch(API_URL, {
@@ -176,5 +194,6 @@
         } finally {
           clearTimeout(timeoutId);
           activeApiRequestCount = Math.max(0, activeApiRequestCount - 1);
+          if (finishUserAction) finishUserAction();
         }
       }

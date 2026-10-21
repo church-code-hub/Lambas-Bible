@@ -12,7 +12,7 @@
       }
 
       function handleHomeNavigation() {
-        if (activeApiRequestCount > 0 || isSyncingOfflineQueue) {
+        if (userActionRequestCount > 0 || isSyncingOfflineQueue) {
           showToast(translations[currentLang].requestInProgress, "info");
           return;
         }
@@ -312,6 +312,11 @@
           !showLoading &&
           (document.hidden || document.getElementById("emergencyCheckoutDialog").open)
         ) return;
+        if (currentAttendeesRequestInFlight) {
+          currentAttendeesRefreshPending = true;
+          return;
+        }
+        currentAttendeesRequestInFlight = true;
         const requestId = ++currentAttendeesRequestId;
         const mainContainer = document.getElementById("mainContainer");
         const scrollPosition = mainContainer.scrollTop;
@@ -354,6 +359,13 @@
           availability.classList.add("is-closed");
           if (showLoading) showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         } finally {
+          currentAttendeesRequestInFlight = false;
+          if (currentAttendeesRefreshPending) {
+            currentAttendeesRefreshPending = false;
+            if (currentActiveViewId === "currentAttendeesView") {
+              window.setTimeout(() => loadCurrentAttendees(false), 0);
+            }
+          }
           if (showLoading) hideLoader();
         }
       }
@@ -422,29 +434,43 @@
           const actions = document.createElement("div");
           actions.className = "current-attendees-actions";
           actions.setAttribute("role", "cell");
+          const addActionButton = (className, iconName, label, onClick) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `btn secondary ${className}`;
+            button.dataset.onlineOnly = "";
+            button.setAttribute("aria-label", label);
+            button.title = label;
+            const icon = document.createElement("i");
+            icon.className = `fa-solid ${iconName}`;
+            icon.setAttribute("aria-hidden", "true");
+            const text = document.createElement("span");
+            text.className = "current-attendees-action-label";
+            text.textContent = label;
+            button.append(icon, text);
+            button.addEventListener("click", onClick);
+            actions.appendChild(button);
+          };
           if (checkoutOpen) {
-            const checkoutButton = document.createElement("button");
-            checkoutButton.type = "button";
-            checkoutButton.className = "btn secondary";
-            checkoutButton.dataset.onlineOnly = "";
-            checkoutButton.textContent = translations[currentLang].attendanceCheckout;
-            checkoutButton.addEventListener("click", () => checkoutAttendance(person.id));
-            actions.appendChild(checkoutButton);
+            addActionButton(
+              "current-attendees-checkout",
+              "fa-right-from-bracket",
+              translations[currentLang].attendanceCheckout,
+              () => checkoutAttendance(person.id),
+            );
           }
-          const emergencyButton = document.createElement("button");
-          emergencyButton.type = "button";
-          emergencyButton.className = "btn secondary emergency-checkout-button";
-          emergencyButton.dataset.onlineOnly = "";
-          emergencyButton.textContent = translations[currentLang].emergencyCheckout;
-          emergencyButton.addEventListener("click", () => showEmergencyCheckoutDialog(person));
-          actions.appendChild(emergencyButton);
-          const cancelButton = document.createElement("button");
-          cancelButton.type = "button";
-          cancelButton.className = "btn secondary attendance-cancel-button";
-          cancelButton.dataset.onlineOnly = "";
-          cancelButton.textContent = translations[currentLang].attendanceCancelCheckin;
-          cancelButton.addEventListener("click", () => cancelAttendanceCheckin(person.id));
-          actions.appendChild(cancelButton);
+          addActionButton(
+            "emergency-checkout-button",
+            "fa-triangle-exclamation",
+            translations[currentLang].emergencyCheckout,
+            () => showEmergencyCheckoutDialog(person),
+          );
+          addActionButton(
+            "attendance-cancel-button",
+            "fa-xmark",
+            translations[currentLang].attendanceCancelCheckin,
+            () => cancelAttendanceCheckin(person.id),
+          );
           row.append(nameCell, metaCell, actions);
           table.appendChild(row);
         });
@@ -542,6 +568,9 @@
         loadingOption.value = "";
         loadingOption.textContent = translations[currentLang].attendanceDatesLoading;
         select.replaceChildren(loadingOption);
+        document.getElementById("attendanceReportResults").hidden = false;
+        document.getElementById("attendanceSearchResult").hidden = true;
+        document.getElementById("attendanceSearchAgainButton").hidden = true;
         showReportSkeleton(document.getElementById("attendanceReportResults"));
         document.getElementById("attendanceSearchResult").replaceChildren();
         try {
@@ -681,9 +710,13 @@
       function renderAttendanceReport(report, query, created) {
         const list = document.getElementById("attendanceReportResults");
         const searchResult = document.getElementById("attendanceSearchResult");
+        const searchAgainButton = document.getElementById("attendanceSearchAgainButton");
         attendanceReportData = report;
         list.replaceChildren();
         searchResult.replaceChildren();
+        list.hidden = Boolean(query);
+        searchResult.hidden = !query;
+        searchAgainButton.hidden = !query;
         const attendanceFilter = document.getElementById("attendanceStatusFilter").value;
         const visiblePeople = report.people.filter((person) =>
           attendanceFilter === "all" ||
@@ -701,54 +734,64 @@
           resultPanel.appendChild(heading);
         }
 
-        const summary = document.createElement("p");
-        summary.className = "report-panel-heading";
-        summary.textContent = `${report.date} · ${report.count}`;
-        const panel = document.createElement("section");
-        panel.className = "report-panel";
-        panel.appendChild(summary);
-        const table = document.createElement("div");
-        table.className = "attendance-report-table";
-        table.setAttribute("role", "table");
-        const header = document.createElement("div");
-        header.className = "attendance-report-row attendance-report-header";
-        header.setAttribute("role", "row");
-        const nameHeader = document.createElement("strong");
-        nameHeader.setAttribute("role", "columnheader");
-        nameHeader.textContent = translations[currentLang].studentNameLabel;
-        const stateHeader = document.createElement("strong");
-        stateHeader.setAttribute("role", "columnheader");
-        stateHeader.textContent = translations[currentLang].attendanceStateLabel;
-        header.append(nameHeader, stateHeader);
-        table.appendChild(header);
-        if (!visiblePeople.length) {
-          const empty = document.createElement("p");
-          empty.className = "search-empty";
-          empty.textContent = translations[currentLang].attendanceFilterNoResults;
-          table.appendChild(empty);
+        if (!query) {
+          const summary = document.createElement("p");
+          summary.className = "report-panel-heading";
+          const absentCount = report.people.length - report.count;
+          const attendanceSummary = attendanceFilter === "attended"
+            ? translations[currentLang].attendanceSummaryAttended.replace("{count}", report.count)
+            : attendanceFilter === "absent"
+              ? translations[currentLang].attendanceSummaryAbsent.replace("{count}", absentCount)
+              : translations[currentLang].attendanceSummaryAll
+                  .replace("{attended}", report.count)
+                  .replace("{absent}", absentCount);
+          summary.textContent = `${report.date} · ${attendanceSummary}`;
+          const panel = document.createElement("section");
+          panel.className = "report-panel";
+          panel.appendChild(summary);
+          const table = document.createElement("div");
+          table.className = "attendance-report-table";
+          table.setAttribute("role", "table");
+          const header = document.createElement("div");
+          header.className = "attendance-report-row attendance-report-header";
+          header.setAttribute("role", "row");
+          const nameHeader = document.createElement("strong");
+          nameHeader.setAttribute("role", "columnheader");
+          nameHeader.textContent = translations[currentLang].studentNameLabel;
+          const stateHeader = document.createElement("strong");
+          stateHeader.setAttribute("role", "columnheader");
+          stateHeader.textContent = translations[currentLang].attendanceStateLabel;
+          header.append(nameHeader, stateHeader);
+          table.appendChild(header);
+          if (!visiblePeople.length) {
+            const empty = document.createElement("p");
+            empty.className = "search-empty";
+            empty.textContent = translations[currentLang].attendanceFilterNoResults;
+            table.appendChild(empty);
+          }
+          visiblePeople.forEach((person) => {
+            const item = document.createElement("div");
+            item.className = "attendance-report-row";
+            item.setAttribute("role", "row");
+            const name = document.createElement("strong");
+            name.setAttribute("role", "cell");
+            name.textContent = person.name;
+            const state = document.createElement("span");
+            state.setAttribute("role", "cell");
+            state.className = `attendance-state attendance-state-${person.state || (person.attended ? "on_time" : "absent")}`;
+            state.textContent = person.state === "delayed"
+              ? person.delay
+                ? translations[currentLang].attendanceWithDelay.replace("{delay}", person.delay)
+                : translations[currentLang].attendanceDelayed
+              : person.attended
+                ? translations[currentLang].attendanceOnTime
+                : translations[currentLang].absent;
+            item.append(name, state);
+            table.appendChild(item);
+          });
+          panel.appendChild(table);
+          list.appendChild(panel);
         }
-        visiblePeople.forEach((person) => {
-          const item = document.createElement("div");
-          item.className = "attendance-report-row";
-          item.setAttribute("role", "row");
-          const name = document.createElement("strong");
-          name.setAttribute("role", "cell");
-          name.textContent = person.name;
-          const state = document.createElement("span");
-          state.setAttribute("role", "cell");
-          state.className = `attendance-state attendance-state-${person.state || (person.attended ? "on_time" : "absent")}`;
-          state.textContent = person.state === "delayed"
-            ? person.delay
-              ? translations[currentLang].attendanceWithDelay.replace("{delay}", person.delay)
-              : translations[currentLang].attendanceDelayed
-            : person.attended
-              ? translations[currentLang].attendanceOnTime
-              : translations[currentLang].absent;
-          item.append(name, state);
-          table.appendChild(item);
-        });
-        panel.appendChild(table);
-        list.appendChild(panel);
 
         if (query) {
           if (!report.matches.length) {
@@ -775,11 +818,17 @@
             resultPanel.appendChild(item);
           });
         }
-        if (query) {
-          addSearchAgainButton(resultPanel, document.getElementById("attendancePersonQuery"));
-        }
         if (resultPanel) searchResult.appendChild(resultPanel);
         if (created && report.report) showAttendanceSheetResult(report);
+      }
+
+      function startAttendanceSearchAgain() {
+        const input = document.getElementById("attendancePersonQuery");
+        input.value = "";
+        if (attendanceReportData) {
+          renderAttendanceReport(attendanceReportData, "", false);
+        }
+        input.focus();
       }
 
       function filterAttendanceReport() {
@@ -819,14 +868,21 @@
           showToast(translations[currentLang].attendancePersonPlaceholder, "info");
           return;
         }
+        const searching = Boolean(query) && !createSheet;
+        document.getElementById("attendanceReportResults").hidden = searching;
+        document.getElementById("attendanceSearchResult").hidden = !searching;
+        document.getElementById("attendanceSearchAgainButton").hidden = !searching;
+        document.getElementById("attendanceReportResults").replaceChildren();
+        document.getElementById("attendanceSearchResult").replaceChildren();
         showReportSkeleton(
-          document.getElementById("attendanceReportResults"),
+          searching
+            ? document.getElementById("attendanceSearchResult")
+            : document.getElementById("attendanceReportResults"),
           3,
           createSheet
             ? translations[currentLang].creatingAttendanceSheet
             : translations[currentLang].loadingReport,
         );
-        document.getElementById("attendanceSearchResult").replaceChildren();
         const sheetButton = document.querySelector(".attendance-sheet-button");
         if (createSheet) {
           sheetButton.disabled = true;
@@ -848,6 +904,9 @@
         } catch (error) {
           if (requestId !== attendanceReportRequestId) return;
           document.getElementById("attendanceReportResults").replaceChildren();
+          document.getElementById("attendanceReportResults").hidden = false;
+          document.getElementById("attendanceSearchResult").hidden = true;
+          document.getElementById("attendanceSearchAgainButton").hidden = true;
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
         } finally {
           if (createSheet) {
@@ -913,7 +972,7 @@
       }
 
       window.addEventListener("popstate", function (e) {
-        if (activeApiRequestCount > 0 || isSyncingOfflineQueue) {
+        if (userActionRequestCount > 0 || isSyncingOfflineQueue) {
           history.pushState({ view: currentActiveViewId }, "", "");
           showToast(translations[currentLang].requestInProgress, "info");
           return;
@@ -942,6 +1001,9 @@
           attendanceReportData = null;
           document.getElementById("attendanceReportResults").replaceChildren();
           document.getElementById("attendanceSearchResult").replaceChildren();
+          document.getElementById("attendanceReportResults").hidden = false;
+          document.getElementById("attendanceSearchResult").hidden = true;
+          document.getElementById("attendanceSearchAgainButton").hidden = true;
           document.getElementById("followupResults").replaceChildren();
           const select = document.getElementById("attendanceReportDate");
           const placeholder = document.createElement("option");
