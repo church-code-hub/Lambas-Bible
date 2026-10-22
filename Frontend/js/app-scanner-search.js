@@ -97,15 +97,81 @@
       function onScanSuccess(text) {
         if (isProcessingScan) return;
         isProcessingScan = true;
-        stopLiveScanner().then(() => {
-          processScannedText(text).finally(() => {
-            isProcessingScan = false;
-          });
+        const eventContext = {
+          eventId: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+        };
+        stopLiveScanner();
+        processScannedText(text, eventContext).finally(() => {
+          isProcessingScan = false;
         });
       }
       function onScanError(err) {}
 
-      async function processScannedText(text) {
+      function beginDelayedAttendanceFeedback(fromNameSearch, event) {
+        const feedback = { event, fromNameSearch, queuedEvent: null, result: null, shown: false, timer: 0 };
+        feedback.timer = window.setTimeout(() => {
+          feedback.shown = true;
+          const result = feedback.result &&
+            feedback.result.success !== false &&
+            feedback.result.kind !== "error"
+            ? feedback.result
+            : {
+              kind: "queued",
+              title: "offlineQueuedTitle",
+              name: feedback.queuedEvent?.personName || event.personName || "",
+              message: "offlineScanQueued",
+            };
+          renderResult(result, feedback.fromNameSearch);
+        }, 1000 + Math.floor(Math.random() * 1001));
+        return feedback;
+      }
+
+      async function processAttendanceId(rawId, fromNameSearch = false, personName = "", eventContext = {}) {
+        if (!currentUser || (navigator.onLine && !googleIdToken)) {
+          renderResult({
+            kind: "error",
+            title: "Sign-in required",
+            message: "offlineNeedsLogin",
+          }, fromNameSearch);
+          return;
+        }
+        const id = String(rawId);
+        const feedback = beginDelayedAttendanceFeedback(fromNameSearch, {
+          eventId: eventContext.eventId || crypto.randomUUID(),
+          timestamp: eventContext.timestamp || new Date().toISOString(),
+          personName,
+        });
+        try {
+          const queuedEvent = await queueOfflineEvent({
+            type: "scan",
+            qrText: id,
+            personName,
+            eventId: feedback.event.eventId,
+            timestamp: feedback.event.timestamp,
+          });
+          feedback.queuedEvent = queuedEvent;
+          syncQueuedEventImmediately(queuedEvent)
+            .then((result) => {
+              feedback.result = result;
+              if (feedback.shown && result && result.success !== false && result.kind !== "error") {
+                renderResult(result, fromNameSearch);
+              }
+            })
+            .catch((error) => {
+              console.error("Could not complete immediate attendance sync.", error);
+            });
+        } catch (error) {
+          window.clearTimeout(feedback.timer);
+          renderResult({
+            kind: "error",
+            title: "Error",
+            message: "offlineStorageError",
+          }, fromNameSearch);
+        }
+      }
+
+      async function processScannedText(text, eventContext = {}) {
         var id = extractId(text);
         if (!id) {
           renderResult({
@@ -119,67 +185,16 @@
           renderResult({ kind: "error", title: "Sign-in required", message: "offlineNeedsLogin" });
           return;
         }
-        try {
-          if (!navigator.onLine) {
-            const queuedEvent = await queueOfflineEvent({ type: "scan", qrText: id });
-            renderResult({
-              kind: "queued",
-              title: "offlineQueuedTitle",
-              name: queuedEvent.personName || "",
-              message: "offlineScanQueued",
-            });
-            return;
-          }
-          showLoader();
-          const res = await apiCall("scan", { id: id });
-          hideLoader();
-          if (res) renderResult(res);
-          else renderResult({ kind: "error", title: "Error", message: "offlineSyncFailed" });
-        } catch (e) {
-          hideLoader();
-          renderResult({ kind: "error", title: "Error", message: "offlineStorageError" });
-        }
+        await processAttendanceId(id, false, "", eventContext);
       }
 
       async function processDirectAttendance(rawId, fromNameSearch = false, personName = "") {
-        if (!currentUser || (navigator.onLine && !googleIdToken)) {
-          renderResult({
-            kind: "error",
-            title: "Sign-in required",
-            message: "offlineNeedsLogin",
-          }, fromNameSearch);
-          return;
-        }
-        try {
-          if (!navigator.onLine) {
-            const queuedEvent = await queueOfflineEvent({
-              type: "scan",
-              qrText: String(rawId),
-              personName: personName,
-            });
-            renderResult({
-              kind: "queued",
-              title: "offlineQueuedTitle",
-              name: queuedEvent.personName || "",
-              message: "offlineScanQueued",
-            }, fromNameSearch);
-            return;
-          }
-          showLoader();
-          const result = await apiCall("scan", { id: String(rawId) });
-          hideLoader();
-          if (result) renderResult(result, fromNameSearch);
-          else {
-            renderResult({ kind: "error", title: "Error", message: "offlineSyncFailed" }, fromNameSearch);
-          }
-        } catch (e) {
-          hideLoader();
-          renderResult({
-            kind: "error",
-            title: "Error",
-            message: "offlineStorageError",
-          }, fromNameSearch);
-        }
+        return processAttendanceId(
+          rawId,
+          fromNameSearch,
+          personName,
+          { eventId: crypto.randomUUID(), timestamp: new Date().toISOString() },
+        );
       }
 
       function renderNameSearchResults(result, isOffline) {
@@ -252,7 +267,16 @@
             renderNameSearchResults(searchCachedRoster(roster, name), true);
           } else {
             showSearchLoader(resDiv);
-            const response = await apiCall("search", { name: name });
+            const response = await apiCall("search", { name: name }, (freshResponse) => {
+              if (
+                currentActiveViewId === "searchView" &&
+                document.getElementById("searchNameInput").value.trim() === name &&
+                freshResponse &&
+                freshResponse.success !== false
+              ) {
+                renderNameSearchResults(freshResponse, false);
+              }
+            });
             if (response && response.success === false) {
               resDiv.replaceChildren();
               showToast(response.message || "Error", "error");
@@ -290,6 +314,49 @@
         }
       }
 
+      function renderCardShareResults(res, resDiv) {
+        if (res && res.success === false) {
+          resDiv.replaceChildren();
+          showToast(res.message || "Error", "error");
+          return;
+        }
+        resDiv.replaceChildren();
+        if (res && res.status === "success" && Array.isArray(res.matches)) {
+          res.matches.forEach((item) => {
+            const cardBox = document.createElement("button");
+            cardBox.type = "button";
+            cardBox.className = "card-result";
+            cardBox.dataset.onlineOnly = "";
+            cardBox.style.cssText =
+              "background:var(--chip-bg); backdrop-filter:blur(15px); border:1.5px solid var(--card-border); padding:14px; border-radius:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition: all 0.2s;";
+
+            const statusText = item.isNew
+              ? translations[currentLang].notShared
+              : translations[currentLang].alreadyShared;
+            const statusColor = item.isNew ? "#f59e0b" : "#16a34a";
+
+            const nameLabel = document.createElement("div");
+            nameLabel.className = "card-result-name";
+            nameLabel.textContent = "👤 " + item.name;
+            const statusLabel = document.createElement("div");
+            statusLabel.className = "card-result-status";
+            statusLabel.dataset.i18nKey = item.isNew ? "notShared" : "alreadyShared";
+            statusLabel.style.color = statusColor;
+            statusLabel.textContent = statusText;
+            cardBox.append(nameLabel, statusLabel);
+            cardBox.onclick = () => openCardPreview(item.fileId, item.driveUrl, item.name);
+            resDiv.appendChild(cardBox);
+          });
+          updateOnlineOnlyControls();
+        } else {
+          const empty = document.createElement("div");
+          empty.className = "search-empty";
+          empty.dataset.i18nKey = "noCardsFound";
+          empty.textContent = "❌ " + translateText("No cards found");
+          resDiv.appendChild(empty);
+        }
+      }
+
       // Card Share Search with Visible Tech Loader -> Clicking opens Preview View
       async function executeCardSearch() {
         var name = document.getElementById("shareNameInput").value.trim();
@@ -310,54 +377,18 @@
         searchButton.dataset.busy = "true";
         showSearchLoader(resDiv);
         try {
-          const res = await apiCall("search_card_share", {
+          const payload = {
             name: name,
             filter: document.getElementById("cardShareFilter").value,
+          };
+          const res = await apiCall("search_card_share", payload, (freshResponse) => {
+            if (
+              currentActiveViewId === "cardShareView" &&
+              document.getElementById("shareNameInput").value.trim() === payload.name &&
+              document.getElementById("cardShareFilter").value === payload.filter
+            ) renderCardShareResults(freshResponse, resDiv);
           });
-          if (res && res.success === false) {
-            resDiv.replaceChildren();
-            showToast(res.message || "Error", "error");
-            return;
-          }
-          resDiv.replaceChildren();
-          if (res && res.status === "success" && Array.isArray(res.matches)) {
-            res.matches.forEach((item) => {
-              var cardBox = document.createElement("button");
-              cardBox.type = "button";
-              cardBox.className = "card-result";
-              cardBox.dataset.onlineOnly = "";
-              cardBox.style.cssText =
-                "background:var(--chip-bg); backdrop-filter:blur(15px); border:1.5px solid var(--card-border); padding:14px; border-radius:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition: all 0.2s;";
-
-              let statusText = item.isNew
-                ? translations[currentLang].notShared
-                : translations[currentLang].alreadyShared;
-              let statusColor = item.isNew ? "#f59e0b" : "#16a34a";
-
-              const nameLabel = document.createElement("div");
-              nameLabel.className = "card-result-name";
-              nameLabel.textContent = "👤 " + item.name;
-              const statusLabel = document.createElement("div");
-              statusLabel.className = "card-result-status";
-              statusLabel.dataset.i18nKey = item.isNew ? "notShared" : "alreadyShared";
-              statusLabel.style.color = statusColor;
-              statusLabel.textContent = statusText;
-              cardBox.append(nameLabel, statusLabel);
-
-              cardBox.onclick = () => {
-                openCardPreview(item.fileId, item.driveUrl, item.name);
-              };
-
-              resDiv.appendChild(cardBox);
-            });
-            updateOnlineOnlyControls();
-          } else {
-            const empty = document.createElement("div");
-            empty.className = "search-empty";
-            empty.dataset.i18nKey = "noCardsFound";
-            empty.textContent = "❌ " + translateText("No cards found");
-            resDiv.appendChild(empty);
-          }
+          renderCardShareResults(res, resDiv);
         } catch (e) {
           resDiv.innerHTML = "";
           showToast("❌ Search error", "error");

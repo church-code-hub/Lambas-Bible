@@ -251,24 +251,51 @@
         loadRosterManagement();
       }
 
+      function setDashboardLayout(layout) {
+        const availableLayouts = ["grouped", "grid", "list"];
+        const selectedLayout = availableLayouts.includes(layout) ? layout : "grouped";
+        const dashboard = document.getElementById("dashboardView");
+        if (!dashboard) return;
+        dashboard.classList.remove(
+          "dashboard-layout-grouped",
+          "dashboard-layout-grid",
+          "dashboard-layout-list",
+        );
+        dashboard.classList.add(`dashboard-layout-${selectedLayout}`);
+        dashboard.querySelectorAll(".dashboard-tool-group").forEach((group) => {
+          if (!group.dataset.layoutToggleBound) {
+            group.querySelector("summary").addEventListener("click", (event) => {
+              if (!dashboard.classList.contains("dashboard-layout-grouped")) {
+                event.preventDefault();
+              }
+            });
+            group.dataset.layoutToggleBound = "true";
+          }
+          group.open = selectedLayout !== "grouped";
+        });
+        dashboard.querySelectorAll("[data-dashboard-layout]").forEach((button) => {
+          button.setAttribute(
+            "aria-pressed",
+            String(button.dataset.dashboardLayout === selectedLayout),
+          );
+        });
+        localStorage.setItem("app_dashboard_layout", selectedLayout);
+      }
+
       async function loadRosterManagement() {
         const container = document.getElementById("rosterManagementResults");
         showReportSkeleton(container);
         try {
-          const result = await apiCall("get_roster_management");
-          if (
-            currentActiveViewId !== "rosterView" ||
-            !result ||
-            !result.success ||
-            !Array.isArray(result.people)
-          ) {
-            if (currentActiveViewId === "rosterView") {
+          const applyResult = (result) => {
+            if (currentActiveViewId !== "rosterView") return;
+            if (!result || !result.success || !Array.isArray(result.people)) {
               throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
             }
-            return;
-          }
-          rosterManagementPeople = result.people;
-          renderRosterManagement();
+            rosterManagementPeople = result.people.filter((person) => person.active !== false);
+            renderRosterManagement();
+          };
+          const result = await apiCall("get_roster_management", {}, applyResult);
+          applyResult(result);
         } catch (error) {
           if (currentActiveViewId !== "rosterView") return;
           container.replaceChildren();
@@ -294,54 +321,103 @@
           return;
         }
         const panel = document.createElement("section");
-        panel.className = "report-panel";
+        panel.className = "report-panel roster-people-list";
         people.forEach((person) => {
-          const row = document.createElement("form");
+          const row = document.createElement("article");
           row.className = "roster-person-row";
-          row.addEventListener("submit", (event) => {
-            event.preventDefault();
-            saveRosterPerson(row, person);
-          });
+          const details = document.createElement("div");
+          details.className = "roster-person-details";
           const title = document.createElement("strong");
-          title.textContent = `${person.name} · #${person.id}`;
-          const nameInput = document.createElement("input");
-          nameInput.type = "text";
-          nameInput.maxLength = 120;
-          nameInput.value = person.name;
-          nameInput.setAttribute("aria-label", translations[currentLang].rosterNameLabel);
-          const activeLabel = document.createElement("label");
-          const activeInput = document.createElement("input");
-          activeInput.type = "checkbox";
-          activeInput.checked = person.active;
-          activeInput.setAttribute("aria-label", translations[currentLang].rosterActiveLabel);
-          const activeText = document.createElement("span");
-          activeText.textContent = translations[currentLang].rosterActiveLabel;
-          activeLabel.append(activeInput, activeText);
-          const saveButton = document.createElement("button");
-          saveButton.type = "submit";
-          saveButton.className = "btn secondary";
-          saveButton.dataset.onlineOnly = "";
-          saveButton.textContent = translations[currentLang].saveChangesBtn;
-          row.append(title, nameInput, activeLabel, saveButton);
+          title.textContent = person.name;
+          const id = document.createElement("small");
+          id.textContent = `#${person.id}`;
+          details.append(title, id);
+          const actions = document.createElement("div");
+          actions.className = "roster-person-actions";
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "btn secondary";
+          editButton.textContent = translations[currentLang].editRosterPerson;
+          editButton.addEventListener("click", () => beginRosterPersonEdit(row, person));
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "admin-del-btn roster-delete-btn";
+          deleteButton.dataset.onlineOnly = "";
+          deleteButton.textContent = translations[currentLang].deleteRosterPerson;
+          deleteButton.addEventListener("click", () => deactivateRosterPerson(person));
+          actions.append(editButton, deleteButton);
+          row.append(details, actions);
           panel.appendChild(row);
         });
         container.replaceChildren(panel);
         updateOnlineOnlyControls();
       }
 
+      function beginRosterPersonEdit(row, person) {
+        const form = document.createElement("form");
+        form.className = "roster-person-edit";
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          saveRosterPerson(form, person);
+        });
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.maxLength = 120;
+        nameInput.value = person.name;
+        nameInput.setAttribute("aria-label", translations[currentLang].rosterNameLabel);
+        const saveButton = document.createElement("button");
+        saveButton.type = "submit";
+        saveButton.className = "btn secondary";
+        saveButton.dataset.onlineOnly = "";
+        saveButton.textContent = translations[currentLang].saveRosterName;
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "btn tertiary";
+        cancelButton.textContent = translations[currentLang].cancelRosterEdit;
+        cancelButton.addEventListener("click", () => renderRosterManagement());
+        form.append(nameInput, saveButton, cancelButton);
+        row.replaceChildren(form);
+        nameInput.focus();
+        updateOnlineOnlyControls();
+      }
+
       async function saveRosterPerson(form, person) {
-        const inputs = form.querySelectorAll("input");
-        const name = inputs[0].value.trim();
-        const active = inputs[1].checked;
+        const name = form.querySelector("input").value.trim();
         try {
           const result = await apiCall("update_roster_person", {
             id: person.id,
             name,
-            active,
+            active: true,
           });
           if (!result || !result.success) throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
           showToast(translations[currentLang].rosterSaved, "success");
           await loadRosterManagement();
+          await refreshRosterCache();
+        } catch (error) {
+          showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
+        }
+      }
+
+      async function deactivateRosterPerson(person) {
+        const confirmation = translations[currentLang].confirmDeleteRosterPerson
+          .replace("{name}", person.name);
+        if (!window.confirm(confirmation)) return;
+        try {
+          const result = await apiCall("update_roster_person", {
+            id: person.id,
+            name: person.name,
+            active: false,
+          });
+          if (!result || !result.success) {
+            throw new Error(result && result.message
+              ? result.message
+              : translations[currentLang].offlineSyncFailed);
+          }
+          rosterManagementPeople = rosterManagementPeople.filter(
+            (entry) => String(entry.id) !== String(person.id),
+          );
+          renderRosterManagement();
+          showToast(translations[currentLang].rosterPersonDeleted, "success");
           await refreshRosterCache();
         } catch (error) {
           showToast(error.message || translations[currentLang].offlineSyncFailed, "error");
@@ -358,19 +434,39 @@
           tile.setAttribute("aria-busy", "true");
         }
         try {
-          const result = await apiCall("get_attendance_window");
+          let revalidatedWindowResult = null;
+          const result = await apiCall("get_attendance_window", {}, (freshResult) => {
+            if (!freshResult || !freshResult.success || typeof freshResult.windowOpen !== "boolean") return;
+            revalidatedWindowResult = freshResult;
+            currentAttendeesWindowOpen = freshResult.windowOpen;
+            currentAttendeesWindowCloseReason = freshResult.closeReason || "";
+            updateCurrentAttendeesTileState();
+            if (freshResult.windowOpen && currentActiveViewId === sourceViewId) {
+              showView("currentAttendeesView");
+            } else if (!freshResult.windowOpen && currentActiveViewId === "currentAttendeesView") {
+              showView(sourceViewId);
+              showToast(
+                translations[currentLang].currentAttendeesCannotOpen.replace(
+                  "{reason}",
+                  attendanceWindowCloseMessage(freshResult.closeReason),
+                ),
+                "info",
+              );
+            }
+          });
+          const effectiveResult = revalidatedWindowResult || result;
           if (currentActiveViewId !== sourceViewId) return;
-          if (!result || !result.success || typeof result.windowOpen !== "boolean") {
-            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceWindowCheckFailed);
+          if (!effectiveResult || !effectiveResult.success || typeof effectiveResult.windowOpen !== "boolean") {
+            throw new Error(effectiveResult && effectiveResult.message ? effectiveResult.message : translations[currentLang].attendanceWindowCheckFailed);
           }
-          currentAttendeesWindowOpen = result.windowOpen;
-          currentAttendeesWindowCloseReason = result.closeReason || "";
+          currentAttendeesWindowOpen = effectiveResult.windowOpen;
+          currentAttendeesWindowCloseReason = effectiveResult.closeReason || "";
           updateCurrentAttendeesTileState();
-          if (!result.windowOpen) {
+          if (!effectiveResult.windowOpen) {
             showToast(
               translations[currentLang].currentAttendeesCannotOpen.replace(
                 "{reason}",
-                attendanceWindowCloseMessage(result.closeReason),
+                attendanceWindowCloseMessage(effectiveResult.closeReason),
               ),
               "info",
             );
@@ -429,7 +525,16 @@
           return;
         }
         try {
-          const result = await apiCall("get_attendance_window");
+          const result = await apiCall("get_attendance_window", {}, (freshResult) => {
+            if (requestId !== currentAttendeesWindowRequestId) return;
+            if (!freshResult || !freshResult.success || typeof freshResult.windowOpen !== "boolean") return;
+            currentAttendeesWindowOpen = freshResult.windowOpen;
+            currentAttendeesWindowCloseReason = freshResult.closeReason || "";
+            if (Number.isFinite(Number(freshResult.nextCheckMs))) {
+              nextWindowCheckMs = Number(freshResult.nextCheckMs);
+            }
+            updateCurrentAttendeesTileState();
+          });
           if (requestId !== currentAttendeesWindowRequestId) return;
           if (!result || !result.success || typeof result.windowOpen !== "boolean") {
             throw new Error(result && result.message ? result.message : "Invalid attendance window response");
@@ -486,38 +591,40 @@
         const scrollPosition = mainContainer.scrollTop;
         if (showLoading) showLoader(loaderText);
         try {
-          const result = await apiCall("get_current_attendees");
-          if (requestId !== currentAttendeesRequestId || currentActiveViewId !== "currentAttendeesView") return;
-          if (!result || !result.success || !Array.isArray(result.attendees)) {
-            throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
-          }
-          const snapshot = JSON.stringify(result);
-          availability.textContent = result.windowOpen
-            ? translations[currentLang].attendanceWindowOpen
-            : attendanceWindowCloseMessage(result.closeReason);
-          availability.classList.toggle("is-open", result.windowOpen);
-          availability.classList.toggle("is-closed", !result.windowOpen);
-          const refreshButton = document.getElementById("refreshCurrentAttendeesButton");
-          if (refreshButton) refreshButton.disabled = !navigator.onLine || !result.windowOpen;
-          if (!result.windowOpen) {
-            currentAttendeesWindowOpen = false;
-            currentAttendeesWindowCloseReason = result.closeReason || "";
-            currentAttendeesCheckoutOpen = false;
-            currentAttendeesData = [];
-            const closed = document.createElement("p");
-            closed.className = "report-note";
-            closed.textContent = attendanceWindowCloseMessage(result.closeReason);
-            container.replaceChildren(closed);
-            currentAttendeesData = [];
+          const applyResult = (result) => {
+            if (requestId !== currentAttendeesRequestId || currentActiveViewId !== "currentAttendeesView") return;
+            if (!result || !result.success || !Array.isArray(result.attendees)) {
+              throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
+            }
+            const snapshot = JSON.stringify(result);
+            availability.textContent = result.windowOpen
+              ? translations[currentLang].attendanceWindowOpen
+              : attendanceWindowCloseMessage(result.closeReason);
+            availability.classList.toggle("is-open", result.windowOpen);
+            availability.classList.toggle("is-closed", !result.windowOpen);
+            const refreshButton = document.getElementById("refreshCurrentAttendeesButton");
+            if (refreshButton) refreshButton.disabled = !navigator.onLine || !result.windowOpen;
+            if (!result.windowOpen) {
+              currentAttendeesWindowOpen = false;
+              currentAttendeesWindowCloseReason = result.closeReason || "";
+              currentAttendeesCheckoutOpen = false;
+              currentAttendeesData = [];
+              const closed = document.createElement("p");
+              closed.className = "report-note";
+              closed.textContent = attendanceWindowCloseMessage(result.closeReason);
+              container.replaceChildren(closed);
+              currentAttendeesSnapshot = snapshot;
+              return;
+            }
+            if (!showLoading && snapshot === currentAttendeesSnapshot) return;
             currentAttendeesSnapshot = snapshot;
-            return;
-          }
-          if (!showLoading && snapshot === currentAttendeesSnapshot) return;
-          currentAttendeesSnapshot = snapshot;
-          currentAttendeesData = result.attendees;
-          currentAttendeesCheckoutOpen = result.checkoutOpen;
-          renderCurrentAttendees(result.checkoutOpen);
-          mainContainer.scrollTop = scrollPosition;
+            currentAttendeesData = result.attendees;
+            currentAttendeesCheckoutOpen = result.checkoutOpen;
+            renderCurrentAttendees(result.checkoutOpen);
+            mainContainer.scrollTop = scrollPosition;
+          };
+          const result = await apiCall("get_current_attendees", {}, applyResult);
+          applyResult(result);
         } catch (error) {
           if (requestId !== currentAttendeesRequestId) return;
           availability.textContent = error.message || translations[currentLang].offlineSyncFailed;
@@ -749,36 +856,39 @@
         showReportSkeleton(document.getElementById("attendanceReportResults"));
         document.getElementById("attendanceSearchResult").replaceChildren();
         try {
-          const result = await apiCall("get_attendance_dates");
-          if (
-            requestId !== attendanceReportRequestId ||
-            currentActiveViewId !== "attendanceReportView" ||
-            attendanceReportTab !== "attendance"
-          ) return;
-          if (!result || !result.success || !Array.isArray(result.dates)) {
-            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceDatesFailed);
-          }
-          select.replaceChildren();
-          const today = localDateInputValue(new Date());
-          const dates = getPastAttendanceDates(result.dates, today);
-          if (!dates.length) {
-            const emptyOption = document.createElement("option");
-            emptyOption.value = "";
-            emptyOption.textContent = translations[currentLang].attendanceDatesEmpty;
-            select.appendChild(emptyOption);
-            document.getElementById("attendanceReportResults").replaceChildren();
-            return;
-          }
-          dates.forEach((date) => {
-            const option = document.createElement("option");
-            option.value = date;
-            option.textContent = formatAttendanceDateOption(date, today);
-            select.appendChild(option);
-          });
-          select.value = dates[dates.length - 1];
-          delete select.dataset.busy;
-          select.disabled = false;
-          await loadAttendanceReport();
+          const applyResult = async (result) => {
+            if (
+              requestId !== attendanceReportRequestId ||
+              currentActiveViewId !== "attendanceReportView" ||
+              attendanceReportTab !== "attendance"
+            ) return;
+            if (!result || !result.success || !Array.isArray(result.dates)) {
+              throw new Error(result && result.message ? result.message : translations[currentLang].attendanceDatesFailed);
+            }
+            select.replaceChildren();
+            const today = localDateInputValue(new Date());
+            const dates = getPastAttendanceDates(result.dates, today);
+            if (!dates.length) {
+              const emptyOption = document.createElement("option");
+              emptyOption.value = "";
+              emptyOption.textContent = translations[currentLang].attendanceDatesEmpty;
+              select.appendChild(emptyOption);
+              document.getElementById("attendanceReportResults").replaceChildren();
+              return;
+            }
+            dates.forEach((date) => {
+              const option = document.createElement("option");
+              option.value = date;
+              option.textContent = formatAttendanceDateOption(date, today);
+              select.appendChild(option);
+            });
+            select.value = dates[dates.length - 1];
+            delete select.dataset.busy;
+            select.disabled = false;
+            await loadAttendanceReport();
+          };
+          const result = await apiCall("get_attendance_dates", {}, applyResult);
+          await applyResult(result);
         } catch (error) {
           if (requestId !== attendanceReportRequestId) return;
           select.replaceChildren();
@@ -800,15 +910,18 @@
         const container = document.getElementById("followupResults");
         showReportSkeleton(container);
         try {
-          const result = await apiCall("get_followups");
-          if (
-            requestId !== attendanceReportRequestId ||
-            currentActiveViewId !== "followupView"
-          ) return;
-          if (!result || !result.success) throw new Error(result && result.message);
-          followupReportPeople = Array.isArray(result.followups) ? result.followups : [];
-          renderFollowupResults();
-          updateOnlineOnlyControls();
+          const applyResult = (result) => {
+            if (
+              requestId !== attendanceReportRequestId ||
+              currentActiveViewId !== "followupView"
+            ) return;
+            if (!result || !result.success) throw new Error(result && result.message);
+            followupReportPeople = Array.isArray(result.followups) ? result.followups : [];
+            renderFollowupResults();
+            updateOnlineOnlyControls();
+          };
+          const result = await apiCall("get_followups", {}, applyResult);
+          applyResult(result);
         } catch (error) {
           if (requestId !== attendanceReportRequestId) return;
           container.replaceChildren();
@@ -1001,18 +1114,22 @@
         const requestId = ++attendanceTrendsRequestId;
         showReportSkeleton(container, 3);
         try {
-          const result = await apiCall("get_attendance_trends", {
+          const payload = {
             meetings: Number(document.getElementById("attendanceTrendMeetings").value),
-          });
-          if (
-            requestId !== attendanceTrendsRequestId ||
-            currentActiveViewId !== "attendanceReportView" ||
-            attendanceReportTab !== "trends"
-          ) return;
-          if (!result || !result.success || !Array.isArray(result.trends)) {
-            throw new Error(result && result.message ? result.message : translations[currentLang].attendanceTrendNoData);
-          }
-          renderAttendanceTrends(result.trends);
+          };
+          const applyResult = (result) => {
+            if (
+              requestId !== attendanceTrendsRequestId ||
+              currentActiveViewId !== "attendanceReportView" ||
+              attendanceReportTab !== "trends"
+            ) return;
+            if (!result || !result.success || !Array.isArray(result.trends)) {
+              throw new Error(result && result.message ? result.message : translations[currentLang].attendanceTrendNoData);
+            }
+            renderAttendanceTrends(result.trends);
+          };
+          const result = await apiCall("get_attendance_trends", payload, applyResult);
+          applyResult(result);
         } catch (error) {
           if (requestId !== attendanceTrendsRequestId) return;
           container.replaceChildren();
@@ -1136,17 +1253,27 @@
           showLoader(translations[currentLang].creatingAttendanceSheet);
         }
         try {
+          const action = createSheet ? "create_daily_attendance_report" : "get_attendance_day";
+          const payload = {
+            date,
+            name: query,
+            type: createSheet ? sheetType : undefined,
+          };
+          const applyResult = (result) => {
+            if (
+              requestId !== attendanceReportRequestId ||
+              currentActiveViewId !== "attendanceReportView" ||
+              attendanceReportTab !== "attendance"
+            ) return;
+            if (!result || !result.success) throw new Error(result && result.message);
+            renderAttendanceReport(result, createSheet ? "" : query, createSheet);
+          };
           const result = await apiCall(
-            createSheet ? "create_daily_attendance_report" : "get_attendance_day",
-            { date: date, name: query, type: createSheet ? sheetType : undefined },
+            action,
+            payload,
+            createSheet ? null : applyResult,
           );
-          if (
-            requestId !== attendanceReportRequestId ||
-            currentActiveViewId !== "attendanceReportView" ||
-            attendanceReportTab !== "attendance"
-          ) return;
-          if (!result || !result.success) throw new Error(result && result.message);
-          renderAttendanceReport(result, createSheet ? "" : query, createSheet);
+          applyResult(result);
         } catch (error) {
           if (requestId !== attendanceReportRequestId) return;
           document.getElementById("attendanceReportResults").replaceChildren();

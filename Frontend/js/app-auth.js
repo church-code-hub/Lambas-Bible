@@ -1,6 +1,7 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
+        setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "grouped");
         const hasSavedUser = Boolean(localStorage.getItem("app_user"));
         if (!hasSavedUser) {
           window.setTimeout(dismissStartupScreen, 1050);

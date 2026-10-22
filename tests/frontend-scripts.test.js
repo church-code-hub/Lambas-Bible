@@ -90,9 +90,33 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   }
   assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=54/);
-  assert.match(serviceWorker, /lambas-bible-shell-v54/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=54/);
+  assert.match(html, /css\/styles\.css\?v=56/);
+  assert.match(serviceWorker, /lambas-bible-shell-v56/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=56/);
+  assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
+  assert.match(dashboard, /onclick="setDashboardLayout\('grouped'\)"/);
+  assert.match(dashboard, /onclick="setDashboardLayout\('grid'\)"/);
+  assert.match(dashboard, /onclick="setDashboardLayout\('list'\)"/);
+  assert.match(styles, /\.dashboard-layout-grid \.dashboard-tools/);
+  assert.match(styles, /\.dashboard-layout-list \.dashboard-primary-grid/);
+});
+
+test("people management styles search and uses edit plus confirmed archival actions", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
+
+  assert.match(html, /id="rosterSearchInput"[^>]*class="roster-search"/);
+  assert.match(styles, /\.roster-search-wrap\s*\{[\s\S]*?backdrop-filter:/);
+  assert.match(views, /function beginRosterPersonEdit\(/);
+  assert.match(views, /function deactivateRosterPerson\(person\)/);
+  assert.match(views, /window\.confirm\(confirmation\)/);
+  assert.match(views, /active:\s*false/);
+  assert.doesNotMatch(views, /rosterActiveLabel/);
+  assert.match(views, /editRosterPerson/);
+  assert.match(translations, /confirmDeleteRosterPerson:/);
+  assert.match(translations, /attend(?:ance)? history|سجل الحضور/);
 });
 
 test("roster management, attendance trends, and follow-up have dedicated views", () => {
@@ -169,6 +193,62 @@ test("only user-started attendance actions block navigation", async () => {
   pendingResponses[0]({ ok: true, json: async () => ({ kind: "success" }) });
   await scanRequest;
   assert.equal(browserContext.userActionRequestCount, 0);
+});
+
+test("read API calls return cached data before revalidating and notify the view", async () => {
+  const cached = { success: true, roster: [{ id: "old" }] };
+  const fresh = { success: true, roster: [{ id: "new" }] };
+  let savedResponse = null;
+  let revalidatedResponse = null;
+  let requestStarted = false;
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: {},
+    sessionStorage: { getItem: () => "", removeItem() {} },
+    localStorage: { getItem: () => null, removeItem() {} },
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    getCachedApiResponse: async () => cached,
+    saveCachedApiResponse: async (_key, response) => { savedResponse = response; },
+    fetch: async () => {
+      requestStarted = true;
+      return { ok: true, json: async () => fresh };
+    },
+  });
+  for (const script of ["app-state.js", "app-core.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+
+  const result = await browserContext.apiCall("get_roster", {}, (response) => {
+    revalidatedResponse = response;
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), cached);
+  assert.equal(requestStarted, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(savedResponse)), fresh);
+  assert.deepEqual(JSON.parse(JSON.stringify(revalidatedResponse)), fresh);
+});
+
+test("attendance scans persist pending events and register service-worker background sync", () => {
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+
+  assert.match(offline, /status:\s*"pending"/);
+  assert.match(offline, /window\.triggerManualSync\s*=\s*triggerManualSync/);
+  assert.match(offline, /registration\.sync\.register\("sync-pending-events"\)/);
+  assert.match(scanner, /queueOfflineEvent\(\{[\s\S]*?eventId:\s*feedback\.event\.eventId/);
+  assert.match(scanner, /syncQueuedEventImmediately\(queuedEvent\)/);
+  assert.match(scanner, /1000\s*\+\s*Math\.floor\(Math\.random\(\)\s*\*\s*1001\)/);
+  assert.match(serviceWorker, /self\.addEventListener\("sync"/);
+  assert.match(serviceWorker, /event\.tag === "sync-pending-events"/);
+  assert.match(serviceWorker, /action:\s*"sync_offline_events"/);
 });
 
 test("toast animation duration follows its configured visible duration", () => {

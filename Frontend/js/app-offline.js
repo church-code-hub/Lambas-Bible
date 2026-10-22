@@ -2,7 +2,7 @@
         if (!window.indexedDB) return Promise.reject(new Error("IndexedDB unavailable"));
         if (!offlineDatabasePromise) {
           offlineDatabasePromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open("lambas-attendance-offline", 3);
+            const request = indexedDB.open("lambas-attendance-offline", 4);
             request.onupgradeneeded = () => {
               if (!request.result.objectStoreNames.contains("events")) {
                 request.result.createObjectStore("events", { keyPath: "eventId" });
@@ -13,12 +13,52 @@
               if (!request.result.objectStoreNames.contains("metadata")) {
                 request.result.createObjectStore("metadata", { keyPath: "key" });
               }
+              if (!request.result.objectStoreNames.contains("apiCache")) {
+                request.result.createObjectStore("apiCache", { keyPath: "cacheKey" });
+              }
             };
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error || new Error("Could not open offline queue"));
           });
         }
         return offlineDatabasePromise;
+      }
+
+      async function getCachedApiResponse(cacheKey) {
+        const database = await openOfflineDatabase();
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("apiCache", "readonly")
+            .objectStore("apiCache")
+            .get(cacheKey);
+          request.onsuccess = () => resolve(request.result ? request.result.response : null);
+          request.onerror = () => reject(request.error || new Error("Could not read API cache"));
+        });
+      }
+
+      async function saveCachedApiResponse(cacheKey, response) {
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("apiCache", "readwrite");
+          transaction.objectStore("apiCache").put({
+            cacheKey,
+            response,
+            cachedAt: new Date().toISOString(),
+          });
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not save API cache"));
+          transaction.onabort = () => reject(transaction.error || new Error("API cache update was cancelled"));
+        });
+      }
+
+      async function clearCachedApiResponses() {
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("apiCache", "readwrite");
+          transaction.objectStore("apiCache").clear();
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not clear API cache"));
+          transaction.onabort = () => reject(transaction.error || new Error("API cache clear was cancelled"));
+        });
       }
 
       async function getCachedRoster() {
@@ -102,19 +142,13 @@
       async function refreshRosterCache() {
         if (!navigator.onLine || !currentUser || !googleIdToken) return false;
         try {
-          const response = await apiCall("get_roster");
+          const response = await apiCall("get_roster", {}, async (freshResponse) => {
+            await cacheRosterResponse(freshResponse);
+          });
           if (!response || !response.success || !Array.isArray(response.roster)) {
             throw new Error(response && response.message ? response.message : "Invalid roster response");
           }
-          const roster = response.roster.filter(
-            (person) => person && person.id != null && person.name,
-          ).map((person) => ({
-            id: String(person.id).trim(),
-            name: String(person.name),
-            qrId: String(person.qrId || "").trim(),
-          }));
-          await saveCachedRoster(roster);
-          await updateOfflineStatus();
+          await cacheRosterResponse(response);
           return true;
         } catch (error) {
           console.error("Could not refresh the saved offline roster.", error);
@@ -125,6 +159,21 @@
           );
           return false;
         }
+      }
+
+      async function cacheRosterResponse(response) {
+        if (!response || !response.success || !Array.isArray(response.roster)) {
+          throw new Error(response && response.message ? response.message : "Invalid roster response");
+        }
+        const roster = response.roster.filter(
+            (person) => person && person.id != null && person.name,
+          ).map((person) => ({
+            id: String(person.id).trim(),
+            name: String(person.name),
+            qrId: String(person.qrId || "").trim(),
+          }));
+        await saveCachedRoster(roster);
+        await updateOfflineStatus();
       }
 
       async function manuallyRefreshRosterCache() {
@@ -233,16 +282,55 @@
           : { status: "no_match" };
       }
 
-      async function saveOfflineEvent(event) {
+      async function saveOfflineEvent(event, refreshStatus = true, persistSyncCredentials = false) {
         const database = await openOfflineDatabase();
         await new Promise((resolve, reject) => {
-          const transaction = database.transaction("events", "readwrite");
+          const stores = persistSyncCredentials && currentUser && googleIdToken && API_URL
+            ? ["events", "metadata"]
+            : ["events"];
+          const transaction = database.transaction(stores, "readwrite");
           transaction.objectStore("events").put(event);
+          if (stores.includes("metadata")) {
+            transaction.objectStore("metadata").put({
+              key: "syncCredentials",
+              apiUrl: API_URL,
+              idToken: googleIdToken,
+              email: currentUser.email,
+            });
+          }
           transaction.oncomplete = resolve;
           transaction.onerror = () => reject(transaction.error || new Error("Could not save offline event"));
           transaction.onabort = () => reject(transaction.error || new Error("Offline save was cancelled"));
         });
-        await updateOfflineStatus();
+        if (refreshStatus) await updateOfflineStatus();
+      }
+
+      async function clearBackgroundSyncCredentialsIfQueueEmpty() {
+        const events = await getOfflineEvents();
+        if (events.length) return;
+        const database = await openOfflineDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction("metadata", "readwrite");
+          transaction.objectStore("metadata").delete("syncCredentials");
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error || new Error("Could not clear background sync credentials"));
+          transaction.onabort = () => reject(transaction.error || new Error("Background sync credential clear was cancelled"));
+        });
+      }
+
+      function registerPendingEventsSync() {
+        if (!("serviceWorker" in navigator)) return;
+        navigator.serviceWorker.ready
+          .then((registration) => {
+            if (!registration.sync) {
+              console.warn("Background Sync is unavailable; use manual sync when online.");
+              return;
+            }
+            return registration.sync.register("sync-pending-events");
+          })
+          .catch((error) => {
+            console.warn("Could not register background event sync.", error);
+          });
       }
 
       async function getOfflineEvents() {
@@ -271,6 +359,7 @@
           transaction.oncomplete = resolve;
           transaction.onerror = () => reject(transaction.error || new Error("Could not update offline queue"));
         });
+        await clearBackgroundSyncCredentialsIfQueueEmpty();
       }
 
       async function queueOfflineEvent(event) {
@@ -279,22 +368,18 @@
           if (!currentUser || (navigator.onLine && !googleIdToken)) {
             throw new Error("Offline actions require a previously authenticated session.");
           }
-          let personName = event.personName || "";
-          if (event.type === "scan" && !personName) {
-            try {
-              personName = await getCachedPersonName(event.qrText);
-            } catch (error) {
-              console.warn("Could not find the scanned ID in the saved roster.", error);
-            }
-          }
           const queuedEvent = {
             ...event,
-            ...(personName ? { personName } : {}),
-            eventId: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
+            eventId: event.eventId || crypto.randomUUID(),
+            timestamp: event.timestamp || new Date().toISOString(),
             queuedBy: currentUser.email,
+            status: "pending",
           };
-          await saveOfflineEvent(queuedEvent);
+          await saveOfflineEvent(queuedEvent, false, true);
+          updateOfflineStatus().catch((error) => {
+            console.error("Could not refresh offline queue status.", error);
+          });
+          if (googleIdToken && API_URL) registerPendingEventsSync();
           return queuedEvent;
         } finally {
           finishUserAction();
@@ -483,9 +568,62 @@
       async function saveOfflineSyncFailure(event, message) {
         await saveOfflineEvent({
           ...event,
+          status: "pending",
           lastSyncError: message,
           lastSyncFailedAt: new Date().toISOString(),
         });
+      }
+
+      var immediateOfflineSyncIds = new Set();
+
+      async function syncQueuedEventImmediately(event) {
+        if (immediateOfflineSyncIds.has(event.eventId)) return null;
+        immediateOfflineSyncIds.add(event.eventId);
+        let lastError = null;
+        try {
+          for (const delay of [0, 750, 2000, 4000]) {
+            if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+            if (!currentUser || !googleIdToken) break;
+            try {
+              const response = await apiCall("sync_offline_events", { events: [event] });
+              if (!response || !response.success || !Array.isArray(response.results)) {
+                throw new Error(response && response.message
+                  ? response.message
+                  : translations[currentLang].offlineSyncProgressNoResult);
+              }
+              const eventResult = response.results.find((item) => item && item.eventId === event.eventId);
+              if (eventResult && eventResult.status === "complete") {
+                const result = eventResult.result || {};
+                if (result.success === false || result.kind === "error") {
+                  await saveOfflineSyncFailure(
+                    event,
+                    result.message || translations[currentLang].offlineSyncFailed,
+                  );
+                } else {
+                  await removeOfflineEvent(event.eventId);
+                }
+                return result;
+              }
+              if (!eventResult || eventResult.status !== "pending") {
+                throw new Error(eventResult && eventResult.message
+                  ? eventResult.message
+                  : translations[currentLang].offlineSyncProgressNoResult);
+              }
+              lastError = new Error(translations[currentLang].offlineSyncProgressNoResult);
+            } catch (error) {
+              lastError = error;
+              if (!navigator.onLine) break;
+            }
+          }
+          if (lastError) {
+            await saveOfflineSyncFailure(event, lastError.message);
+            console.warn("Immediate event sync did not complete; the event remains queued.", lastError);
+          }
+          return null;
+        } finally {
+          immediateOfflineSyncIds.delete(event.eventId);
+          await updateOfflineStatus();
+        }
       }
 
       function offlineEventDescription(event) {
@@ -504,7 +642,9 @@
           const target = events.find((event) => event.eventId === targetEventId);
           return target && target.queuedBy === accountEmail ? [target] : null;
         }
-        const eligibleEvents = events.filter((event) => event.queuedBy === accountEmail);
+        const eligibleEvents = events.filter(
+          (event) => event.queuedBy === accountEmail && event.status !== "complete",
+        );
         if (groupType) {
           return eligibleEvents
             .filter((event) => event.type === groupType)
@@ -693,11 +833,22 @@
           const progressSection = document.getElementById("offlineSyncProgress");
           if (progressSection) progressSection.hidden = true;
           isSyncingOfflineQueue = false;
+          try {
+            await clearBackgroundSyncCredentialsIfQueueEmpty();
+          } catch (error) {
+            console.error("Could not clear unused background sync credentials.", error);
+          }
           await updateOfflineStatus();
           if (currentActiveViewId === "offlineQueueView") await renderOfflineQueue();
         }
         return targetResult;
       }
+
+      async function triggerManualSync() {
+        return syncOfflineQueue("", true);
+      }
+
+      window.triggerManualSync = triggerManualSync;
 
       async function openOfflineQueueView() {
         showView("offlineQueueView");

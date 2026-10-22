@@ -144,7 +144,80 @@
         else applyTheme("dark");
       }
 
-      async function apiCall(action, payload = {}) {
+      function isReadApiAction(action) {
+        return action.startsWith("get_") || ["search", "search_card_share"].includes(action);
+      }
+
+      function createApiCacheKey(action, payload) {
+        const canonicalPayload = Object.fromEntries(
+          Object.entries(payload).sort(([left], [right]) => left.localeCompare(right)),
+        );
+        return JSON.stringify([
+          String(currentUser?.email || "").toLowerCase().trim(),
+          action,
+          canonicalPayload,
+        ]);
+      }
+
+      function isSuccessfulApiResponse(response) {
+        return Boolean(
+          response &&
+          response.success !== false &&
+          response.kind !== "error" &&
+          response.status !== "error" &&
+          !response.code,
+        );
+      }
+
+      async function apiCall(action, payload = {}, onRevalidate = null) {
+        const cacheable = isReadApiAction(action) &&
+          typeof currentUser?.email === "string" &&
+          typeof getCachedApiResponse === "function";
+        if (!cacheable) return performApiCall(action, payload);
+
+        const cacheKey = createApiCacheKey(action, payload);
+        let cachedResponse = null;
+        try {
+          cachedResponse = await getCachedApiResponse(cacheKey);
+        } catch (error) {
+          console.error("Could not read cached API response.", error);
+        }
+
+        if (!cachedResponse) {
+          const freshResponse = await performApiCall(action, payload);
+          if (isSuccessfulApiResponse(freshResponse)) {
+            try {
+              await saveCachedApiResponse(cacheKey, freshResponse);
+            } catch (error) {
+              console.error("Could not save API response to cache.", error);
+            }
+          }
+          return freshResponse;
+        }
+
+        performApiCall(action, payload, true)
+          .then(async (freshResponse) => {
+            if (!isSuccessfulApiResponse(freshResponse)) return;
+            try {
+              await saveCachedApiResponse(cacheKey, freshResponse);
+            } catch (error) {
+              console.error("Could not refresh cached API response.", error);
+            }
+            if (typeof onRevalidate === "function") {
+              try {
+                await onRevalidate(freshResponse);
+              } catch (error) {
+                console.error("Could not apply refreshed API response.", error);
+              }
+            }
+          })
+          .catch((error) => {
+            console.warn(`Could not revalidate cached ${action} response.`, error);
+          });
+        return cachedResponse;
+      }
+
+      async function performApiCall(action, payload = {}, isBackgroundRevalidation = false) {
         if (!API_URL) throw new Error("Application is not configured.");
         const requestBody = {
           ...payload,
@@ -172,7 +245,9 @@
           "cancel_checkin",
           "complete_followup",
         ].includes(action);
-        const finishUserAction = isUserAction ? beginUserActionRequest() : null;
+        const finishUserAction = isUserAction && !isBackgroundRevalidation
+          ? beginUserActionRequest()
+          : null;
         activeApiRequestCount++;
         try {
           const response = await fetch(API_URL, {
@@ -192,6 +267,17 @@
             else logoutUser(result.message || "❌ Unauthorized account.");
           } else if (result.code === "AUTH_DENIED") {
             logoutUser(result.message || "❌ Unauthorized account.");
+          }
+          if (
+            !isReadApiAction(action) &&
+            action !== "check_auth" &&
+            result &&
+            result.success !== false &&
+            typeof clearCachedApiResponses === "function"
+          ) {
+            clearCachedApiResponses().catch((error) => {
+              console.error("Could not invalidate cached API responses.", error);
+            });
           }
           return result;
         } finally {

@@ -906,9 +906,9 @@
       }
 
       .roster-person-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 10px;
         padding: 14px 16px;
         border-bottom: 1px solid var(--card-border);
@@ -918,34 +918,90 @@
         border-bottom: 0;
       }
 
-      .roster-person-row > strong {
-        grid-column: 1 / -1;
+      .roster-person-details {
+        display: grid;
+        min-width: 0;
+        gap: 4px;
+      }
+
+      .roster-person-details strong {
         overflow-wrap: anywhere;
         color: var(--text-main);
       }
 
-      .roster-person-row input[type="text"] {
-        min-width: 0;
-        margin: 0;
-      }
-
-      .roster-person-row label {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
+      .roster-person-details small {
         color: var(--text-sub);
-        font-size: 13px;
+        font-size: 12px;
       }
 
-      .roster-person-row label input {
-        width: 18px;
-        min-height: 18px;
+      .roster-person-actions,
+      .roster-person-edit {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .roster-person-actions .btn,
+      .roster-person-actions .admin-del-btn,
+      .roster-person-edit .btn {
+        width: auto;
+        min-height: 38px;
         margin: 0;
       }
 
-      .roster-person-row .btn {
-        grid-column: 1 / -1;
+      .roster-person-edit {
+        width: 100%;
+      }
+
+      .roster-person-edit input[type="text"] {
+        min-width: 0;
+        flex: 1 1 180px;
         margin: 0;
+      }
+
+      .roster-search-wrap {
+        display: flex;
+        width: 100%;
+        min-height: 48px;
+        align-items: center;
+        gap: 10px;
+        margin: 10px 0 14px;
+        padding: 0 14px;
+        border: 1px solid var(--card-border);
+        border-radius: 15px;
+        background: var(--panel-gradient), var(--input-bg);
+        color: var(--text-sub);
+        box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.12), 0 8px 18px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+      }
+
+      .roster-search-wrap:focus-within {
+        border-color: var(--accent-gold);
+        box-shadow: 0 0 0 3px rgba(245, 189, 85, 0.16), 0 8px 18px rgba(0, 0, 0, 0.08);
+      }
+
+      .roster-search {
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        margin: 0;
+        padding: 8px 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--text-main);
+        font: inherit;
+        font-size: 14px;
+        text-align: start;
+        box-shadow: none;
+      }
+
+      .roster-search::placeholder {
+        color: var(--text-sub);
+        opacity: 0.85;
       }
 
       .attendance-person-card:last-child {
@@ -1859,7 +1915,40 @@
       .user-info {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 12px;
+      }
+
+      .dashboard-layout-switcher {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px;
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        background: var(--chip-bg);
+      }
+
+      .dashboard-layout-switcher button {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--text-sub);
+        cursor: pointer;
+      }
+
+      .dashboard-layout-switcher button[aria-pressed="true"] {
+        background: var(--accent-gold);
+        color: #17202a;
+      }
+
+      .dashboard-layout-switcher button:focus-visible {
+        outline: 2px solid var(--accent-gold);
+        outline-offset: 2px;
       }
       .user-avatar {
         width: 42px;
@@ -1972,6 +2061,49 @@
 
       .dashboard-secondary-grid .tile {
         min-height: 92px;
+      }
+
+      .dashboard-layout-grid .dashboard-tools {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+        align-items: start;
+      }
+
+      .dashboard-layout-grid .dashboard-tool-group,
+      .dashboard-layout-list .dashboard-tool-group {
+        height: 100%;
+      }
+
+      .dashboard-layout-grid .dashboard-tool-group > summary,
+      .dashboard-layout-list .dashboard-tool-group > summary {
+        cursor: default;
+      }
+
+      .dashboard-layout-grid .dashboard-tool-chevron,
+      .dashboard-layout-list .dashboard-tool-chevron {
+        display: none;
+      }
+
+      .dashboard-layout-list .dashboard-primary-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .dashboard-layout-list .dashboard-primary-grid .tile,
+      .dashboard-layout-list .dashboard-secondary-grid .tile {
+        min-height: 68px;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 14px;
+        padding-inline: 18px;
+        text-align: start;
+      }
+
+      .dashboard-layout-list .dashboard-primary-grid .ico,
+      .dashboard-layout-list .dashboard-secondary-grid .ico {
+        margin: 0;
+      }
+
+      .dashboard-layout-list .dashboard-secondary-grid {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .tile {
@@ -2647,6 +2779,12 @@
         .top-app-bar .brand { font-size: 16px; }
         .sync-now-btn { padding: 0 9px; }
         .sync-now-label { display: none; }
+        .user-profile-bar { gap: 8px; padding: 10px; }
+        .user-info { gap: 8px; }
+        .dashboard-layout-switcher { gap: 1px; }
+        .dashboard-layout-switcher button { width: 30px; height: 32px; }
+        .roster-person-row { align-items: stretch; flex-direction: column; }
+        .roster-person-actions { justify-content: flex-start; }
         .current-attendees-header {
           display: grid;
           grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);

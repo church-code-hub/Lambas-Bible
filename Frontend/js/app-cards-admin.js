@@ -232,12 +232,12 @@
 
       async function loadAdminsData() {
         try {
-          const res = await apiCall("get_admins");
-          if (res && res.success) {
+          const applyResult = (res) => {
+            if (!res || !res.success || !Array.isArray(res.admins)) return;
             const container = document.getElementById("adminsListContainer");
-            container.innerHTML = "";
+            container.replaceChildren();
             res.admins.forEach((admin) => {
-              var div = document.createElement("div");
+              const div = document.createElement("div");
               div.className = "admin-item";
               const details = document.createElement("div");
               const adminName = document.createElement("strong");
@@ -248,7 +248,7 @@
               details.append(adminName, document.createElement("br"), email);
               div.appendChild(details);
               if (!admin.isOwner) {
-                var delBtn = document.createElement("button");
+                const delBtn = document.createElement("button");
                 delBtn.className = "admin-del-btn";
                 delBtn.dataset.onlineOnly = "";
                 delBtn.dataset.i18nKey = "Delete";
@@ -256,7 +256,7 @@
                 delBtn.onclick = () => deleteAdmin(admin.email);
                 div.appendChild(delBtn);
               } else {
-                var tag = document.createElement("span");
+                const tag = document.createElement("span");
                 tag.style.cssText =
                   "font-size:11px; color:var(--accent-gold); font-weight:bold;";
                 tag.className = "admin-owner-tag";
@@ -267,7 +267,9 @@
               container.appendChild(div);
             });
             updateOnlineOnlyControls();
-          }
+          };
+          const res = await apiCall("get_admins", {}, applyResult);
+          applyResult(res);
         } catch (e) {}
       }
 
@@ -429,8 +431,12 @@
 
       async function loadScheduleSettingsData() {
         try {
-          const res = await apiCall("get_settings");
-          if (res && res.success) {
+          const applySettings = (res) => {
+            if (!res || !res.success) return;
+            if (
+              scheduleSettingsSnapshot !== null &&
+              getScheduleSettingsValues() !== scheduleSettingsSnapshot
+            ) return;
             var s = res.settings;
             document.getElementById("cfgStartTime").value = s.startTime;
             document.getElementById("cfgEndTime").value = s.endTime;
@@ -440,7 +446,9 @@
               document.getElementById("day" + d).checked = days.includes(d);
             }
             captureScheduleSettingsSnapshot();
-          }
+          };
+          const res = await apiCall("get_settings", {}, applySettings);
+          applySettings(res);
         } catch (e) {}
       }
 
