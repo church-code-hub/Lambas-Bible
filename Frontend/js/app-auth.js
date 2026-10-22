@@ -68,8 +68,7 @@
             localStorage.setItem(OFFLINE_SESSION_KEY, expectedEmail);
             localStorage.setItem("app_user", JSON.stringify(currentUser));
             setupUserProfileUI();
-            refreshRosterCache();
-            refreshAttendanceContext();
+            refreshUserDataAfterTutorial();
             return;
           }
           if (authRes && authRes.code === "AUTH_INVALID") {
@@ -184,8 +183,7 @@
             localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
             setupUserProfileUI();
             checkDirectUrlScan();
-            refreshRosterCache();
-            refreshAttendanceContext();
+            refreshUserDataAfterTutorial();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
             localStorage.removeItem("google_id_token");
@@ -250,57 +248,90 @@
       }
 
       const firstRunTutorialSteps = [
-        { title: "tutorialScanTitle", description: "tutorialScanDescription", demo: "scan" },
-        { title: "tutorialNameTitle", description: "tutorialNameDescription", demo: "name" },
-        { title: "tutorialAddTitle", description: "tutorialAddDescription", demo: "add" },
-        { title: "tutorialOfflineTitle", description: "tutorialOfflineDescription", demo: "offline" },
-        { title: "tutorialDoneTitle", description: "tutorialDoneDescription", demo: "done" },
+        { title: "tutorialScanTitle", description: "tutorialScanDescription", target: "tutorialScanAction" },
+        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
+        { title: "tutorialNameTitle", description: "tutorialNameDescription", target: "tutorialSearchAction" },
+        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
+        { title: "tutorialAddTitle", description: "tutorialAddDescription", target: "tutorialAddAction" },
+        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
+        { title: "tutorialSettingsTitle", description: "tutorialSettingsDescription", target: "appSettingsToolbarButton" },
       ];
       var firstRunTutorialStep = 0;
-      var firstRunTutorialRoster = [];
+      var tutorialCompletedEmail = "";
+      var tutorialDeferredLoginRefreshEmail = "";
+      var tutorialPending = false;
+      var tutorialClickHandlerBound = false;
+      var tutorialAllowTargetClick = false;
+      var tutorialAdvanceTimer = 0;
+      var tutorialPositionFrame = 0;
 
-      function tutorialStorageKey() {
-        return `app_tutorial_completed_${String(currentUser?.email || "").toLowerCase().trim()}`;
+      function isFirstRunTutorialActive() {
+        return tutorialPending ||
+          Boolean(document.getElementById("firstRunTutorial")?.classList.contains("is-active"));
+      }
+
+      function bindFirstRunTutorialHandlers() {
+        if (tutorialClickHandlerBound) return;
+        tutorialClickHandlerBound = true;
+        document.addEventListener("click", handleFirstRunTutorialClick, true);
+        document.addEventListener("keydown", handleFirstRunTutorialKeydown, true);
+        window.addEventListener("resize", positionFirstRunTutorial);
+        window.addEventListener("scroll", positionFirstRunTutorial, true);
       }
 
       function startFirstRunTutorial() {
-        if (!currentUser || localStorage.getItem(tutorialStorageKey()) === "true") return;
-        const dialog = document.getElementById("firstRunTutorial");
-        if (!dialog || dialog.open) return;
-        if (!dialog.dataset.closeHandlerBound) {
-          dialog.addEventListener("cancel", (event) => {
-            event.preventDefault();
-            finishFirstRunTutorial();
-          });
-          dialog.dataset.closeHandlerBound = "true";
-        }
+        if (
+          !currentUser ||
+          new URLSearchParams(window.location.search).has("id") ||
+          tutorialCompletedEmail === String(currentUser.email || "").toLowerCase().trim()
+        ) return;
+        if (isFirstRunTutorialActive()) return;
+        tutorialPending = true;
+        pauseDashboardRefreshForTutorial();
+        bindFirstRunTutorialHandlers();
         firstRunTutorialStep = 0;
-        renderFirstRunTutorialStep();
         window.setTimeout(() => {
-          if (currentUser && localStorage.getItem(tutorialStorageKey()) !== "true" && !dialog.open) {
-            dialog.showModal();
-          }
+          if (currentUser) showFirstRunTutorial();
+          else tutorialPending = false;
         }, 350);
       }
 
       function replayFirstRunTutorial() {
         if (!currentUser) return;
+        bindFirstRunTutorialHandlers();
+        pauseDashboardRefreshForTutorial();
         firstRunTutorialStep = 0;
+        showFirstRunTutorial();
+      }
+
+      function pauseDashboardRefreshForTutorial() {
+        if (currentAttendeesWindowTimer) {
+          window.clearTimeout(currentAttendeesWindowTimer);
+          currentAttendeesWindowTimer = 0;
+        }
+      }
+
+      function refreshUserDataAfterTutorial() {
+        if (isFirstRunTutorialActive()) {
+          tutorialDeferredLoginRefreshEmail = String(currentUser?.email || "").toLowerCase().trim();
+          return;
+        }
+        refreshRosterCache();
+        refreshAttendanceContext();
+      }
+
+      function showFirstRunTutorial() {
+        const panel = document.getElementById("firstRunTutorial");
+        const scrim = document.getElementById("tutorialScrim");
+        if (!panel || !scrim) {
+          tutorialPending = false;
+          return;
+        }
+        tutorialPending = false;
+        panel.hidden = false;
+        panel.classList.add("is-active");
+        scrim.hidden = false;
         renderFirstRunTutorialStep();
-        const dialog = document.getElementById("firstRunTutorial");
-        if (!dialog.open) dialog.showModal();
-      }
-
-      function createTutorialElement(tag, className, text) {
-        const element = document.createElement(tag);
-        if (className) element.className = className;
-        if (text) element.textContent = text;
-        return element;
-      }
-
-      function tutorialDemoCard() {
-        const card = createTutorialElement("div", "tutorial-demo-card");
-        return card;
       }
 
       function renderFirstRunTutorialStep() {
@@ -316,178 +347,131 @@
             .replace("{total}", String(firstRunTutorialSteps.length));
         document.getElementById("tutorialProgressBar").style.width =
           `${((firstRunTutorialStep + 1) / firstRunTutorialSteps.length) * 100}%`;
-        const back = document.getElementById("tutorialBackButton");
-        const next = document.getElementById("tutorialNextButton");
-        back.hidden = firstRunTutorialStep === 0;
-        next.textContent = translationsForLanguage[
-          firstRunTutorialStep === firstRunTutorialSteps.length - 1
-            ? "tutorialFinish"
-            : "tutorialNext"
-        ];
-        const demo = document.getElementById("tutorialDemo");
-        demo.replaceChildren();
-        if (step.demo === "scan") renderTutorialAttendanceDemo(demo, "tutorialScanDemoButton");
-        else if (step.demo === "name") renderTutorialNameDemo(demo);
-        else if (step.demo === "add") renderTutorialAddDemo(demo);
-        else if (step.demo === "offline") {
-          const card = tutorialDemoCard();
-          card.appendChild(createTutorialElement("strong", "", translationsForLanguage.tutorialOfflineCardTitle));
-          card.appendChild(createTutorialElement("p", "tutorial-demo-note", translationsForLanguage.tutorialOfflineCardDescription));
-          demo.appendChild(card);
-        } else {
-          const card = tutorialDemoCard();
-          card.appendChild(createTutorialElement("strong", "", translationsForLanguage.tutorialSafeDemo));
-          card.appendChild(createTutorialElement("p", "tutorial-demo-note", translationsForLanguage.tutorialDoneCardDescription));
-          demo.appendChild(card);
-        }
+        positionFirstRunTutorial();
+        const target = document.getElementById(step.target);
+        window.setTimeout(() => target?.focus({ preventScroll: true }), 0);
       }
 
-      async function loadTutorialRoster() {
-        try {
-          firstRunTutorialRoster = await getCachedRoster();
-          if (!firstRunTutorialRoster.length && navigator.onLine && googleIdToken) {
-            await refreshRosterCache();
-            firstRunTutorialRoster = await getCachedRoster();
+      function positionFirstRunTutorial() {
+        if (!isFirstRunTutorialActive()) return;
+        if (tutorialPositionFrame) window.cancelAnimationFrame(tutorialPositionFrame);
+        tutorialPositionFrame = window.requestAnimationFrame(() => {
+          tutorialPositionFrame = 0;
+          const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
+          const spotlight = document.getElementById("tutorialSpotlight");
+          const panel = document.getElementById("firstRunTutorial");
+          if (!target || !spotlight) return;
+          const rect = target.getBoundingClientRect();
+          const padding = 8;
+          const left = Math.max(6, rect.left - padding);
+          const top = Math.max(6, rect.top - padding);
+          const right = Math.min(window.innerWidth - 6, rect.right + padding);
+          const bottom = Math.min(window.innerHeight - 6, rect.bottom + padding);
+          spotlight.style.left = `${left}px`;
+          spotlight.style.top = `${top}px`;
+          spotlight.style.width = `${right - left}px`;
+          spotlight.style.height = `${bottom - top}px`;
+          if (panel) {
+            const panelHeight = panel.getBoundingClientRect().height;
+            const gap = 16;
+            const roomBelow = window.innerHeight - rect.bottom;
+            const roomAbove = rect.top;
+            if (roomBelow >= panelHeight + gap || roomBelow >= roomAbove) {
+              panel.style.top = `${Math.min(window.innerHeight - panelHeight - 8, rect.bottom + gap)}px`;
+              panel.style.bottom = "auto";
+            } else {
+              panel.style.top = "auto";
+              panel.style.bottom = `${Math.max(8, window.innerHeight - rect.top + gap)}px`;
+            }
           }
-          return firstRunTutorialRoster;
-        } catch (error) {
-          console.error("Could not load real attendee names for the tutorial demo.", error);
-          return [];
-        }
-      }
-
-      function addTutorialAttendeeSelector(card) {
-        const select = createTutorialElement("select", "tutorial-attendee-select");
-        select.setAttribute("aria-label", translations[currentLang].tutorialChooseAttendee);
-        const placeholder = createTutorialElement("option", "", translations[currentLang].tutorialChooseAttendee);
-        placeholder.value = "";
-        select.appendChild(placeholder);
-        card.appendChild(select);
-        loadTutorialRoster().then((roster) => {
-          if (!select.isConnected) return;
-          roster.forEach((person) => {
-            const option = createTutorialElement("option", "", person.name);
-            option.value = String(person.id);
-            select.appendChild(option);
+          const panels = {
+            top: [0, 0, window.innerWidth, top],
+            left: [0, top, left, bottom - top],
+            right: [right, top, window.innerWidth - right, bottom - top],
+            bottom: [0, bottom, window.innerWidth, window.innerHeight - bottom],
+          };
+          Object.entries(panels).forEach(([name, [panelLeft, panelTop, width, height]]) => {
+            const panel = document.querySelector(`.tutorial-scrim-${name}`);
+            if (!panel) return;
+            panel.style.left = `${panelLeft}px`;
+            panel.style.top = `${panelTop}px`;
+            panel.style.width = `${Math.max(0, width)}px`;
+            panel.style.height = `${Math.max(0, height)}px`;
           });
-          if (!roster.length) {
-            const unavailable = createTutorialElement(
-              "option",
-              "",
-              translations[currentLang].tutorialNoRoster,
-            );
-            unavailable.disabled = true;
-            select.appendChild(unavailable);
-          }
         });
-        return select;
       }
 
-      function renderTutorialAttendanceDemo(container, buttonKey) {
-        const card = tutorialDemoCard();
-        const select = addTutorialAttendeeSelector(card);
-        const button = createTutorialElement("button", "btn secondary", translations[currentLang][buttonKey]);
-        button.type = "button";
-        button.addEventListener("click", () => runTutorialAttendanceDemo(select, card));
-        card.appendChild(button);
-        container.appendChild(card);
-      }
-
-      function renderTutorialNameDemo(container) {
-        const card = tutorialDemoCard();
-        const input = createTutorialElement("input");
-        input.type = "search";
-        input.placeholder = translations[currentLang].tutorialNamePlaceholder;
-        input.setAttribute("aria-label", translations[currentLang].tutorialNamePlaceholder);
-        const select = addTutorialAttendeeSelector(card);
-        const button = createTutorialElement("button", "btn secondary", translations[currentLang].tutorialTryNameButton);
-        button.type = "button";
-        button.addEventListener("click", async () => {
-          const roster = await loadTutorialRoster();
-          const query = input.value.trim().toLocaleLowerCase();
-          const match = query
-            ? roster.find((person) => person.name.toLocaleLowerCase().includes(query))
-            : roster.find((person) => String(person.id) === select.value);
-          if (!match) {
-            showTutorialDemoResult(card, translations[currentLang].tutorialNameNoMatch);
+      function handleFirstRunTutorialClick(event) {
+        if (!isFirstRunTutorialActive()) return;
+        if (tutorialAllowTargetClick) {
+          tutorialAllowTargetClick = false;
+          return;
+        }
+        const panel = document.getElementById("firstRunTutorial");
+        if (tutorialPending && !panel.classList.contains("is-active")) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        if (panel.contains(event.target)) return;
+        if (tutorialAdvanceTimer) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        const step = firstRunTutorialSteps[firstRunTutorialStep];
+        const target = document.getElementById(step?.target);
+        if (!target || (event.target !== target && !target.contains(event.target))) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (tutorialAdvanceTimer) window.clearTimeout(tutorialAdvanceTimer);
+        tutorialAdvanceTimer = window.setTimeout(() => {
+          tutorialAdvanceTimer = 0;
+          if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
+            finishFirstRunTutorial();
             return;
           }
-          select.value = String(match.id);
-          await runTutorialAttendanceDemo(select, card, match);
-        });
-        card.insertBefore(input, select);
-        card.appendChild(button);
-        container.appendChild(card);
+          firstRunTutorialStep++;
+          renderFirstRunTutorialStep();
+        }, 250);
+        tutorialAllowTargetClick = true;
+        target.click();
       }
 
-      async function runTutorialAttendanceDemo(select, card, selectedPerson = null) {
-        const person = selectedPerson ||
-          firstRunTutorialRoster.find((entry) => String(entry.id) === select.value);
-        if (!person) {
-          showTutorialDemoResult(card, translations[currentLang].tutorialChooseAttendee);
+      function handleFirstRunTutorialKeydown(event) {
+        if (!isFirstRunTutorialActive()) return;
+        const panel = document.getElementById("firstRunTutorial");
+        if (tutorialPending && !panel.classList.contains("is-active")) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
           return;
         }
-        const context = await refreshAttendanceContext();
-        if (!context) {
-          showTutorialDemoResult(card, translations[currentLang].tutorialContextUnavailable);
-          return;
-        }
-        const simulationContext = JSON.parse(JSON.stringify(context));
-        const result = predictAttendanceResult(
-          person.id,
-          { timestamp: new Date().toISOString(), personName: person.name },
-          person,
-          simulationContext,
-        );
-        showTutorialDemoResult(
-          card,
-          result
-            ? `${person.name} · ${translateText(result.title)}${result.message ? ` · ${translateText(result.message)}` : ""}`
-            : translations[currentLang].tutorialContextUnavailable,
-        );
-      }
-
-      function renderTutorialAddDemo(container) {
-        const card = tutorialDemoCard();
-        const input = createTutorialElement("input");
-        input.type = "text";
-        input.maxLength = 120;
-        input.placeholder = translations[currentLang].tutorialFakeNamePlaceholder;
-        input.setAttribute("aria-label", translations[currentLang].tutorialFakeNamePlaceholder);
-        const button = createTutorialElement("button", "btn secondary", translations[currentLang].tutorialTryAddButton);
-        button.type = "button";
-        button.addEventListener("click", () => {
-          const name = input.value.trim() || translations[currentLang].tutorialSampleName;
-          showTutorialDemoResult(
-            card,
-            `${name} · ${translateText("Servant created successfully!")} · ${translations[currentLang].tutorialNotSaved}`,
-          );
-        });
-        card.append(input, button);
-        container.appendChild(card);
-      }
-
-      function showTutorialDemoResult(card, message) {
-        const previous = card.querySelector(".tutorial-demo-result");
-        if (previous) previous.remove();
-        const result = createTutorialElement("p", "tutorial-demo-result", message);
-        result.setAttribute("role", "status");
-        card.appendChild(result);
-      }
-
-      function nextTutorialStep() {
-        if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
           finishFirstRunTutorial();
           return;
         }
-        firstRunTutorialStep++;
-        renderFirstRunTutorialStep();
-      }
-
-      function previousTutorialStep() {
-        if (firstRunTutorialStep <= 0) return;
-        firstRunTutorialStep--;
-        renderFirstRunTutorialStep();
+        const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
+        if (event.key === "Tab") {
+          const skip = panel.querySelector(".tutorial-skip");
+          const focusTargets = [target, skip].filter(Boolean);
+          const currentIndex = focusTargets.indexOf(document.activeElement);
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? focusTargets.length - 1 : currentIndex - 1)
+            : (currentIndex + 1) % focusTargets.length;
+          event.preventDefault();
+          focusTargets[nextIndex]?.focus({ preventScroll: true });
+          return;
+        }
+        if (!panel.contains(event.target) && !target?.contains(event.target)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
       }
 
       function skipFirstRunTutorial() {
@@ -495,9 +479,26 @@
       }
 
       function finishFirstRunTutorial() {
-        if (currentUser) localStorage.setItem(tutorialStorageKey(), "true");
-        const dialog = document.getElementById("firstRunTutorial");
-        if (dialog.open) dialog.close();
+        tutorialPending = false;
+        if (currentUser) {
+          tutorialCompletedEmail = String(currentUser.email || "").toLowerCase().trim();
+        }
+        const panel = document.getElementById("firstRunTutorial");
+        const scrim = document.getElementById("tutorialScrim");
+        panel?.classList.remove("is-active");
+        if (panel) panel.hidden = true;
+        if (scrim) scrim.hidden = true;
+        if (tutorialAdvanceTimer) window.clearTimeout(tutorialAdvanceTimer);
+        tutorialAdvanceTimer = 0;
+        if (
+          currentUser &&
+          tutorialDeferredLoginRefreshEmail === String(currentUser.email || "").toLowerCase().trim()
+        ) {
+          tutorialDeferredLoginRefreshEmail = "";
+          refreshRosterCache();
+          refreshAttendanceContext();
+        }
+        if (currentActiveViewId === "dashboardView") refreshCurrentAttendeesWindow();
       }
 
       function logoutUser(msg) {

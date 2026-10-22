@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=60" />
+    <link rel="stylesheet" href="./css/styles.css?v=63" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -208,15 +208,15 @@
           </div>
         </div>
         <div class="grid dashboard-primary-grid">
-          <button class="tile primary" onclick="showView('scanView')">
+          <button id="tutorialScanAction" class="tile primary" onclick="showView('scanView')">
             <span class="ico"><i class="fa-solid fa-qrcode"></i></span
             ><span data-i18n="scanQr">مسح QR</span>
           </button>
-          <button class="tile" onclick="showView('searchView')">
+          <button id="tutorialSearchAction" class="tile" onclick="showView('searchView')">
             <span class="ico"><i class="fa-solid fa-magnifying-glass"></i></span
             ><span data-i18n="searchName">تحضير بالاسم</span>
           </button>
-          <button class="tile" onclick="showView('addView')">
+          <button id="tutorialAddAction" class="tile" onclick="showView('addView')">
             <span class="ico"><i class="fa-solid fa-user-plus"></i></span
             ><span data-i18n="addStudent">إضافة مخدوم</span>
           </button>
@@ -486,30 +486,31 @@
         </div>
       </dialog>
 
-      <dialog id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription">
+      <div id="tutorialScrim" class="tutorial-scrim" aria-hidden="true" hidden>
+        <span class="tutorial-scrim-panel tutorial-scrim-top"></span>
+        <span class="tutorial-scrim-panel tutorial-scrim-left"></span>
+        <span class="tutorial-scrim-panel tutorial-scrim-right"></span>
+        <span class="tutorial-scrim-panel tutorial-scrim-bottom"></span>
+        <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
+      </div>
+      <section id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription" role="dialog" aria-modal="false" hidden>
         <div class="tutorial-header">
           <div>
             <p id="tutorialStepCount" class="tutorial-step-count"></p>
             <h2 id="tutorialTitle"></h2>
           </div>
-          <button type="button" class="tutorial-skip" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
-            Skip tutorial
-          </button>
         </div>
         <div class="tutorial-progress" aria-hidden="true">
           <span id="tutorialProgressBar"></span>
         </div>
         <p id="tutorialDescription" class="tutorial-description"></p>
-        <div id="tutorialDemo" class="tutorial-demo"></div>
+        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Press the highlighted action to continue.</p>
         <div class="tutorial-actions">
-          <button type="button" id="tutorialBackButton" class="btn secondary" onclick="previousTutorialStep()" data-i18n="tutorialBack">
-            Back
-          </button>
-          <button type="button" id="tutorialNextButton" class="btn" onclick="nextTutorialStep()" data-i18n="tutorialNext">
-            Next
+          <button type="button" class="btn secondary tutorial-skip" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
+            Skip tutorial
           </button>
         </div>
-      </dialog>
+      </section>
 
       <div id="offlineQueueView" style="display: none">
         <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
@@ -1014,13 +1015,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=60"></script>
-    <script src="./js/app-i18n.js?v=60"></script>
-    <script src="./js/app-core.js?v=60"></script>
-    <script src="./js/app-offline.js?v=60"></script>
-    <script src="./js/app-views.js?v=60"></script>
-    <script src="./js/app-auth.js?v=60"></script>
-    <script src="./js/app-scanner-search.js?v=60"></script>
-    <script src="./js/app-cards-admin.js?v=60"></script>
+    <script src="./js/app-state.js?v=63"></script>
+    <script src="./js/app-i18n.js?v=63"></script>
+    <script src="./js/app-core.js?v=63"></script>
+    <script src="./js/app-offline.js?v=63"></script>
+    <script src="./js/app-views.js?v=63"></script>
+    <script src="./js/app-auth.js?v=63"></script>
+    <script src="./js/app-scanner-search.js?v=63"></script>
+    <script src="./js/app-cards-admin.js?v=63"></script>
   </body>
 </html>

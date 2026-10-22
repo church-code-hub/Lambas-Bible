@@ -90,9 +90,9 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   }
   assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=60/);
-  assert.match(serviceWorker, /lambas-bible-shell-v60/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=60/);
+  assert.match(html, /css\/styles\.css\?v=63/);
+  assert.match(serviceWorker, /lambas-bible-shell-v63/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=63/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('grouped'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('grid'\)"/);
@@ -237,7 +237,7 @@ test("read API calls return cached data before revalidating and notify the view"
   assert.deepEqual(JSON.parse(JSON.stringify(revalidatedResponse)), fresh);
 });
 
-test("online attendance gives immediate feedback and queues ordered background sync", () => {
+test("online attendance uses the scan endpoint and preserves queued action sync", () => {
   const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
   const cards = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
@@ -250,8 +250,9 @@ test("online attendance gives immediate feedback and queues ordered background s
   assert.match(offline, /syncTask = immediateEventSyncChain\.then/);
   assert.match(offline, /syncMode: event\.syncMode \|\| \(navigator\.onLine \? "online" : "offline"\)/);
   assert.match(offline, /event\.syncMode !== "online"/);
-  assert.match(scanner, /if \(navigator\.onLine\) \{[\s\S]*?currentAttendanceEventId = event\.eventId;\s*const predictedResult = predictAttendanceResult\(id, event, cachedPerson\);\s*const toast = attendanceFeedback\(event, fromNameSearch, false, predictedResult\)/);
-  assert.match(scanner, /enqueueOnlineEventForSync\(\{/);
+  assert.match(scanner, /apiCall\("scan", \{ id \}\)/);
+  assert.doesNotMatch(scanner, /enqueueOnlineEventForSync\(\{/);
+  assert.match(scanner, /queueOfflineEvent\(\{[\s\S]*?type: "scan"/);
   assert.doesNotMatch(scanner, /beginDelayedAttendanceFeedback|Math\.random\(\)\s*\*\s*1001/);
   assert.match(cards, /showAddedResult\(\);\s*showToast\([\s\S]*?enqueueOnlineEventForSync\(event\)/);
   assert.match(offline, /function getOfflineSyncBatch\([\s\S]*?event\.syncMode !== "online"/);
@@ -641,21 +642,40 @@ test("silent Google restore keeps the saved profile visible when account selecti
   assert.equal(browserContext.isSilentSessionRestore, false);
 });
 
-test("tutorial practice actions use local demo data and skip real write endpoints", () => {
+test("guided tutorial spotlights real views without making requests or writing app data", () => {
   const auth = fs.readFileSync(path.join(frontendRoot, "js", "app-auth.js"), "utf8");
-  const addDemo = auth.match(/function renderTutorialAddDemo\(container\) \{[\s\S]*?\n      \}/)?.[0] || "";
-  const attendanceDemo = auth.match(/async function runTutorialAttendanceDemo\([\s\S]*?\n      \}/)?.[0] || "";
+  const tutorial = auth.match(/const firstRunTutorialSteps =[\s\S]*?\n      function logoutUser/)?.[0] || "";
+  const interactions = auth.match(/function showFirstRunTutorial\(\)[\s\S]*?\n      function finishFirstRunTutorial/)?.[0] || "";
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
 
-  assert.match(addDemo, /showTutorialDemoResult/);
-  assert.doesNotMatch(addDemo, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|submitNewStudent/);
-  assert.match(attendanceDemo, /JSON\.parse\(JSON\.stringify\(context\)\)/);
-  assert.match(attendanceDemo, /predictAttendanceResult\([\s\S]*?simulationContext/);
-  assert.doesNotMatch(attendanceDemo, /enqueueOnlineEventForSync|queueOfflineEvent|apiCall/);
+  assert.match(tutorial, /target: "tutorialScanAction"/);
+  assert.match(tutorial, /target: "tutorialSearchAction"/);
+  assert.match(tutorial, /target: "tutorialAddAction"/);
+  assert.match(tutorial, /target: "appSettingsToolbarButton"/);
+  assert.match(tutorial, /handleFirstRunTutorialClick/);
+  assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|localStorage\.setItem|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
+  assert.match(tutorial, /if \(isFirstRunTutorialActive\(\)\) \{\s*tutorialDeferredLoginRefreshEmail[\s\S]*?return;/);
+  assert.match(tutorial, /refreshRosterCache\(\);\s*refreshAttendanceContext\(\);/);
+  assert.match(views, /if \(typeof isFirstRunTutorialActive !== "function" \|\| !isFirstRunTutorialActive\(\)\) \{[\s\S]*?refreshCurrentAttendeesWindow\(\)/);
+  assert.match(views, /tutorialCameraPaused/);
+  assert.match(scanner, /function onScanSuccess\(text\) \{\s*if \(typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive\(\)\) return/);
+  assert.match(scanner, /async function processAttendanceId\([\s\S]*?if \(typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive\(\)\) return/);
+  assert.match(core, /tutorialDialog\?\.classList\.contains\("is-active"\)/);
   assert.match(html, /id="firstRunTutorial"/);
+  assert.match(html, /id="tutorialScrim"/);
+  assert.match(html, /id="tutorialScanAction"/);
+  assert.match(html, /id="tutorialSearchAction"/);
+  assert.match(html, /id="tutorialAddAction"/);
+  assert.match(html, /class="btn secondary tutorial-skip"/);
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  assert.match(styles, /\.tutorial-scrim-panel/);
+  assert.match(styles, /\.tutorial-spotlight/);
+  assert.match(styles, /@media \(max-width: 480px\) \{[\s\S]*?\.tutorial-dialog/);
   assert.match(auth, /function skipFirstRunTutorial\(\)/);
   assert.match(auth, /function replayFirstRunTutorial\(\)/);
-  assert.match(auth, /localStorage\.setItem\(tutorialStorageKey\(\), "true"\)/);
 });
 
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {
@@ -721,9 +741,15 @@ test("offline fuzzy name search mirrors backend matching and events can sync in 
   assert.match(result.addDescription, /Do not mark attendance/);
 });
 
-test("online attendance feedback is shown before its background request completes", async () => {
+test("online attendance displays the direct backend response in a toast", async () => {
   const feedback = [];
-  let syncStarted = false;
+  const calls = [];
+  const backendResponse = {
+    kind: "late",
+    title: "تم الحضور - متأخر",
+    name: "Attendee Name",
+    message: "مقدار التأخير: 5 دقيقة",
+  };
   const browserContext = vm.createContext({
     window: {},
     navigator: { onLine: true },
@@ -745,10 +771,26 @@ test("online attendance feedback is shown before its background request complete
   browserContext.currentUser = { email: "admin@example.com" };
   browserContext.googleIdToken = "signed-in";
   browserContext.renderResult = (result) => feedback.push(result);
-  browserContext.showToast = (message, type) => ({ message, type });
-  browserContext.enqueueOnlineEventForSync = () => {
-    syncStarted = true;
-    return new Promise(() => {});
+  browserContext.translateText = (message) => ({
+    "تم الحضور - متأخر": "Late arrival",
+    "مقدار التأخير: 5 دقيقة": "Delay: 5 minutes",
+  }[message] || message);
+  browserContext.getCachedRoster = async () => [];
+  browserContext.refreshAttendanceContext = async () => null;
+  const toast = {
+    isConnected: true,
+    dataset: {},
+    classList: { remove() {}, add(type) { toast.type = type; } },
+  };
+  browserContext.showToast = (message, type) => {
+    toast.dataset.message = message;
+    toast.textContent = message;
+    toast.type = type;
+    return toast;
+  };
+  browserContext.apiCall = async (action, payload) => {
+    calls.push({ action, payload });
+    return backendResponse;
   };
 
   await browserContext.processAttendanceId(
@@ -758,11 +800,60 @@ test("online attendance feedback is shown before its background request complete
     { eventId: "attendance-event-0001", timestamp: "2026-10-21T10:00:00.000Z" },
   );
 
-  assert.equal(syncStarted, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    { action: "scan", payload: { id: "qr-token" } },
+  ]);
   assert.equal(feedback.length, 1);
-  assert.equal(feedback[0].kind, "success");
+  assert.equal(feedback[0].kind, "late");
   assert.equal(feedback[0].name, "Attendee Name");
-  assert.match(feedback[0].message, /Recorded at/);
+  assert.equal(toast.dataset.message, "Attendee Name · Late arrival · Delay: 5 minutes");
+  assert.equal(toast.textContent, toast.dataset.message);
+  assert.equal(toast.type, "success");
+});
+
+test("attendance toast is updated with the backend result and severity", () => {
+  const browserContext = vm.createContext({
+    window: {},
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-offline.js", "app-scanner-search.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.translateText = (message) => message;
+  const removedClasses = [];
+  const addedClasses = [];
+  const toast = {
+    isConnected: true,
+    dataset: {},
+    classList: {
+      remove: (...classes) => removedClasses.push(...classes),
+      add: (className) => addedClasses.push(className),
+    },
+  };
+
+  browserContext.updateAttendanceToast(
+    toast,
+    {
+      kind: "late",
+      name: "Attendee Name",
+      title: "تم الحضور - متأخر",
+      message: "مقدار التأخير: 5 دقيقة",
+    },
+    { personName: "" },
+    "fallback",
+    "success",
+  );
+
+  assert.equal(toast.dataset.message, "Attendee Name · تم الحضور - متأخر · مقدار التأخير: 5 دقيقة");
+  assert.equal(toast.textContent, toast.dataset.message);
+  assert.deepEqual(removedClasses, ["success", "info", "error"]);
+  assert.deepEqual(addedClasses, ["success"]);
 });
 
 test("attendance result is predicted locally from the saved schedule and check-in state", () => {

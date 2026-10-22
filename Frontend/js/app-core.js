@@ -112,7 +112,7 @@
           if (currentActiveViewId === "appSettingsView") updateOfflineStatus();
           const tutorialDialog = document.getElementById("firstRunTutorial");
           if (
-            tutorialDialog?.open &&
+            tutorialDialog?.classList.contains("is-active") &&
             typeof renderFirstRunTutorialStep === "function"
           ) renderFirstRunTutorialStep();
         };

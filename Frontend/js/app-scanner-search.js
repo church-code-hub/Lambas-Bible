@@ -96,6 +96,7 @@
       }
 
       function onScanSuccess(text) {
+        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) return;
         if (isProcessingScan) return;
         isProcessingScan = true;
         const eventContext = {
@@ -109,11 +110,7 @@
       }
       function onScanError(err) {}
 
-      function attendanceFeedback(event, fromNameSearch, offline = false, predictedResult = null) {
-        const time = new Intl.DateTimeFormat(currentLang === "ar" ? "ar" : "en", {
-          hour: "numeric",
-          minute: "2-digit",
-        }).format(new Date(event.timestamp));
+      function attendanceFeedback(event, fromNameSearch, offline = false, response = null) {
         const result = offline
           ? {
             kind: "queued",
@@ -121,29 +118,40 @@
             name: event.personName || "",
             message: "offlineScanQueued",
           }
-          : predictedResult || {
-            kind: "success",
-            title: "attendanceRecordedNow",
+          : response || {
+            kind: "queued",
+            title: "attendanceScanProcessing",
             name: event.personName || "",
-            message: `${translations[currentLang].attendanceRecordedAt} ${time}`,
           };
         renderResult(result, fromNameSearch);
         const toast = showToast(
           offline
             ? translations[currentLang].offlineScanQueued
-            : predictedResult
-              ? [result.name, translateText(result.title), translateText(result.message)]
-                .filter(Boolean)
-                .join(" · ")
-              : [event.personName, `${translations[currentLang].attendanceRecordedAt} ${time}`]
+            : [result.name, translateText(result.title), translateText(result.message)]
               .filter(Boolean)
               .join(" · "),
-          offline || result.kind === "warn" || result.kind === "closed"
+          offline || result.kind === "queued" || result.kind === "warn" || result.kind === "closed"
             ? "info"
             : result.kind === "error"
               ? "error"
               : "success",
         );
+        return toast;
+      }
+
+      function updateAttendanceToast(toast, result, event, fallbackMessage, type) {
+        const message = result
+          ? [
+            result.name || event.personName,
+            result.title ? translateText(result.title) : "",
+            result.message ? translateText(result.message) : "",
+          ].filter(Boolean).join(" · ") || fallbackMessage
+          : fallbackMessage;
+        if (!toast?.isConnected) return showToast(message, type);
+        toast.dataset.message = message;
+        toast.textContent = translateText(message);
+        toast.classList.remove("success", "info", "error");
+        toast.classList.add(type);
         return toast;
       }
 
@@ -366,6 +374,7 @@
       }
 
       async function processAttendanceId(rawId, fromNameSearch = false, personName = "", eventContext = {}) {
+        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) return;
         if (!currentUser || (navigator.onLine && !googleIdToken)) {
           renderResult({
             kind: "error",
@@ -392,57 +401,50 @@
             console.warn("Could not read the saved attendee name.", error);
           }
           currentAttendanceEventId = event.eventId;
-          const predictedResult = predictAttendanceResult(id, event, cachedPerson);
-          const toast = attendanceFeedback(event, fromNameSearch, false, predictedResult);
-          enqueueOnlineEventForSync({
-            ...event,
-            type: "scan",
-            qrText: id,
-          }).then((result) => {
-            if (result && (result.success === false || result.kind === "error")) {
-              showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
-            } else if (result && currentAttendanceEventId === event.eventId) {
-              const predictionMatches = predictedResult &&
-                ["kind", "title", "name", "message"].every((key) =>
-                  String(predictedResult[key] || "") === String(result[key] || ""),
-                );
-              if (!predictionMatches && currentActiveViewId === "resultView") {
-                renderResult(result, fromNameSearch);
-                refreshAttendanceContext();
-              }
-              if (toast?.isConnected) {
-                toast.dataset.message = [
-                  result.name || event.personName,
-                  result.title,
-                  result.message,
-                ].filter(Boolean).join(" · ");
-                toast.textContent = toast.dataset.message;
-              }
+          const toast = showToast(
+            [event.personName, translations[currentLang].attendanceScanProcessing]
+              .filter(Boolean)
+              .join(" · "),
+            "info",
+          );
+          try {
+            const result = await apiCall("scan", { id });
+            if (!result || typeof result !== "object") {
+              throw new Error("The attendance service returned an invalid response.");
             }
-          }).catch((error) => {
-            console.error("Could not save attendance for background sync.", error);
-            showToast(translations[currentLang].offlineStorageError, "error");
-          });
-          if (!personName) {
-            getCachedPersonName(id).then((cachedName) => {
-              if (!cachedName || currentAttendanceEventId !== event.eventId) return;
-              const nameElement = document.getElementById("rName");
-              if (currentActiveViewId === "resultView" && !nameElement.textContent) {
-                nameElement.textContent = cachedName;
-                nameElement.style.display = "block";
-              }
-              if (toast?.isConnected) {
-                const time = new Intl.DateTimeFormat(currentLang === "ar" ? "ar" : "en", {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(new Date(event.timestamp));
-                toast.dataset.message =
-                  `${cachedName} · ${translations[currentLang].attendanceRecordedAt} ${time}`;
-                toast.textContent = toast.dataset.message;
-              }
-            }).catch((error) => {
-              console.warn("Could not find the scanned person's saved name.", error);
-            });
+            const attendanceResult = result.success === false && !result.kind
+              ? { ...result, kind: "error" }
+              : result;
+            const type = attendanceResult.success === false || attendanceResult.kind === "error"
+              ? "error"
+              : attendanceResult.kind === "warn" || attendanceResult.kind === "closed"
+                ? "info"
+                : "success";
+            updateAttendanceToast(
+              toast,
+              attendanceResult,
+              event,
+              translations[currentLang].offlineSyncFailed,
+              type,
+            );
+            if (currentAttendanceEventId === event.eventId) {
+              renderResult(attendanceResult, fromNameSearch);
+              refreshAttendanceContext();
+            }
+          } catch (error) {
+            console.error("Could not submit attendance scan.", error);
+            updateAttendanceToast(
+              toast,
+              null,
+              event,
+              "Connection error.",
+              "error",
+            );
+            renderResult({
+              kind: "error",
+              title: "Connection error.",
+              message: "Connection error.",
+            }, fromNameSearch);
           }
           return;
         }

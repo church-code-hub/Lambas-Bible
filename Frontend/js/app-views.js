@@ -191,14 +191,20 @@
           );
         }
         if (viewId === "dashboardView") {
-          refreshCurrentAttendeesWindow();
-          if (typeof refreshAttendanceContext === "function") {
-            refreshAttendanceContext();
+          if (typeof isFirstRunTutorialActive !== "function" || !isFirstRunTutorialActive()) {
+            refreshCurrentAttendeesWindow();
+            if (typeof refreshAttendanceContext === "function") {
+              refreshAttendanceContext();
+            }
           }
         }
         if (viewId === "scanView") {
           isProcessingScan = false;
-          setTimeout(startLiveScanner, 150);
+          if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) {
+            setCameraStatus("tutorialCameraPaused");
+          } else {
+            setTimeout(startLiveScanner, 150);
+          }
         }
       }
 
@@ -519,6 +525,7 @@
           window.clearTimeout(currentAttendeesWindowTimer);
           currentAttendeesWindowTimer = 0;
         }
+        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) return;
         const requestId = ++currentAttendeesWindowRequestId;
         const requestStartedAt = Date.now();
         let nextWindowCheckMs = 30000;
@@ -558,7 +565,12 @@
             tile.disabled = !navigator.onLine;
             updateCurrentAttendeesTileState();
             tile.removeAttribute("aria-busy");
-            if (navigator.onLine && currentUser && currentActiveViewId === "dashboardView") {
+            if (
+              navigator.onLine &&
+              currentUser &&
+              currentActiveViewId === "dashboardView" &&
+              (typeof isFirstRunTutorialActive !== "function" || !isFirstRunTutorialActive())
+            ) {
               const delay = Math.max(1000, nextWindowCheckMs - (Date.now() - requestStartedAt));
               currentAttendeesWindowTimer = window.setTimeout(
                 refreshCurrentAttendeesWindow,
