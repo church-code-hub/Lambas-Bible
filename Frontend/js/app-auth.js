@@ -2,7 +2,14 @@
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
         setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "grouped");
-        const hasSavedUser = Boolean(localStorage.getItem("app_user"));
+        let savedUser = null;
+        try {
+          savedUser = JSON.parse(localStorage.getItem("app_user") || "null");
+        } catch (error) {
+          console.warn("Could not read the saved account profile.", error);
+          localStorage.removeItem("app_user");
+        }
+        const hasSavedUser = Boolean(savedUser && savedUser.email);
         if (!hasSavedUser) {
           window.setTimeout(dismissStartupScreen, 1050);
         }
@@ -30,80 +37,55 @@
             action();
           });
         });
-        const signInReady = navigator.onLine
-          ? initializeGoogleSignIn(!hasSavedUser || !googleIdToken)
-          : false;
-        await updateOfflineStatus();
-
-        const savedUser = localStorage.getItem("app_user");
-        if (savedUser) {
-          try {
-            currentUser = JSON.parse(savedUser);
-            if (!currentUser || !currentUser.email) throw new Error("Saved user is invalid.");
-            const rememberedEmail = (localStorage.getItem(OFFLINE_SESSION_KEY) || "").toLowerCase().trim();
-            if (!navigator.onLine && rememberedEmail === currentUser.email.toLowerCase().trim()) {
-              setupUserProfileUI();
-              checkDirectUrlScan();
-              await updateOfflineStatus();
-              return;
-            }
-            if (!navigator.onLine) {
-              currentUser = null;
-              showView("loginView", false);
-              dismissStartupScreen();
-              await updateOfflineStatus();
-              return;
-            }
-            if (!googleIdToken) {
-              if (signInReady) beginSessionRestore(currentUser.email);
-              else {
-                currentUser = null;
-                showView("loginView", false);
-                dismissStartupScreen();
-              }
-              return;
-            }
-            showLoader("Checking your saved sign-in...");
-            const authRes = await apiCall("check_auth", {
-              email: currentUser.email,
-            });
-            hideLoader();
-            if (
-              authRes &&
-              authRes.authorized &&
-              String(authRes.email || "").toLowerCase().trim() === currentUser.email.toLowerCase().trim()
-            ) {
-              if (authRes.adminName) currentUser.name = authRes.adminName;
-              currentUser.isOwner = authRes.isOwner === true;
-              localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email.toLowerCase().trim());
-              localStorage.setItem("app_user", JSON.stringify(currentUser));
-              setupUserProfileUI();
-              checkDirectUrlScan();
-              await refreshRosterCache();
-            } else if (authRes && authRes.code === "AUTH_INVALID" && signInReady) {
-              googleIdToken = "";
-              localStorage.removeItem("google_id_token");
-              sessionStorage.removeItem("google_id_token");
-              beginSessionRestore(currentUser.email);
-            } else if (authRes && authRes.authorized) {
-              logoutUser("Please sign in again.");
-            } else if (authRes && authRes.success && !authRes.authorized) {
-              logoutUser("❌ Unauthorized account.");
-            } else {
-              currentUser = null;
-              showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
-              dismissStartupScreen();
-            }
-          } catch (e) {
-            hideLoader();
-            currentUser = null;
-            showLoginError("Connection error.");
-            dismissStartupScreen();
+        if (hasSavedUser) {
+          currentUser = savedUser;
+          setupUserProfileUI();
+          checkDirectUrlScan();
+          if (navigator.onLine) {
+            initializeGoogleSignIn(false);
+            if (googleIdToken) validateSavedSession();
+            else beginSessionRestore(currentUser.email);
           }
         } else {
+          if (navigator.onLine) initializeGoogleSignIn(true);
           showView("loginView", false);
         }
+        await updateOfflineStatus();
       });
+
+      async function validateSavedSession() {
+        if (!currentUser || !googleIdToken || !navigator.onLine) return;
+        const expectedEmail = currentUser.email.toLowerCase().trim();
+        try {
+          const authRes = await apiCall("check_auth", { email: expectedEmail });
+          if (
+            authRes &&
+            authRes.authorized &&
+            String(authRes.email || "").toLowerCase().trim() === expectedEmail
+          ) {
+            if (authRes.adminName) currentUser.name = authRes.adminName;
+            currentUser.isOwner = authRes.isOwner === true;
+            localStorage.setItem(OFFLINE_SESSION_KEY, expectedEmail);
+            localStorage.setItem("app_user", JSON.stringify(currentUser));
+            setupUserProfileUI();
+            refreshRosterCache();
+            refreshAttendanceContext();
+            return;
+          }
+          if (authRes && authRes.code === "AUTH_INVALID") {
+            googleIdToken = "";
+            localStorage.removeItem("google_id_token");
+            sessionStorage.removeItem("google_id_token");
+            beginSessionRestore(expectedEmail);
+          } else if (authRes && authRes.success && !authRes.authorized) {
+            logoutUser("❌ Unauthorized account.");
+          } else if (authRes && authRes.authorized) {
+            logoutUser("Please sign in again.");
+          }
+        } catch (error) {
+          console.warn("Could not validate the saved Google session yet.", error);
+        }
+      }
 
       function dismissStartupScreen() {
         const startupScreen = document.getElementById("startupScreen");
@@ -146,14 +128,11 @@
 
       function beginSessionRestore(email) {
         if (!navigator.onLine || !window.google || !google.accounts || !google.accounts.id) {
-          currentUser = null;
-          hideLoader();
-          showView("loginView", false);
-          dismissStartupScreen();
+          isSilentSessionRestore = false;
           return;
         }
         pendingSessionRestoreEmail = String(email || "").toLowerCase().trim();
-        showLoader("Restoring your saved sign-in...");
+        isSilentSessionRestore = true;
         google.accounts.id.prompt((notification) => {
           const unavailable =
             (notification.isNotDisplayed && notification.isNotDisplayed()) ||
@@ -161,10 +140,7 @@
             (notification.isDismissedMoment && notification.isDismissedMoment());
           if (unavailable && pendingSessionRestoreEmail) {
             pendingSessionRestoreEmail = "";
-            currentUser = null;
-            hideLoader();
-            showView("loginView", false);
-            dismissStartupScreen();
+            isSilentSessionRestore = false;
           }
         });
       }
@@ -176,19 +152,19 @@
           return;
         }
         const expectedEmail = pendingSessionRestoreEmail;
+        const restoringSavedAccount = isSilentSessionRestore && Boolean(currentUser);
         pendingSessionRestoreEmail = "";
+        isSilentSessionRestore = false;
         if (expectedEmail && payload.email.toLowerCase().trim() !== expectedEmail) {
-          currentUser = null;
-          showView("loginView", false);
-          dismissStartupScreen();
+          if (!currentUser) showView("loginView", false);
           return;
         }
 
         googleIdToken = response.credential;
-        showLoader("Verifying your Google account...");
+        if (!restoringSavedAccount) showLoader("Verifying your Google account...");
         try {
           const authRes = await apiCall("check_auth", { email: payload.email });
-          hideLoader();
+          if (!restoringSavedAccount) hideLoader();
           if (
             authRes &&
             authRes.authorized &&
@@ -208,21 +184,30 @@
             localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
             setupUserProfileUI();
             checkDirectUrlScan();
-            await refreshRosterCache();
+            refreshRosterCache();
+            refreshAttendanceContext();
           } else if (authRes && authRes.code === "AUTH_INVALID") {
             googleIdToken = "";
             localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
-            showLoginError("Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.");
+            if (restoringSavedAccount) {
+              showToast("Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.", "error");
+            } else {
+              showLoginError("Sign-in token could not be verified. Check the Apps Script GOOGLE_CLIENT_ID property and redeploy the backend.");
+            }
           } else if (authRes && authRes.code === "AUTH_REQUIRED") {
             googleIdToken = "";
             localStorage.removeItem("google_id_token");
             sessionStorage.removeItem("google_id_token");
-            showLoginError("Please sign in again.");
+            if (!restoringSavedAccount) showLoginError("Please sign in again.");
           } else if (authRes && authRes.authorized) {
             logoutUser("Please sign in again.");
           } else if (authRes && authRes.success === false) {
-            showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
+            if (restoringSavedAccount) {
+              showToast("Sign-in check failed on the server. Verify the latest Apps Script deployment.", "error");
+            } else {
+              showLoginError("Sign-in check failed on the server. Verify the latest Apps Script deployment.");
+            }
           } else {
             googleIdToken = "";
             localStorage.removeItem("google_id_token");
@@ -234,9 +219,13 @@
           googleIdToken = "";
           localStorage.removeItem("google_id_token");
           sessionStorage.removeItem("google_id_token");
-          hideLoader();
-          currentUser = null;
-          showLoginError("Connection error.");
+          if (!restoringSavedAccount) {
+            hideLoader();
+            currentUser = null;
+            showLoginError("Connection error.");
+          } else {
+            console.warn("Could not refresh the saved account session.", e);
+          }
         }
       }
 
@@ -244,9 +233,271 @@
         if (!currentUser) return;
         document.getElementById("uName").innerText = currentUser.name;
         document.getElementById("uEmail").innerText = currentUser.email;
-        document.getElementById("uAvatar").src = currentUser.picture;
+        const avatar = document.getElementById("uAvatar");
+        const fallback = document.getElementById("uAvatarFallback");
+        const showAvatarFallback = () => {
+          avatar.hidden = true;
+          fallback.hidden = false;
+        };
+        avatar.hidden = false;
+        fallback.hidden = true;
+        avatar.onerror = showAvatarFallback;
+        avatar.src = currentUser.picture || "";
+        if (!currentUser.picture) showAvatarFallback();
+        startFirstRunTutorial();
         showView("dashboardView");
         dismissStartupScreen();
+      }
+
+      const firstRunTutorialSteps = [
+        { title: "tutorialScanTitle", description: "tutorialScanDescription", demo: "scan" },
+        { title: "tutorialNameTitle", description: "tutorialNameDescription", demo: "name" },
+        { title: "tutorialAddTitle", description: "tutorialAddDescription", demo: "add" },
+        { title: "tutorialOfflineTitle", description: "tutorialOfflineDescription", demo: "offline" },
+        { title: "tutorialDoneTitle", description: "tutorialDoneDescription", demo: "done" },
+      ];
+      var firstRunTutorialStep = 0;
+      var firstRunTutorialRoster = [];
+
+      function tutorialStorageKey() {
+        return `app_tutorial_completed_${String(currentUser?.email || "").toLowerCase().trim()}`;
+      }
+
+      function startFirstRunTutorial() {
+        if (!currentUser || localStorage.getItem(tutorialStorageKey()) === "true") return;
+        const dialog = document.getElementById("firstRunTutorial");
+        if (!dialog || dialog.open) return;
+        if (!dialog.dataset.closeHandlerBound) {
+          dialog.addEventListener("cancel", (event) => {
+            event.preventDefault();
+            finishFirstRunTutorial();
+          });
+          dialog.dataset.closeHandlerBound = "true";
+        }
+        firstRunTutorialStep = 0;
+        renderFirstRunTutorialStep();
+        window.setTimeout(() => {
+          if (currentUser && localStorage.getItem(tutorialStorageKey()) !== "true" && !dialog.open) {
+            dialog.showModal();
+          }
+        }, 350);
+      }
+
+      function replayFirstRunTutorial() {
+        if (!currentUser) return;
+        firstRunTutorialStep = 0;
+        renderFirstRunTutorialStep();
+        const dialog = document.getElementById("firstRunTutorial");
+        if (!dialog.open) dialog.showModal();
+      }
+
+      function createTutorialElement(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text) element.textContent = text;
+        return element;
+      }
+
+      function tutorialDemoCard() {
+        const card = createTutorialElement("div", "tutorial-demo-card");
+        return card;
+      }
+
+      function renderFirstRunTutorialStep() {
+        const step = firstRunTutorialSteps[firstRunTutorialStep];
+        if (!step) return;
+        const translationsForLanguage = translations[currentLang];
+        document.getElementById("tutorialTitle").textContent = translationsForLanguage[step.title];
+        document.getElementById("tutorialDescription").textContent =
+          translationsForLanguage[step.description];
+        document.getElementById("tutorialStepCount").textContent =
+          translationsForLanguage.tutorialStepCount
+            .replace("{step}", String(firstRunTutorialStep + 1))
+            .replace("{total}", String(firstRunTutorialSteps.length));
+        document.getElementById("tutorialProgressBar").style.width =
+          `${((firstRunTutorialStep + 1) / firstRunTutorialSteps.length) * 100}%`;
+        const back = document.getElementById("tutorialBackButton");
+        const next = document.getElementById("tutorialNextButton");
+        back.hidden = firstRunTutorialStep === 0;
+        next.textContent = translationsForLanguage[
+          firstRunTutorialStep === firstRunTutorialSteps.length - 1
+            ? "tutorialFinish"
+            : "tutorialNext"
+        ];
+        const demo = document.getElementById("tutorialDemo");
+        demo.replaceChildren();
+        if (step.demo === "scan") renderTutorialAttendanceDemo(demo, "tutorialScanDemoButton");
+        else if (step.demo === "name") renderTutorialNameDemo(demo);
+        else if (step.demo === "add") renderTutorialAddDemo(demo);
+        else if (step.demo === "offline") {
+          const card = tutorialDemoCard();
+          card.appendChild(createTutorialElement("strong", "", translationsForLanguage.tutorialOfflineCardTitle));
+          card.appendChild(createTutorialElement("p", "tutorial-demo-note", translationsForLanguage.tutorialOfflineCardDescription));
+          demo.appendChild(card);
+        } else {
+          const card = tutorialDemoCard();
+          card.appendChild(createTutorialElement("strong", "", translationsForLanguage.tutorialSafeDemo));
+          card.appendChild(createTutorialElement("p", "tutorial-demo-note", translationsForLanguage.tutorialDoneCardDescription));
+          demo.appendChild(card);
+        }
+      }
+
+      async function loadTutorialRoster() {
+        try {
+          firstRunTutorialRoster = await getCachedRoster();
+          if (!firstRunTutorialRoster.length && navigator.onLine && googleIdToken) {
+            await refreshRosterCache();
+            firstRunTutorialRoster = await getCachedRoster();
+          }
+          return firstRunTutorialRoster;
+        } catch (error) {
+          console.error("Could not load real attendee names for the tutorial demo.", error);
+          return [];
+        }
+      }
+
+      function addTutorialAttendeeSelector(card) {
+        const select = createTutorialElement("select", "tutorial-attendee-select");
+        select.setAttribute("aria-label", translations[currentLang].tutorialChooseAttendee);
+        const placeholder = createTutorialElement("option", "", translations[currentLang].tutorialChooseAttendee);
+        placeholder.value = "";
+        select.appendChild(placeholder);
+        card.appendChild(select);
+        loadTutorialRoster().then((roster) => {
+          if (!select.isConnected) return;
+          roster.forEach((person) => {
+            const option = createTutorialElement("option", "", person.name);
+            option.value = String(person.id);
+            select.appendChild(option);
+          });
+          if (!roster.length) {
+            const unavailable = createTutorialElement(
+              "option",
+              "",
+              translations[currentLang].tutorialNoRoster,
+            );
+            unavailable.disabled = true;
+            select.appendChild(unavailable);
+          }
+        });
+        return select;
+      }
+
+      function renderTutorialAttendanceDemo(container, buttonKey) {
+        const card = tutorialDemoCard();
+        const select = addTutorialAttendeeSelector(card);
+        const button = createTutorialElement("button", "btn secondary", translations[currentLang][buttonKey]);
+        button.type = "button";
+        button.addEventListener("click", () => runTutorialAttendanceDemo(select, card));
+        card.appendChild(button);
+        container.appendChild(card);
+      }
+
+      function renderTutorialNameDemo(container) {
+        const card = tutorialDemoCard();
+        const input = createTutorialElement("input");
+        input.type = "search";
+        input.placeholder = translations[currentLang].tutorialNamePlaceholder;
+        input.setAttribute("aria-label", translations[currentLang].tutorialNamePlaceholder);
+        const select = addTutorialAttendeeSelector(card);
+        const button = createTutorialElement("button", "btn secondary", translations[currentLang].tutorialTryNameButton);
+        button.type = "button";
+        button.addEventListener("click", async () => {
+          const roster = await loadTutorialRoster();
+          const query = input.value.trim().toLocaleLowerCase();
+          const match = query
+            ? roster.find((person) => person.name.toLocaleLowerCase().includes(query))
+            : roster.find((person) => String(person.id) === select.value);
+          if (!match) {
+            showTutorialDemoResult(card, translations[currentLang].tutorialNameNoMatch);
+            return;
+          }
+          select.value = String(match.id);
+          await runTutorialAttendanceDemo(select, card, match);
+        });
+        card.insertBefore(input, select);
+        card.appendChild(button);
+        container.appendChild(card);
+      }
+
+      async function runTutorialAttendanceDemo(select, card, selectedPerson = null) {
+        const person = selectedPerson ||
+          firstRunTutorialRoster.find((entry) => String(entry.id) === select.value);
+        if (!person) {
+          showTutorialDemoResult(card, translations[currentLang].tutorialChooseAttendee);
+          return;
+        }
+        const context = await refreshAttendanceContext();
+        if (!context) {
+          showTutorialDemoResult(card, translations[currentLang].tutorialContextUnavailable);
+          return;
+        }
+        const simulationContext = JSON.parse(JSON.stringify(context));
+        const result = predictAttendanceResult(
+          person.id,
+          { timestamp: new Date().toISOString(), personName: person.name },
+          person,
+          simulationContext,
+        );
+        showTutorialDemoResult(
+          card,
+          result
+            ? `${person.name} · ${translateText(result.title)}${result.message ? ` · ${translateText(result.message)}` : ""}`
+            : translations[currentLang].tutorialContextUnavailable,
+        );
+      }
+
+      function renderTutorialAddDemo(container) {
+        const card = tutorialDemoCard();
+        const input = createTutorialElement("input");
+        input.type = "text";
+        input.maxLength = 120;
+        input.placeholder = translations[currentLang].tutorialFakeNamePlaceholder;
+        input.setAttribute("aria-label", translations[currentLang].tutorialFakeNamePlaceholder);
+        const button = createTutorialElement("button", "btn secondary", translations[currentLang].tutorialTryAddButton);
+        button.type = "button";
+        button.addEventListener("click", () => {
+          const name = input.value.trim() || translations[currentLang].tutorialSampleName;
+          showTutorialDemoResult(
+            card,
+            `${name} · ${translateText("Servant created successfully!")} · ${translations[currentLang].tutorialNotSaved}`,
+          );
+        });
+        card.append(input, button);
+        container.appendChild(card);
+      }
+
+      function showTutorialDemoResult(card, message) {
+        const previous = card.querySelector(".tutorial-demo-result");
+        if (previous) previous.remove();
+        const result = createTutorialElement("p", "tutorial-demo-result", message);
+        result.setAttribute("role", "status");
+        card.appendChild(result);
+      }
+
+      function nextTutorialStep() {
+        if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
+          finishFirstRunTutorial();
+          return;
+        }
+        firstRunTutorialStep++;
+        renderFirstRunTutorialStep();
+      }
+
+      function previousTutorialStep() {
+        if (firstRunTutorialStep <= 0) return;
+        firstRunTutorialStep--;
+        renderFirstRunTutorialStep();
+      }
+
+      function skipFirstRunTutorial() {
+        finishFirstRunTutorial();
+      }
+
+      function finishFirstRunTutorial() {
+        if (currentUser) localStorage.setItem(tutorialStorageKey(), "true");
+        const dialog = document.getElementById("firstRunTutorial");
+        if (dialog.open) dialog.close();
       }
 
       function logoutUser(msg) {
@@ -257,6 +508,7 @@
         pendingSessionRestoreEmail = "";
         googleIdToken = "";
         currentUser = null;
+        currentAttendanceContext = null;
         verifiedPassword = "";
         stopLiveScanner();
         if (msg) showLoginError(msg);
@@ -328,6 +580,12 @@
         var color = COLORS[r.kind] || "#d97706";
         const iconClass = r.kind === "success"
           ? "fa-check"
+          : r.kind === "late" || r.kind === "closed"
+            ? "fa-clock"
+            : r.kind === "out"
+              ? "fa-right-from-bracket"
+              : r.kind === "warn"
+                ? "fa-triangle-exclamation"
           : r.kind === "queued"
             ? "fa-triangle-exclamation"
             : "fa-circle-info";

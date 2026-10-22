@@ -9,6 +9,7 @@
         setTimeout(() => {
           toast.remove();
         }, duration);
+        return toast;
       }
 
       function handleHomeNavigation() {
@@ -76,6 +77,8 @@
       function showView(viewId, pushHistory = true) {
         hideLoader();
         const viewChanged = currentActiveViewId !== viewId;
+        document.getElementById("mainContainer")
+          .classList.toggle("is-dashboard-view", viewId === "dashboardView");
         if (currentActiveViewId && currentActiveViewId !== viewId)
           resetView(currentActiveViewId);
         if (viewId !== "currentAttendeesView" && currentAttendeesRefreshTimer) {
@@ -189,6 +192,9 @@
         }
         if (viewId === "dashboardView") {
           refreshCurrentAttendeesWindow();
+          if (typeof refreshAttendanceContext === "function") {
+            refreshAttendanceContext();
+          }
         }
         if (viewId === "scanView") {
           isProcessingScan = false;
@@ -805,6 +811,7 @@
           if (!result || result.kind !== "out") {
             throw new Error(result && result.message ? result.message : translations[currentLang].offlineSyncFailed);
           }
+          if (typeof refreshAttendanceContext === "function") refreshAttendanceContext();
           closeEmergencyCheckoutDialog();
           showToast(translations[currentLang].emergencyCheckoutCompleted, "success");
           await loadCurrentAttendees();
@@ -1307,6 +1314,7 @@
           if (!result || result.kind !== "out") {
             throw new Error(result && result.message ? result.message : translations[currentLang].attendanceCheckout);
           }
+          if (typeof refreshAttendanceContext === "function") refreshAttendanceContext();
           showToast(translations[currentLang].attendanceCheckoutCompleted, "success");
           if (currentActiveViewId === "currentAttendeesView") await loadCurrentAttendees();
           else await loadAttendanceReport();
@@ -1334,6 +1342,7 @@
             }
             throw new Error(result && result.message);
           }
+          if (typeof refreshAttendanceContext === "function") refreshAttendanceContext();
           showToast(translations[currentLang].attendanceCancelSuccess, "success");
           if (currentActiveViewId === "currentAttendeesView") await loadCurrentAttendees();
           else await loadAttendanceReport();
@@ -1411,6 +1420,9 @@
 
       window.addEventListener("online", async () => {
         await updateOfflineStatus();
+        if (typeof refreshAttendanceContext === "function") {
+          refreshAttendanceContext();
+        }
         initializeGoogleSignIn();
         if (currentUser && !googleIdToken) {
           beginSessionRestore(currentUser.email);

@@ -1819,6 +1819,16 @@
         animation: viewEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
 
+      .container.is-dashboard-view {
+        width: min(100%, 1040px);
+        max-width: 1040px;
+        max-height: calc(100dvh - 100px);
+        min-height: 0;
+        backdrop-filter: blur(18px) saturate(130%);
+        -webkit-backdrop-filter: blur(18px) saturate(130%);
+        animation: none;
+      }
+
       .container::before {
         content: "";
         position: absolute;
@@ -1912,6 +1922,44 @@
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
       }
 
+      .dashboard-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .dashboard-heading h2 {
+        margin: 0;
+        text-align: start;
+      }
+
+      .dashboard-heading-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .tutorial-reopen-button {
+        display: inline-flex;
+        min-height: 38px;
+        align-items: center;
+        gap: 7px;
+        padding: 0 11px;
+        border: 1px solid var(--chip-border);
+        border-radius: 11px;
+        background: var(--chip-bg);
+        color: var(--text-main);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .tutorial-reopen-button i {
+        color: var(--accent-gold);
+      }
+
       .user-info {
         display: flex;
         align-items: center;
@@ -1951,11 +1999,158 @@
         outline-offset: 2px;
       }
       .user-avatar {
+        position: relative;
+        z-index: 1;
         width: 42px;
         height: 42px;
         border-radius: 50%;
         border: 2px solid var(--accent-gold);
         object-fit: cover;
+      }
+
+      .user-avatar-wrap {
+        position: relative;
+        display: grid;
+        width: 46px;
+        height: 46px;
+        flex: 0 0 46px;
+        place-items: center;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #f5bd55, #b76b27 52%, #6542a5);
+        box-shadow: 0 5px 16px rgba(0, 0, 0, 0.24);
+      }
+
+      .user-avatar-fallback {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border: 2px solid var(--accent-gold);
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 70% 24%, rgba(255, 255, 255, 0.45), transparent 30%),
+          linear-gradient(145deg, #f5bd55, #b76b27 54%, #6542a5);
+        color: #fff;
+        font-size: 20px;
+      }
+
+      .user-avatar-fallback[hidden] {
+        display: none;
+      }
+
+      .user-avatar-wrap:has(.user-avatar-fallback:not([hidden])) .user-avatar {
+        visibility: hidden;
+      }
+
+      .tutorial-dialog {
+        width: min(560px, calc(100vw - 28px));
+        max-width: none;
+        max-height: min(82dvh, 700px);
+        overflow-y: auto;
+        padding: clamp(20px, 5vw, 32px);
+        border: 1px solid var(--glass-edge);
+        border-radius: 24px;
+        background: var(--panel-gradient), var(--select-option-bg);
+        color: var(--text-main);
+        box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+      }
+
+      .tutorial-dialog::backdrop {
+        background: rgba(4, 10, 18, 0.68);
+        backdrop-filter: blur(8px);
+      }
+
+      .tutorial-header,
+      .tutorial-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .tutorial-header h2 {
+        margin: 3px 0 0;
+        text-align: start;
+      }
+
+      .tutorial-step-count {
+        color: var(--text-sub);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tutorial-skip {
+        border: 0;
+        background: transparent;
+        color: var(--text-sub);
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      .tutorial-progress {
+        height: 6px;
+        margin: 18px 0;
+        overflow: hidden;
+        border-radius: 99px;
+        background: var(--chip-bg);
+      }
+
+      .tutorial-progress span {
+        display: block;
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--accent-gold), #36c997);
+        transition: width 180ms ease;
+      }
+
+      .tutorial-description {
+        color: var(--text-sub);
+        line-height: 1.7;
+      }
+
+      .tutorial-demo {
+        display: grid;
+        gap: 12px;
+        margin: 18px 0;
+      }
+
+      .tutorial-demo-card {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        border: 1px solid var(--chip-border);
+        border-radius: 16px;
+        background: var(--glass-surface);
+      }
+
+      .tutorial-demo-card select,
+      .tutorial-demo-card input {
+        width: 100%;
+      }
+
+      .tutorial-demo-result {
+        padding: 12px;
+        border-radius: 12px;
+        background: var(--chip-bg);
+        color: var(--text-main);
+        line-height: 1.6;
+      }
+
+      .tutorial-demo-note {
+        color: var(--text-sub);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .tutorial-actions {
+        justify-content: flex-end;
+      }
+
+      .tutorial-actions .btn {
+        width: auto;
+        min-width: 112px;
       }
       .user-details {
         display: flex;
@@ -2061,6 +2256,11 @@
 
       .dashboard-secondary-grid .tile {
         min-height: 92px;
+      }
+
+      #dashboardView .tile {
+        backdrop-filter: blur(12px) saturate(130%);
+        -webkit-backdrop-filter: blur(12px) saturate(130%);
       }
 
       .dashboard-layout-grid .dashboard-tools {
@@ -2783,6 +2983,10 @@
         .user-info { gap: 8px; }
         .dashboard-layout-switcher { gap: 1px; }
         .dashboard-layout-switcher button { width: 30px; height: 32px; }
+        .dashboard-heading { gap: 8px; }
+        .dashboard-heading-actions { gap: 5px; }
+        .tutorial-reopen-button { width: 38px; justify-content: center; padding: 0; }
+        .tutorial-reopen-button span { display: none; }
         .roster-person-row { align-items: stretch; flex-direction: column; }
         .roster-person-actions { justify-content: flex-start; }
         .current-attendees-header {

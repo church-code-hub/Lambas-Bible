@@ -1465,6 +1465,35 @@ test("keeps current-attendance management open through the checkout window", () 
   assert.equal(context.isCurrentAttendanceWindowOpen_(at(13, 1), settings), false);
 });
 
+test("attendance context includes today's check-in state and backend time zones", () => {
+  const { context } = createBackendContext();
+  const now = vm.runInContext("new Date()", context);
+  const attendanceSheet = createMutableSheet([
+    ["ID", "Name", "Check-in", "Admin Check-in", "Check-out", "Admin Check-out", "Delay", "Status"],
+    [1, "Alice", now, "Admin", "", "", "", "Active"],
+    [2, "Bob", now, "Admin", vm.runInContext("new Date(Date.now() + 60000)", context), "Admin", "", "Complete"],
+    [3, "Cancelled", now, "Admin", "", "", "", "Cancelled"],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Check-in & Check-out" ? attendanceSheet : null,
+    getSpreadsheetTimeZone: () => "America/Los_Angeles",
+  });
+  context.Utilities.base64Encode = (value) => Buffer.from(value, "binary").toString("base64");
+  context.Session = { getScriptTimeZone: () => "UTC" };
+
+  const result = context.getAttendanceContext_();
+
+  assert.equal(result.success, true);
+  assert.equal(result.spreadsheetTimeZone, "America/Los_Angeles");
+  assert.equal(result.scriptTimeZone, "UTC");
+  assert.deepEqual(
+    Array.from(result.attendance, (person) => [person.id, person.name, person.checkedOut]),
+    [["1", "Alice", false], ["2", "Bob", true]],
+  );
+  assert.match(result.attendance[0].qrId, /^[A-Za-z0-9_-]+$/);
+  assert.equal(typeof result.serverTimestamp, "number");
+});
+
 test("stops an offline batch when an earlier event is still pending", () => {
   const { context, scriptPropertiesStore } = createBackendContext();
   let applyCount = 0;

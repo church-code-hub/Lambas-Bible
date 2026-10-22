@@ -27,6 +27,7 @@
 
       async function startLiveScanner() {
         if (isScannerRunning || isScannerStarting) return;
+        if (!currentAttendanceContext && currentUser) refreshAttendanceContext();
         const generation = ++scannerStartGeneration;
         isScannerStarting = true;
         setCameraStatus("cameraStarting");
@@ -108,23 +109,260 @@
       }
       function onScanError(err) {}
 
-      function beginDelayedAttendanceFeedback(fromNameSearch, event) {
-        const feedback = { event, fromNameSearch, queuedEvent: null, result: null, shown: false, timer: 0 };
-        feedback.timer = window.setTimeout(() => {
-          feedback.shown = true;
-          const result = feedback.result &&
-            feedback.result.success !== false &&
-            feedback.result.kind !== "error"
-            ? feedback.result
-            : {
-              kind: "queued",
-              title: "offlineQueuedTitle",
-              name: feedback.queuedEvent?.personName || event.personName || "",
-              message: "offlineScanQueued",
+      function attendanceFeedback(event, fromNameSearch, offline = false, predictedResult = null) {
+        const time = new Intl.DateTimeFormat(currentLang === "ar" ? "ar" : "en", {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(event.timestamp));
+        const result = offline
+          ? {
+            kind: "queued",
+            title: "offlineQueuedTitle",
+            name: event.personName || "",
+            message: "offlineScanQueued",
+          }
+          : predictedResult || {
+            kind: "success",
+            title: "attendanceRecordedNow",
+            name: event.personName || "",
+            message: `${translations[currentLang].attendanceRecordedAt} ${time}`,
+          };
+        renderResult(result, fromNameSearch);
+        const toast = showToast(
+          offline
+            ? translations[currentLang].offlineScanQueued
+            : predictedResult
+              ? [result.name, translateText(result.title), translateText(result.message)]
+                .filter(Boolean)
+                .join(" · ")
+              : [event.personName, `${translations[currentLang].attendanceRecordedAt} ${time}`]
+              .filter(Boolean)
+              .join(" · "),
+          offline || result.kind === "warn" || result.kind === "closed"
+            ? "info"
+            : result.kind === "error"
+              ? "error"
+              : "success",
+        );
+        return toast;
+      }
+
+      function applyAttendanceContext(context) {
+        if (
+          !context ||
+          context.success !== true ||
+          !context.settings ||
+          !Array.isArray(context.attendance) ||
+          !context.spreadsheetTimeZone ||
+          !context.scriptTimeZone
+        ) return false;
+        currentAttendanceContext = {
+          ...context,
+          email: String(currentUser?.email || "").toLowerCase().trim(),
+          loadedAt: Date.now(),
+        };
+        persistAttendanceContextCache(currentAttendanceContext);
+        return true;
+      }
+
+      function persistAttendanceContextCache(context) {
+        if (
+          typeof saveCachedApiResponse !== "function" ||
+          typeof createApiCacheKey !== "function" ||
+          !currentUser
+        ) return;
+        saveCachedApiResponse(
+          createApiCacheKey("get_attendance_context", {}),
+          context,
+        ).catch((error) => {
+          console.error("Could not save the attendance context cache.", error);
+        });
+      }
+
+      async function refreshAttendanceContext() {
+        if (!currentUser) return null;
+        if (
+          currentAttendanceContext &&
+          currentAttendanceContext.email === String(currentUser.email).toLowerCase().trim() &&
+          Date.now() - currentAttendanceContext.loadedAt < 30_000
+        ) return currentAttendanceContext;
+        if (attendanceContextRefreshPromise) return attendanceContextRefreshPromise;
+        attendanceContextRefreshPromise = (async () => {
+          try {
+            const result = await apiCall("get_attendance_context", {}, (freshResult) => {
+              applyAttendanceContext(freshResult);
+            });
+            applyAttendanceContext(result);
+            return currentAttendanceContext;
+          } catch (error) {
+            console.warn("Could not refresh local attendance context.", error);
+            return currentAttendanceContext;
+          } finally {
+            attendanceContextRefreshPromise = null;
+          }
+        })();
+        return attendanceContextRefreshPromise;
+      }
+
+      function zonedAttendanceParts(timestamp, timeZone) {
+        const values = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          weekday: "short",
+          hourCycle: "h23",
+        }).formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]));
+        const weekdays = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+        return {
+          dateKey: `${values.year}-${values.month}-${values.day}`,
+          day: weekdays[values.weekday],
+          minute: Number(values.hour) * 60 + Number(values.minute),
+          hour: Number(values.hour),
+          minuteOfHour: Number(values.minute),
+        };
+      }
+
+      function previousAttendanceDate(dateKey) {
+        const [year, month, day] = dateKey.split("-").map(Number);
+        const previous = new Date(Date.UTC(year, month - 1, day - 1));
+        return [
+          previous.getUTCFullYear(),
+          String(previous.getUTCMonth() + 1).padStart(2, "0"),
+          String(previous.getUTCDate()).padStart(2, "0"),
+        ].join("-");
+      }
+
+      function attendanceOccurrence(timestamp, context) {
+        const parts = zonedAttendanceParts(timestamp, context.spreadsheetTimeZone);
+        const settings = context.settings;
+        const [startHour, startMinute] = settings.startTime.split(":").map(Number);
+        const [endHour, endMinute] = settings.endTime.split(":").map(Number);
+        const start = startHour * 60 + startMinute;
+        let end = endHour * 60 + endMinute;
+        if (end <= start) end += 24 * 60;
+        const allowedDays = Array.isArray(settings.allowedDays) ? settings.allowedDays : [];
+        const candidates = [
+          { dateKey: parts.dateKey, day: parts.day, minute: parts.minute },
+          {
+            dateKey: previousAttendanceDate(parts.dateKey),
+            day: (parts.day + 6) % 7,
+            minute: parts.minute + 24 * 60,
+          },
+        ];
+        const occurrence = candidates.find((candidate) =>
+          allowedDays.includes(candidate.day) &&
+          candidate.minute >= start &&
+          candidate.minute <= end + 60,
+        );
+        return occurrence ? { ...occurrence, start, end } : null;
+      }
+
+      function formatAttendanceDuration(minutes) {
+        if (minutes < 60) return `${minutes} دقيقة`;
+        const hours = Math.floor(minutes / 60);
+        const remainder = minutes % 60;
+        return remainder === 0
+          ? `${hours} ساعة`
+          : `${hours} ساعة و${remainder} دقيقة`;
+      }
+
+      function predictAttendanceResult(id, event, cachedPerson = null, contextOverride = null) {
+        const context = contextOverride || currentAttendanceContext;
+        if (!context || !context.settings) return null;
+        const attendancePerson = context.attendance.find((person) =>
+          String(person.id) === String(id) ||
+          String(person.qrId) === String(id) ||
+          (cachedPerson && String(person.id) === String(cachedPerson.id)),
+        );
+        if (!attendancePerson && !cachedPerson && !event.personName) return null;
+        const rosterPerson = cachedPerson || attendancePerson;
+        const cachedName = rosterPerson ? rosterPerson.name : "";
+        const personName = event.personName || cachedName;
+        const timestamp = Date.parse(event.timestamp);
+        if (!Number.isFinite(timestamp)) return null;
+        const occurrence = attendanceOccurrence(timestamp, context);
+        const localDate = zonedAttendanceParts(timestamp, context.spreadsheetTimeZone).dateKey;
+        const sessionDate = occurrence ? occurrence.dateKey : localDate;
+        const existing = sessionDate === context.sessionDate
+          ? context.attendance.find((person) =>
+            String(person.id) === String(id) ||
+            String(person.qrId) === String(id) ||
+            (rosterPerson && String(person.id) === String(rosterPerson.id)),
+          )
+          : null;
+        if (existing) {
+          if (existing.checkedOut) {
+            return {
+              kind: "warn",
+              title: "مسجّل حضور وانصراف!",
+              name: personName,
+              message: "تم رصد حضور وانصراف مسبقاً اليوم.",
             };
-          renderResult(result, feedback.fromNameSearch);
-        }, 1000 + Math.floor(Math.random() * 1001));
-        return feedback;
+          }
+          if (occurrence && occurrence.minute >= occurrence.end - 30 &&
+              occurrence.minute <= occurrence.end + 60) {
+            const checkoutTime = new Intl.DateTimeFormat("en-US", {
+              timeZone: context.scriptTimeZone,
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }).format(new Date(timestamp));
+            existing.checkedOut = true;
+            existing.checkoutTime = timestamp;
+            if (!contextOverride) persistAttendanceContextCache(context);
+            return {
+              kind: "out",
+              title: "تم تسجيل الانصراف!",
+              name: personName,
+              message: `وقت الانصراف: ${checkoutTime}`,
+            };
+          }
+          return {
+            kind: "warn",
+            title: "مسجّل حضور بالفعل!",
+            name: personName,
+            message: "تم تسجيل الحضور اليوم.",
+          };
+        }
+        if (!occurrence || occurrence.minute > occurrence.end) {
+          return {
+            kind: "closed",
+            title: "النظام مغلق الآن!",
+            name: "",
+            message: "يستقبل التسجيل في المواعيد الرسمية فقط.",
+          };
+        }
+        const scriptTime = zonedAttendanceParts(timestamp, context.scriptTimeZone);
+        const checkinMinute = scriptTime.hour * 60 + scriptTime.minuteOfHour;
+        const [startHour, startMinute] = context.settings.startTime.split(":").map(Number);
+        const deadline = startHour * 60 + startMinute + (Number(context.settings.acceptedDelay) || 0);
+        const delay = Math.max(0, Math.ceil((checkinMinute - deadline) / 1));
+        const result = delay > 0
+          ? {
+            kind: "late",
+            title: "تم الحضور - متأخر",
+            name: personName,
+            message: `مقدار التأخير: ${formatAttendanceDuration(delay)}`,
+          }
+          : {
+            kind: "success",
+            title: "تم تسجيل الحضور بنجاح!",
+            name: personName,
+            message: "🎯 في الموعد المحدد",
+          };
+        context.attendance.push({
+          id: rosterPerson ? rosterPerson.id : String(id),
+          qrId: rosterPerson ? rosterPerson.qrId : String(id),
+          name: personName,
+          checkinTime: timestamp,
+          checkoutTime: null,
+          checkedOut: false,
+        });
+        if (!contextOverride) persistAttendanceContextCache(context);
+        return result;
       }
 
       async function processAttendanceId(rawId, fromNameSearch = false, personName = "", eventContext = {}) {
@@ -137,32 +375,88 @@
           return;
         }
         const id = String(rawId);
-        const feedback = beginDelayedAttendanceFeedback(fromNameSearch, {
+        const event = {
           eventId: eventContext.eventId || crypto.randomUUID(),
           timestamp: eventContext.timestamp || new Date().toISOString(),
           personName,
-        });
+        };
+        if (navigator.onLine) {
+          let cachedPerson = null;
+          try {
+            const roster = await getCachedRoster();
+            cachedPerson = roster.find((person) =>
+              String(person.id).trim() === id || String(person.qrId || "").trim() === id,
+            ) || null;
+            if (cachedPerson && !event.personName) event.personName = cachedPerson.name;
+          } catch (error) {
+            console.warn("Could not read the saved attendee name.", error);
+          }
+          currentAttendanceEventId = event.eventId;
+          const predictedResult = predictAttendanceResult(id, event, cachedPerson);
+          const toast = attendanceFeedback(event, fromNameSearch, false, predictedResult);
+          enqueueOnlineEventForSync({
+            ...event,
+            type: "scan",
+            qrText: id,
+          }).then((result) => {
+            if (result && (result.success === false || result.kind === "error")) {
+              showToast(result.message || translations[currentLang].offlineSyncFailed, "error");
+            } else if (result && currentAttendanceEventId === event.eventId) {
+              const predictionMatches = predictedResult &&
+                ["kind", "title", "name", "message"].every((key) =>
+                  String(predictedResult[key] || "") === String(result[key] || ""),
+                );
+              if (!predictionMatches && currentActiveViewId === "resultView") {
+                renderResult(result, fromNameSearch);
+                refreshAttendanceContext();
+              }
+              if (toast?.isConnected) {
+                toast.dataset.message = [
+                  result.name || event.personName,
+                  result.title,
+                  result.message,
+                ].filter(Boolean).join(" · ");
+                toast.textContent = toast.dataset.message;
+              }
+            }
+          }).catch((error) => {
+            console.error("Could not save attendance for background sync.", error);
+            showToast(translations[currentLang].offlineStorageError, "error");
+          });
+          if (!personName) {
+            getCachedPersonName(id).then((cachedName) => {
+              if (!cachedName || currentAttendanceEventId !== event.eventId) return;
+              const nameElement = document.getElementById("rName");
+              if (currentActiveViewId === "resultView" && !nameElement.textContent) {
+                nameElement.textContent = cachedName;
+                nameElement.style.display = "block";
+              }
+              if (toast?.isConnected) {
+                const time = new Intl.DateTimeFormat(currentLang === "ar" ? "ar" : "en", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }).format(new Date(event.timestamp));
+                toast.dataset.message =
+                  `${cachedName} · ${translations[currentLang].attendanceRecordedAt} ${time}`;
+                toast.textContent = toast.dataset.message;
+              }
+            }).catch((error) => {
+              console.warn("Could not find the scanned person's saved name.", error);
+            });
+          }
+          return;
+        }
         try {
           const queuedEvent = await queueOfflineEvent({
             type: "scan",
             qrText: id,
             personName,
-            eventId: feedback.event.eventId,
-            timestamp: feedback.event.timestamp,
+            eventId: event.eventId,
+            timestamp: event.timestamp,
           });
-          feedback.queuedEvent = queuedEvent;
-          syncQueuedEventImmediately(queuedEvent)
-            .then((result) => {
-              feedback.result = result;
-              if (feedback.shown && result && result.success !== false && result.kind !== "error") {
-                renderResult(result, fromNameSearch);
-              }
-            })
-            .catch((error) => {
-              console.error("Could not complete immediate attendance sync.", error);
-            });
+          currentAttendanceEventId = queuedEvent.eventId;
+          attendanceFeedback(queuedEvent, fromNameSearch, true);
         } catch (error) {
-          window.clearTimeout(feedback.timer);
           renderResult({
             kind: "error",
             title: "Error",

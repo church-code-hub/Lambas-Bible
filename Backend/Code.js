@@ -181,6 +181,8 @@ function doPost(e) {
       result = getAttendanceTrends_(data.meetings);
     } else if (action === "get_attendance_window") {
       result = getAttendanceWindow_();
+    } else if (action === "get_attendance_context") {
+      result = getAttendanceContext_();
     } else if (action === "get_current_attendees") {
       result = getCurrentAttendees_();
     } else if (action === "checkout_attendance") {
@@ -1222,6 +1224,47 @@ function getAttendanceWindow_() {
     windowOpen: windowOpen,
     closeReason: windowOpen ? "" : attendanceWindowCloseReason_(now, settings),
     nextCheckMs: 30 * 1000,
+  };
+}
+
+function getAttendanceContext_() {
+  const now = new Date();
+  const settings = getSettings();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet.getSheetByName("Check-in & Check-out");
+  const lastRow = sheet ? sheet.getLastRow() : 0;
+  const rows = sheet && lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, 8).getValues()
+    : [];
+  const sessionDate = attendanceSessionDateKey_(now, settings);
+  const attendance = [];
+  rows.forEach((row) => {
+    if (
+      !row[0] ||
+      row[7] === "Cancelled" ||
+      !(row[2] instanceof Date) ||
+      attendanceSessionDateKey_(row[2], settings) !== sessionDate
+    ) return;
+    const id = String(row[0]).trim();
+    attendance.push({
+      id: id,
+      qrId: encryptId(id),
+      name: String(row[1] || ""),
+      checkinTime: row[2].getTime(),
+      checkoutTime: row[4] instanceof Date ? row[4].getTime() : null,
+      checkedOut: Boolean(row[5]),
+    });
+  });
+  return {
+    success: true,
+    serverTimestamp: now.getTime(),
+    sessionDate: sessionDate,
+    spreadsheetTimeZone: spreadsheet.getSpreadsheetTimeZone
+      ? spreadsheet.getSpreadsheetTimeZone()
+      : Session.getScriptTimeZone(),
+    scriptTimeZone: Session.getScriptTimeZone(),
+    settings: getPublicSettings_(),
+    attendance: attendance,
   };
 }
 

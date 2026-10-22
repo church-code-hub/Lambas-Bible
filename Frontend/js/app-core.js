@@ -110,6 +110,11 @@
           if (currentActiveViewId === "currentAttendeesView") loadCurrentAttendees();
           if (currentActiveViewId === "rosterView") renderRosterManagement();
           if (currentActiveViewId === "appSettingsView") updateOfflineStatus();
+          const tutorialDialog = document.getElementById("firstRunTutorial");
+          if (
+            tutorialDialog?.open &&
+            typeof renderFirstRunTutorialStep === "function"
+          ) renderFirstRunTutorialStep();
         };
         if (currentLang === lang) changeLanguage();
         else runAppearanceTransition(changeLanguage);

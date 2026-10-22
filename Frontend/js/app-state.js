@@ -15,6 +15,9 @@
       var scannerStartGeneration = 0;
       var qrLibraryPromise = null;
       var isProcessingScan = false;
+      var currentAttendanceEventId = "";
+      var currentAttendanceContext = null;
+      var attendanceContextRefreshPromise = null;
       var isNameSearchRunning = false;
       var isCardSearchRunning = false;
       var isSyncingOfflineQueue = false;
@@ -22,6 +25,7 @@
       var activeApiRequestCount = 0;
       var googleSignInInitialized = false;
       var pendingSessionRestoreEmail = "";
+      var isSilentSessionRestore = false;
       var offlineDatabasePromise = null;
       var cachedRosterPromise = null;
       var offlineRosterSearchCache = null;

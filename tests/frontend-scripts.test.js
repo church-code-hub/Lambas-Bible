@@ -90,15 +90,17 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   }
   assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=56/);
-  assert.match(serviceWorker, /lambas-bible-shell-v56/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=56/);
+  assert.match(html, /css\/styles\.css\?v=60/);
+  assert.match(serviceWorker, /lambas-bible-shell-v60/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=60/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('grouped'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('grid'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('list'\)"/);
+  assert.match(dashboard, /class="dashboard-heading"[\s\S]*?data-i18n="dashboardTitle"[\s\S]*?class="dashboard-layout-switcher"/);
   assert.match(styles, /\.dashboard-layout-grid \.dashboard-tools/);
   assert.match(styles, /\.dashboard-layout-list \.dashboard-primary-grid/);
+  assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*1040px/);
 });
 
 test("people management styles search and uses edit plus confirmed archival actions", () => {
@@ -235,17 +237,26 @@ test("read API calls return cached data before revalidating and notify the view"
   assert.deepEqual(JSON.parse(JSON.stringify(revalidatedResponse)), fresh);
 });
 
-test("attendance scans persist pending events and register service-worker background sync", () => {
+test("online attendance gives immediate feedback and queues ordered background sync", () => {
   const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const cards = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
   const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
 
   assert.match(offline, /status:\s*"pending"/);
   assert.match(offline, /window\.triggerManualSync\s*=\s*triggerManualSync/);
   assert.match(offline, /registration\.sync\.register\("sync-pending-events"\)/);
-  assert.match(scanner, /queueOfflineEvent\(\{[\s\S]*?eventId:\s*feedback\.event\.eventId/);
-  assert.match(scanner, /syncQueuedEventImmediately\(queuedEvent\)/);
-  assert.match(scanner, /1000\s*\+\s*Math\.floor\(Math\.random\(\)\s*\*\s*1001\)/);
+  assert.match(offline, /var immediateEventSyncChain = Promise\.resolve\(\)/);
+  assert.match(offline, /syncTask = immediateEventSyncChain\.then/);
+  assert.match(offline, /syncMode: event\.syncMode \|\| \(navigator\.onLine \? "online" : "offline"\)/);
+  assert.match(offline, /event\.syncMode !== "online"/);
+  assert.match(scanner, /if \(navigator\.onLine\) \{[\s\S]*?currentAttendanceEventId = event\.eventId;\s*const predictedResult = predictAttendanceResult\(id, event, cachedPerson\);\s*const toast = attendanceFeedback\(event, fromNameSearch, false, predictedResult\)/);
+  assert.match(scanner, /enqueueOnlineEventForSync\(\{/);
+  assert.doesNotMatch(scanner, /beginDelayedAttendanceFeedback|Math\.random\(\)\s*\*\s*1001/);
+  assert.match(cards, /showAddedResult\(\);\s*showToast\([\s\S]*?enqueueOnlineEventForSync\(event\)/);
+  assert.match(offline, /function getOfflineSyncBatch\([\s\S]*?event\.syncMode !== "online"/);
+  assert.match(offline, /events\.filter\(\(event\) => event\.syncMode !== "online"\)/);
+  assert.doesNotMatch(cards, /showLoader\("Registering & generating card/);
   assert.match(serviceWorker, /self\.addEventListener\("sync"/);
   assert.match(serviceWorker, /event\.tag === "sync-pending-events"/);
   assert.match(serviceWorker, /action:\s*"sync_offline_events"/);
@@ -582,6 +593,71 @@ test("restores the Google sign-in token from local storage", () => {
   assert.equal(vm.runInContext("currentThemeMode", browserContext), "light");
 });
 
+test("silent Google restore keeps the saved profile visible when account selection is unavailable", () => {
+  let promptCallback = null;
+  const savedUser = { email: "admin@example.com", name: "Admin" };
+  const browserContext = vm.createContext({
+    window: {
+      addEventListener() {},
+      LAMBAS_CONFIG: {},
+      google: {
+        accounts: {
+          id: {
+            prompt(callback) { promptCallback = callback; },
+          },
+        },
+      },
+    },
+    google: {
+      accounts: {
+        id: {
+          prompt(callback) { promptCallback = callback; },
+        },
+      },
+    },
+    navigator: { onLine: true },
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+  });
+  for (const script of ["app-state.js", "app-auth.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = savedUser;
+  let loaderShown = false;
+  let loginViewShown = false;
+  browserContext.showLoader = () => { loaderShown = true; };
+  browserContext.showView = (view) => { loginViewShown = view === "loginView"; };
+
+  browserContext.beginSessionRestore(savedUser.email);
+  promptCallback({ isNotDisplayed: () => true });
+
+  assert.equal(browserContext.currentUser, savedUser);
+  assert.equal(loaderShown, false);
+  assert.equal(loginViewShown, false);
+  assert.equal(browserContext.isSilentSessionRestore, false);
+});
+
+test("tutorial practice actions use local demo data and skip real write endpoints", () => {
+  const auth = fs.readFileSync(path.join(frontendRoot, "js", "app-auth.js"), "utf8");
+  const addDemo = auth.match(/function renderTutorialAddDemo\(container\) \{[\s\S]*?\n      \}/)?.[0] || "";
+  const attendanceDemo = auth.match(/async function runTutorialAttendanceDemo\([\s\S]*?\n      \}/)?.[0] || "";
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+
+  assert.match(addDemo, /showTutorialDemoResult/);
+  assert.doesNotMatch(addDemo, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|submitNewStudent/);
+  assert.match(attendanceDemo, /JSON\.parse\(JSON\.stringify\(context\)\)/);
+  assert.match(attendanceDemo, /predictAttendanceResult\([\s\S]*?simulationContext/);
+  assert.doesNotMatch(attendanceDemo, /enqueueOnlineEventForSync|queueOfflineEvent|apiCall/);
+  assert.match(html, /id="firstRunTutorial"/);
+  assert.match(auth, /function skipFirstRunTutorial\(\)/);
+  assert.match(auth, /function replayFirstRunTutorial\(\)/);
+  assert.match(auth, /localStorage\.setItem\(tutorialStorageKey\(\), "true"\)/);
+});
+
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {
   const browserContext = vm.createContext({
     window: {},
@@ -605,6 +681,7 @@ test("offline fuzzy name search mirrors backend matching and events can sync in 
       { eventId: "scan-2", type: "scan", queuedBy: account, timestamp: "2026-10-21T10:00:00.000Z" },
       { eventId: "add-1", type: "add_student", queuedBy: account },
       { eventId: "scan-3", type: "scan", queuedBy: account },
+      { eventId: "online-action", type: "scan", queuedBy: account, syncMode: "online" },
       { eventId: "other-account", type: "scan", queuedBy: "other@example.com" },
     ];
     const roster = [
@@ -642,6 +719,167 @@ test("offline fuzzy name search mirrors backend matching and events can sync in 
   assert.equal(result.timestamp, "2026-10-21T10:00:00.000Z");
   assert.match(result.addDescription, /New Attendee/);
   assert.match(result.addDescription, /Do not mark attendance/);
+});
+
+test("online attendance feedback is shown before its background request completes", async () => {
+  const feedback = [];
+  let syncStarted = false;
+  const browserContext = vm.createContext({
+    window: {},
+    navigator: { onLine: true },
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null, setItem() {} },
+    crypto: require("node:crypto").webcrypto,
+    Intl,
+    Date,
+    Promise,
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-offline.js", "app-scanner-search.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentLang = "en";
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.googleIdToken = "signed-in";
+  browserContext.renderResult = (result) => feedback.push(result);
+  browserContext.showToast = (message, type) => ({ message, type });
+  browserContext.enqueueOnlineEventForSync = () => {
+    syncStarted = true;
+    return new Promise(() => {});
+  };
+
+  await browserContext.processAttendanceId(
+    "qr-token",
+    true,
+    "Attendee Name",
+    { eventId: "attendance-event-0001", timestamp: "2026-10-21T10:00:00.000Z" },
+  );
+
+  assert.equal(syncStarted, true);
+  assert.equal(feedback.length, 1);
+  assert.equal(feedback[0].kind, "success");
+  assert.equal(feedback[0].name, "Attendee Name");
+  assert.match(feedback[0].message, /Recorded at/);
+});
+
+test("attendance result is predicted locally from the saved schedule and check-in state", () => {
+  const browserContext = vm.createContext({
+    window: {},
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null, setItem() {} },
+    Intl,
+    Date,
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-offline.js", "app-scanner-search.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.currentAttendanceContext = {
+    success: true,
+    sessionDate: "2026-10-19",
+    spreadsheetTimeZone: "UTC",
+    scriptTimeZone: "UTC",
+    settings: {
+      startTime: "10:00",
+      endTime: "12:00",
+      acceptedDelay: 15,
+      allowedDays: [0, 1, 2, 3, 4, 5, 6],
+    },
+    attendance: [
+      {
+        id: "2",
+        name: "Bob",
+        checkinTime: Date.parse("2026-10-19T10:00:00.000Z"),
+        checkedOut: false,
+      },
+      {
+        id: "3",
+        name: "Chris",
+        checkinTime: Date.parse("2026-10-19T10:00:00.000Z"),
+        checkedOut: true,
+      },
+    ],
+  };
+
+  const result = vm.runInContext(`(() => {
+    const first = predictAttendanceResult("1", {
+      timestamp: "2026-10-19T10:20:00.000Z",
+      personName: "Alice",
+    });
+    const checkout = predictAttendanceResult("2", {
+      timestamp: "2026-10-19T11:35:00.000Z",
+      personName: "Bob",
+    });
+    const checkedOut = predictAttendanceResult("3", {
+      timestamp: "2026-10-19T11:35:00.000Z",
+      personName: "Chris",
+    });
+    return { first, checkout, checkedOut };
+  })()`, browserContext);
+
+  assert.equal(result.first.kind, "late");
+  assert.equal(result.first.title, "تم الحضور - متأخر");
+  assert.equal(result.first.message, "مقدار التأخير: 5 دقيقة");
+  assert.equal(result.checkout.kind, "out");
+  assert.equal(result.checkout.title, "تم تسجيل الانصراف!");
+  assert.match(result.checkout.message, /^وقت الانصراف:/);
+  assert.equal(result.checkedOut.kind, "warn");
+  assert.equal(result.checkedOut.title, "مسجّل حضور وانصراف!");
+});
+
+test("online background events remain serialized in action order", async () => {
+  const browserContext = vm.createContext({
+    window: {},
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null },
+    setTimeout,
+  });
+  for (const script of ["app-state.js", "app-i18n.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  const order = await vm.runInContext(`(() => {
+    const steps = [];
+    queueOfflineEvent = async (event) => {
+      steps.push("saved:" + event.eventId);
+      return event;
+    };
+    syncQueuedEventImmediately = async (event) => {
+      steps.push("sync-start:" + event.eventId);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      steps.push("sync-end:" + event.eventId);
+      return event;
+    };
+    return Promise.all([
+      enqueueOnlineEventForSync({ eventId: "first" }),
+      enqueueOnlineEventForSync({ eventId: "second" }),
+    ]).then(() => steps);
+  })()`, browserContext);
+
+  assert.deepEqual(
+    Array.from(order).filter((step) => step.startsWith("sync-")),
+    ["sync-start:first", "sync-end:first", "sync-start:second", "sync-end:second"],
+  );
+  assert.deepEqual(
+    Array.from(order).filter((step) => step.startsWith("saved:")),
+    ["saved:first", "saved:second"],
+  );
+  assert.ok(
+    Array.from(order).indexOf("saved:second") < Array.from(order).indexOf("sync-end:first"),
+    "later events should be persisted while the earlier request is syncing",
+  );
 });
 
 test("saved offline queue actions remain deletable when offline", () => {

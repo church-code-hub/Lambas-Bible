@@ -105,6 +105,39 @@
           document.getElementById("newStudentName").value = "";
           showToast(translations[currentLang].offlineAddQueued, "info");
         };
+        const showAddedResult = (result = null) => {
+          const resultContainer = document.getElementById("addResult");
+          resultContainer.replaceChildren();
+          const status = document.createElement("p");
+          status.style.color = result?.cardGenerationFailed ? "#d97706" : "#16a34a";
+          status.style.fontWeight = "bold";
+          status.dataset.message = result?.cardGenerationFailed
+            ? "card generation failed"
+            : "Servant created successfully!";
+          status.textContent = translateText(status.dataset.message);
+          resultContainer.appendChild(status);
+          if (result?.cardGenerationFailed && result.id) {
+            const retryButton = document.createElement("button");
+            retryButton.type = "button";
+            retryButton.className = "btn secondary card-generation-retry";
+            retryButton.dataset.onlineOnly = "";
+            retryButton.textContent = translations[currentLang].retryCardGeneration;
+            retryButton.addEventListener("click", () => retryServantCard(result.id, retryButton, status));
+            resultContainer.appendChild(retryButton);
+          }
+          if (result?.driveUrl) {
+            const link = document.createElement("a");
+            link.href = result.driveUrl;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.className = "btn";
+            link.style.marginTop = "10px";
+            link.innerHTML = '<i class="fa-solid fa-folder-open" aria-hidden="true"></i> ';
+            link.dataset.message = "Open Card in Drive";
+            link.append(document.createTextNode(translateText(link.dataset.message)));
+            resultContainer.appendChild(link);
+          }
+        };
         try {
           if (!currentUser || (navigator.onLine && !googleIdToken)) throw new Error("Offline actions require a signed-in account.");
           if (!navigator.onLine) {
@@ -113,54 +146,47 @@
             return;
           }
 
-          showLoader("Registering & generating card...");
-          const res = await apiCall("add_student", { name: name, attendIfOpen: attendIfOpen });
-          hideLoader();
-          if (res && res.success) {
-            const resultContainer = document.getElementById("addResult");
-            resultContainer.replaceChildren();
-            const status = document.createElement("p");
-            status.style.color = res.cardGenerationFailed ? "#d97706" : "#16a34a";
-            status.style.fontWeight = "bold";
-            status.dataset.message = res.cardGenerationFailed ? "card generation failed" : "Servant created successfully!";
-            status.textContent = res.cardGenerationFailed
-              ? translateText("card generation failed")
-              : translateText("Servant created successfully!");
-            resultContainer.appendChild(status);
-            if (res.cardGenerationFailed && res.id) {
-              const retryButton = document.createElement("button");
-              retryButton.type = "button";
-              retryButton.className = "btn secondary card-generation-retry";
-              retryButton.dataset.onlineOnly = "";
-              retryButton.textContent = translations[currentLang].retryCardGeneration;
-              retryButton.addEventListener("click", () => retryServantCard(res.id, retryButton, status));
-              resultContainer.appendChild(retryButton);
+          const event = {
+            type: "add_student",
+            name,
+            attendIfOpen,
+            eventId: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+          };
+          showAddedResult();
+          showToast(`${name} · ${translateText("Servant created successfully!")}`, "success");
+          document.getElementById("newStudentName").value = "";
+          enqueueOnlineEventForSync(event).then((result) => {
+            if (result && result.success === false) {
+              const message = result.code === "DUPLICATE_NAME"
+                ? `${translateText("duplicate attendee: ")}${result.name} (#${result.id})`
+                : result.message || translations[currentLang].offlineSyncFailed;
+              showToast(message, "error");
+              if (currentActiveViewId === "addView") {
+                const status = document.querySelector("#addResult p");
+                if (status) {
+                  status.dataset.message = result.message || "Failed";
+                  status.textContent = message;
+                  status.style.color = "#ef4444";
+                }
+              }
+              return;
             }
-            if (res.driveUrl) {
-              const link = document.createElement("a");
-              link.href = res.driveUrl;
-              link.target = "_blank";
-              link.rel = "noopener noreferrer";
-              link.className = "btn";
-              link.style.marginTop = "10px";
-              link.innerHTML = '<i class="fa-solid fa-folder-open" aria-hidden="true"></i> ';
-              link.dataset.message = "Open Card in Drive";
-              link.append(document.createTextNode(translateText(link.dataset.message)));
-              resultContainer.appendChild(link);
+            if (result && result.success) {
+              if (typeof refreshAttendanceContext === "function") refreshAttendanceContext();
+              if (currentActiveViewId === "addView") showAddedResult(result);
+              if (result.cardGenerationFailed) {
+                showToast(translateText("card generation failed"), "info");
+              }
             }
-            showToast(res.cardGenerationFailed ? translateText("card generation failed") : "🎉 Servant created successfully!", res.cardGenerationFailed ? "info" : "success");
-            document.getElementById("newStudentName").value = "";
-          } else {
-            const message = res && res.code === "DUPLICATE_NAME"
-              ? translateText("duplicate attendee: ") + `${res.name} (#${res.id})`
-              : (res && res.message) || "Failed";
-            showToast(message, "error");
-          }
+          }).catch((error) => {
+            console.error("Could not save the new student for background sync.", error);
+            showToast(translations[currentLang].offlineStorageError, "error");
+          });
         } catch (e) {
           hideLoader();
           showToast(navigator.onLine ? "Server connection error" : translations[currentLang].offlineStorageError, "error");
         } finally {
-          hideLoader();
           submitButton.disabled = false;
           submitButton.removeAttribute("aria-busy");
         }

@@ -345,8 +345,10 @@
       async function getOfflineEventCount() {
         const database = await openOfflineDatabase();
         return new Promise((resolve, reject) => {
-          const request = database.transaction("events", "readonly").objectStore("events").count();
-          request.onsuccess = () => resolve(request.result);
+          const request = database.transaction("events", "readonly").objectStore("events").getAll();
+          request.onsuccess = () => {
+            resolve(request.result.filter((event) => event.syncMode !== "online").length);
+          };
           request.onerror = () => reject(request.error || new Error("Could not count saved actions"));
         });
       }
@@ -374,6 +376,7 @@
             timestamp: event.timestamp || new Date().toISOString(),
             queuedBy: currentUser.email,
             status: "pending",
+            syncMode: event.syncMode || (navigator.onLine ? "online" : "offline"),
           };
           await saveOfflineEvent(queuedEvent, false, true);
           updateOfflineStatus().catch((error) => {
@@ -389,14 +392,14 @@
       async function updateOfflineStatus() {
         const toolbarButton = document.getElementById("syncNowToolbarButton");
         const toolbarCount = document.getElementById("syncNowCount");
-        if (toolbarButton) {
-          toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView";
-          toolbarButton.disabled = isSyncingOfflineQueue;
-          toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
-        }
         updateOnlineOnlyControls();
         try {
           const count = await getOfflineEventCount();
+          if (toolbarButton) {
+            toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView" || count === 0;
+            toolbarButton.disabled = isSyncingOfflineQueue;
+            toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
+          }
           if (toolbarCount) {
             toolbarCount.hidden = count === 0;
             toolbarCount.textContent = count > 99 ? "99+" : String(count);
@@ -417,6 +420,7 @@
               : translations[currentLang].offlineRosterNotSaved;
           }
         } catch (error) {
+          if (toolbarButton) toolbarButton.hidden = true;
           if (toolbarCount) toolbarCount.hidden = true;
           console.error("Could not read local offline readiness data.", error);
           const rosterStatus = document.getElementById("offlineRosterStatus");
@@ -618,12 +622,32 @@
           if (lastError) {
             await saveOfflineSyncFailure(event, lastError.message);
             console.warn("Immediate event sync did not complete; the event remains queued.", lastError);
+            registerPendingEventsSync();
           }
           return null;
         } finally {
           immediateOfflineSyncIds.delete(event.eventId);
           await updateOfflineStatus();
         }
+      }
+
+      var immediateEventSyncChain = Promise.resolve();
+      var immediateEventPersistenceChain = Promise.resolve();
+
+      function enqueueOnlineEventForSync(event) {
+        const persistenceTask = immediateEventPersistenceChain.then(() =>
+          queueOfflineEvent({ ...event, syncMode: "online" }),
+        );
+        immediateEventPersistenceChain = persistenceTask.catch((error) => {
+          console.error("Could not persist an online action for background sync.", error);
+        });
+        const syncTask = immediateEventSyncChain.then(async () =>
+          syncQueuedEventImmediately(await persistenceTask),
+        );
+        immediateEventSyncChain = syncTask.catch((error) => {
+          console.error("Could not sync an online action in the background.", error);
+        });
+        return syncTask;
       }
 
       function offlineEventDescription(event) {
@@ -640,10 +664,15 @@
       function getOfflineSyncBatch(events, targetEventId, groupType, accountEmail) {
         if (targetEventId) {
           const target = events.find((event) => event.eventId === targetEventId);
-          return target && target.queuedBy === accountEmail ? [target] : null;
+          return target && target.queuedBy === accountEmail && target.syncMode !== "online"
+            ? [target]
+            : null;
         }
         const eligibleEvents = events.filter(
-          (event) => event.queuedBy === accountEmail && event.status !== "complete",
+          (event) =>
+            event.queuedBy === accountEmail &&
+            event.status !== "complete" &&
+            event.syncMode !== "online",
         );
         if (groupType) {
           return eligibleEvents
@@ -671,6 +700,7 @@
         try {
           await updateOfflineStatus();
           let events = await hydrateOfflinePersonNames(await getOfflineEvents());
+          events = events.filter((event) => event.syncMode !== "online");
           const selectedBatch = getOfflineSyncBatch(events, targetEventId, groupType, currentUser.email);
           if ((targetEventId || groupType) && !selectedBatch) return null;
           const progressEvents = targetEventId
@@ -865,7 +895,8 @@
         const syncButton = document.getElementById("syncOfflineEventsButton");
         if (!container || !syncButton) return;
         try {
-          const events = await hydrateOfflinePersonNames(await getOfflineEvents());
+          const events = (await hydrateOfflinePersonNames(await getOfflineEvents()))
+            .filter((event) => event.syncMode !== "online");
           container.replaceChildren();
           const eventGroups = new Map();
           events.forEach((event) => {
