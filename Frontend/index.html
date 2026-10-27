@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=63" />
+    <link rel="stylesheet" href="./css/styles.css?v=64" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -181,12 +181,6 @@
         <div class="dashboard-heading">
           <h2 data-i18n="dashboardTitle">🏠 لوحة التحكم</h2>
           <div class="dashboard-heading-actions">
-            <button type="button" class="tutorial-reopen-button" onclick="replayFirstRunTutorial()"
-              data-i18n-title="tutorialReopen" data-i18n-aria-label="tutorialReopen"
-              title="Show tutorial" aria-label="Show tutorial">
-              <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
-              <span data-i18n="tutorialReopen">الشرح</span>
-            </button>
             <div class="dashboard-layout-switcher" role="group" data-i18n-aria-label="dashboardLayoutSwitcher"
               aria-label="Dashboard layout">
             <button type="button" data-dashboard-layout="grouped" data-i18n-title="dashboardLayoutGrouped"
@@ -486,13 +480,6 @@
         </div>
       </dialog>
 
-      <div id="tutorialScrim" class="tutorial-scrim" aria-hidden="true" hidden>
-        <span class="tutorial-scrim-panel tutorial-scrim-top"></span>
-        <span class="tutorial-scrim-panel tutorial-scrim-left"></span>
-        <span class="tutorial-scrim-panel tutorial-scrim-right"></span>
-        <span class="tutorial-scrim-panel tutorial-scrim-bottom"></span>
-        <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
-      </div>
       <section id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription" role="dialog" aria-modal="false" hidden>
         <div class="tutorial-header">
           <div>
@@ -504,7 +491,7 @@
           <span id="tutorialProgressBar"></span>
         </div>
         <p id="tutorialDescription" class="tutorial-description"></p>
-        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Press the highlighted action to continue.</p>
+        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Use the app normally; tutorial actions are not saved.</p>
         <div class="tutorial-actions">
           <button type="button" class="btn secondary tutorial-skip" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
             Skip tutorial
@@ -1015,13 +1002,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=63"></script>
-    <script src="./js/app-i18n.js?v=63"></script>
-    <script src="./js/app-core.js?v=63"></script>
-    <script src="./js/app-offline.js?v=63"></script>
-    <script src="./js/app-views.js?v=63"></script>
-    <script src="./js/app-auth.js?v=63"></script>
-    <script src="./js/app-scanner-search.js?v=63"></script>
-    <script src="./js/app-cards-admin.js?v=63"></script>
+    <script src="./js/app-state.js?v=64"></script>
+    <script src="./js/app-i18n.js?v=64"></script>
+    <script src="./js/app-core.js?v=64"></script>
+    <script src="./js/app-offline.js?v=64"></script>
+    <script src="./js/app-views.js?v=64"></script>
+    <script src="./js/app-auth.js?v=64"></script>
+    <script src="./js/app-scanner-search.js?v=64"></script>
+    <script src="./js/app-cards-admin.js?v=64"></script>
   </body>
 </html>

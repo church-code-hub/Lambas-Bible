@@ -96,7 +96,6 @@
       }
 
       function onScanSuccess(text) {
-        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) return;
         if (isProcessingScan) return;
         isProcessingScan = true;
         const eventContext = {
@@ -123,7 +122,7 @@
             title: "attendanceScanProcessing",
             name: event.personName || "",
           };
-        renderResult(result, fromNameSearch);
+        if (fromNameSearch) renderResult(result, true);
         const toast = showToast(
           offline
             ? translations[currentLang].offlineScanQueued
@@ -137,6 +136,20 @@
               : "success",
         );
         return toast;
+      }
+
+      function showAttendanceResult(result, fromNameSearch) {
+        if (fromNameSearch) {
+          renderResult(result, true);
+          return;
+        }
+        const message = [
+          result?.name,
+          result?.title ? translateText(result.title) : "",
+          result?.message ? translateText(result.message) : "",
+        ].filter(Boolean).join(" · ");
+        showToast(message || translations[currentLang].offlineSyncFailed,
+          result?.success === false || result?.kind === "error" ? "error" : "info");
       }
 
       function updateAttendanceToast(toast, result, event, fallbackMessage, type) {
@@ -374,9 +387,8 @@
       }
 
       async function processAttendanceId(rawId, fromNameSearch = false, personName = "", eventContext = {}) {
-        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) return;
         if (!currentUser || (navigator.onLine && !googleIdToken)) {
-          renderResult({
+          showAttendanceResult({
             kind: "error",
             title: "Sign-in required",
             message: "offlineNeedsLogin",
@@ -389,6 +401,35 @@
           timestamp: eventContext.timestamp || new Date().toISOString(),
           personName,
         };
+        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) {
+          let cachedPerson = null;
+          try {
+            const roster = await getCachedRoster();
+            cachedPerson = roster.find((person) =>
+              String(person.id).trim() === id || String(person.qrId || "").trim() === id,
+            ) || null;
+            if (cachedPerson && !event.personName) event.personName = cachedPerson.name;
+          } catch (error) {
+            console.warn("Could not read the saved attendee name for the tutorial demo.", error);
+          }
+          const simulatedContext = currentAttendanceContext
+            ? {
+              ...currentAttendanceContext,
+              settings: { ...currentAttendanceContext.settings },
+              attendance: currentAttendanceContext.attendance.map((person) => ({ ...person })),
+            }
+            : null;
+          const result = simulatedContext
+            ? predictAttendanceResult(id, event, cachedPerson, simulatedContext)
+            : null;
+          showToast([
+            event.personName || result?.name || "",
+            result?.title ? translateText(result.title) : "",
+            result?.message ? translateText(result.message) : "",
+            translateText("tutorialNotSaved"),
+          ].filter(Boolean).join(" · "), "info");
+          return;
+        }
         if (navigator.onLine) {
           let cachedPerson = null;
           try {
@@ -428,7 +469,7 @@
               type,
             );
             if (currentAttendanceEventId === event.eventId) {
-              renderResult(attendanceResult, fromNameSearch);
+              if (fromNameSearch) renderResult(attendanceResult, true);
               refreshAttendanceContext();
             }
           } catch (error) {
@@ -440,11 +481,13 @@
               "Connection error.",
               "error",
             );
-            renderResult({
-              kind: "error",
-              title: "Connection error.",
-              message: "Connection error.",
-            }, fromNameSearch);
+            if (fromNameSearch) {
+              showAttendanceResult({
+                kind: "error",
+                title: "Connection error.",
+                message: "Connection error.",
+              }, true);
+            }
           }
           return;
         }
@@ -459,7 +502,7 @@
           currentAttendanceEventId = queuedEvent.eventId;
           attendanceFeedback(queuedEvent, fromNameSearch, true);
         } catch (error) {
-          renderResult({
+          showAttendanceResult({
             kind: "error",
             title: "Error",
             message: "offlineStorageError",
@@ -470,15 +513,14 @@
       async function processScannedText(text, eventContext = {}) {
         var id = extractId(text);
         if (!id) {
-          renderResult({
-            kind: "error",
-            title: "Invalid Code",
-            message: "Make sure to scan a valid card",
-          });
+          showToast([
+            translateText("Invalid Code"),
+            translateText("Make sure to scan a valid card"),
+          ].join(" · "), "error");
           return;
         }
         if (!currentUser || (navigator.onLine && !googleIdToken)) {
-          renderResult({ kind: "error", title: "Sign-in required", message: "offlineNeedsLogin" });
+          showToast(translateText("offlineNeedsLogin"), "error");
           return;
         }
         await processAttendanceId(id, false, "", eventContext);

@@ -85,6 +85,11 @@
           showToast("Please enter servant name", "error");
           return;
         }
+        if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) {
+          document.getElementById("newStudentName").value = "";
+          showToast(`${name} · ${translateText("tutorialNotSaved")}`, "info");
+          return;
+        }
         submitButton.disabled = true;
         submitButton.setAttribute("aria-busy", "true");
         const showQueuedResult = () => {

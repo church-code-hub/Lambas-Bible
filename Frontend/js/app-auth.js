@@ -256,18 +256,35 @@
         { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
         { title: "tutorialSettingsTitle", description: "tutorialSettingsDescription", target: "appSettingsToolbarButton" },
       ];
+      const FIRST_RUN_TUTORIAL_KEY = "lambas_bible_tutorial_completed";
       var firstRunTutorialStep = 0;
-      var tutorialCompletedEmail = "";
       var tutorialDeferredLoginRefreshEmail = "";
       var tutorialPending = false;
       var tutorialClickHandlerBound = false;
-      var tutorialAllowTargetClick = false;
       var tutorialAdvanceTimer = 0;
       var tutorialPositionFrame = 0;
+      var tutorialHighlightedTarget = null;
 
       function isFirstRunTutorialActive() {
         return tutorialPending ||
           Boolean(document.getElementById("firstRunTutorial")?.classList.contains("is-active"));
+      }
+
+      function hasSeenFirstRunTutorial() {
+        try {
+          return localStorage.getItem(FIRST_RUN_TUTORIAL_KEY) === "true";
+        } catch (error) {
+          console.warn("Could not read first-run tutorial status.", error);
+          return false;
+        }
+      }
+
+      function markFirstRunTutorialSeen() {
+        try {
+          localStorage.setItem(FIRST_RUN_TUTORIAL_KEY, "true");
+        } catch (error) {
+          console.warn("Could not save first-run tutorial completion.", error);
+        }
       }
 
       function bindFirstRunTutorialHandlers() {
@@ -283,7 +300,7 @@
         if (
           !currentUser ||
           new URLSearchParams(window.location.search).has("id") ||
-          tutorialCompletedEmail === String(currentUser.email || "").toLowerCase().trim()
+          hasSeenFirstRunTutorial()
         ) return;
         if (isFirstRunTutorialActive()) return;
         tutorialPending = true;
@@ -294,14 +311,6 @@
           if (currentUser) showFirstRunTutorial();
           else tutorialPending = false;
         }, 350);
-      }
-
-      function replayFirstRunTutorial() {
-        if (!currentUser) return;
-        bindFirstRunTutorialHandlers();
-        pauseDashboardRefreshForTutorial();
-        firstRunTutorialStep = 0;
-        showFirstRunTutorial();
       }
 
       function pauseDashboardRefreshForTutorial() {
@@ -322,15 +331,14 @@
 
       function showFirstRunTutorial() {
         const panel = document.getElementById("firstRunTutorial");
-        const scrim = document.getElementById("tutorialScrim");
-        if (!panel || !scrim) {
+        if (!panel) {
           tutorialPending = false;
           return;
         }
         tutorialPending = false;
+        markFirstRunTutorialSeen();
         panel.hidden = false;
         panel.classList.add("is-active");
-        scrim.hidden = false;
         renderFirstRunTutorialStep();
       }
 
@@ -347,6 +355,9 @@
             .replace("{total}", String(firstRunTutorialSteps.length));
         document.getElementById("tutorialProgressBar").style.width =
           `${((firstRunTutorialStep + 1) / firstRunTutorialSteps.length) * 100}%`;
+        tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
+        tutorialHighlightedTarget = document.getElementById(step.target);
+        tutorialHighlightedTarget?.classList.add("tutorial-target-highlight");
         positionFirstRunTutorial();
         const target = document.getElementById(step.target);
         window.setTimeout(() => target?.focus({ preventScroll: true }), 0);
@@ -358,19 +369,9 @@
         tutorialPositionFrame = window.requestAnimationFrame(() => {
           tutorialPositionFrame = 0;
           const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
-          const spotlight = document.getElementById("tutorialSpotlight");
           const panel = document.getElementById("firstRunTutorial");
-          if (!target || !spotlight) return;
+          if (!target) return;
           const rect = target.getBoundingClientRect();
-          const padding = 8;
-          const left = Math.max(6, rect.left - padding);
-          const top = Math.max(6, rect.top - padding);
-          const right = Math.min(window.innerWidth - 6, rect.right + padding);
-          const bottom = Math.min(window.innerHeight - 6, rect.bottom + padding);
-          spotlight.style.left = `${left}px`;
-          spotlight.style.top = `${top}px`;
-          spotlight.style.width = `${right - left}px`;
-          spotlight.style.height = `${bottom - top}px`;
           if (panel) {
             const panelHeight = panel.getBoundingClientRect().height;
             const gap = 16;
@@ -384,53 +385,22 @@
               panel.style.bottom = `${Math.max(8, window.innerHeight - rect.top + gap)}px`;
             }
           }
-          const panels = {
-            top: [0, 0, window.innerWidth, top],
-            left: [0, top, left, bottom - top],
-            right: [right, top, window.innerWidth - right, bottom - top],
-            bottom: [0, bottom, window.innerWidth, window.innerHeight - bottom],
-          };
-          Object.entries(panels).forEach(([name, [panelLeft, panelTop, width, height]]) => {
-            const panel = document.querySelector(`.tutorial-scrim-${name}`);
-            if (!panel) return;
-            panel.style.left = `${panelLeft}px`;
-            panel.style.top = `${panelTop}px`;
-            panel.style.width = `${Math.max(0, width)}px`;
-            panel.style.height = `${Math.max(0, height)}px`;
-          });
         });
       }
 
       function handleFirstRunTutorialClick(event) {
         if (!isFirstRunTutorialActive()) return;
-        if (tutorialAllowTargetClick) {
-          tutorialAllowTargetClick = false;
-          return;
-        }
         const panel = document.getElementById("firstRunTutorial");
-        if (tutorialPending && !panel.classList.contains("is-active")) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
         if (panel.contains(event.target)) return;
-        if (tutorialAdvanceTimer) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
+        if (tutorialAdvanceTimer) return;
         const step = firstRunTutorialSteps[firstRunTutorialStep];
         const target = document.getElementById(step?.target);
         if (!target || (event.target !== target && !target.contains(event.target))) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
           return;
         }
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (tutorialAdvanceTimer) window.clearTimeout(tutorialAdvanceTimer);
         tutorialAdvanceTimer = window.setTimeout(() => {
           tutorialAdvanceTimer = 0;
+          if (!isFirstRunTutorialActive()) return;
           if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
             finishFirstRunTutorial();
             return;
@@ -438,39 +408,13 @@
           firstRunTutorialStep++;
           renderFirstRunTutorialStep();
         }, 250);
-        tutorialAllowTargetClick = true;
-        target.click();
       }
 
       function handleFirstRunTutorialKeydown(event) {
         if (!isFirstRunTutorialActive()) return;
-        const panel = document.getElementById("firstRunTutorial");
-        if (tutorialPending && !panel.classList.contains("is-active")) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
         if (event.key === "Escape") {
           event.preventDefault();
-          event.stopImmediatePropagation();
           finishFirstRunTutorial();
-          return;
-        }
-        const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
-        if (event.key === "Tab") {
-          const skip = panel.querySelector(".tutorial-skip");
-          const focusTargets = [target, skip].filter(Boolean);
-          const currentIndex = focusTargets.indexOf(document.activeElement);
-          const nextIndex = event.shiftKey
-            ? (currentIndex <= 0 ? focusTargets.length - 1 : currentIndex - 1)
-            : (currentIndex + 1) % focusTargets.length;
-          event.preventDefault();
-          focusTargets[nextIndex]?.focus({ preventScroll: true });
-          return;
-        }
-        if (!panel.contains(event.target) && !target?.contains(event.target)) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
         }
       }
 
@@ -480,14 +424,12 @@
 
       function finishFirstRunTutorial() {
         tutorialPending = false;
-        if (currentUser) {
-          tutorialCompletedEmail = String(currentUser.email || "").toLowerCase().trim();
-        }
+        markFirstRunTutorialSeen();
         const panel = document.getElementById("firstRunTutorial");
-        const scrim = document.getElementById("tutorialScrim");
         panel?.classList.remove("is-active");
         if (panel) panel.hidden = true;
-        if (scrim) scrim.hidden = true;
+        tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
+        tutorialHighlightedTarget = null;
         if (tutorialAdvanceTimer) window.clearTimeout(tutorialAdvanceTimer);
         tutorialAdvanceTimer = 0;
         if (

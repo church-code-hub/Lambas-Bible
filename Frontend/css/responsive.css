@@ -1,6 +1,5 @@
 :root {
-  --app-shell-max-width: 580px;
-  --app-shell-padding-x: clamp(12px, 2.5vw, 20px);
+  --app-shell-padding-x: clamp(12px, 5vw, 64px);
   --app-shell-padding-y: clamp(14px, 3vw, 28px);
   --dashboard-gap: clamp(10px, 1.8vw, 16px);
   --tile-min-size: clamp(140px, 30vw, 210px);
@@ -16,18 +15,24 @@ body {
 
 body {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 78px var(--app-shell-padding-x) var(--app-shell-padding-y);
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 64px 0 0;
   box-sizing: border-box;
 }
 
 .container {
-  width: min(100%, var(--app-shell-max-width));
-  max-width: var(--app-shell-max-width);
-  max-height: calc(100dvh - 120px);
-  min-height: min(100dvh - 120px, 620px);
-  margin: 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .grid {
@@ -44,11 +49,6 @@ body {
 }
 
 @media (max-width: 480px) {
-  .container {
-    width: calc(100% - 8px);
-    max-height: calc(100dvh - 90px);
-  }
-
   .top-app-bar {
     padding: 0 12px;
   }
@@ -59,11 +59,6 @@ body {
 }
 
 @media (max-width: 360px) {
-  .container {
-    width: calc(100% - 4px);
-    padding: 12px;
-  }
-
   .grid {
     grid-template-columns: 1fr;
   }

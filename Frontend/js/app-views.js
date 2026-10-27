@@ -200,11 +200,7 @@
         }
         if (viewId === "scanView") {
           isProcessingScan = false;
-          if (typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive()) {
-            setCameraStatus("tutorialCameraPaused");
-          } else {
-            setTimeout(startLiveScanner, 150);
-          }
+          setTimeout(startLiveScanner, 150);
         }
       }
 

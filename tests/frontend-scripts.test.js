@@ -90,9 +90,9 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   }
   assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=63/);
-  assert.match(serviceWorker, /lambas-bible-shell-v63/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=63/);
+  assert.match(html, /css\/styles\.css\?v=64/);
+  assert.match(serviceWorker, /lambas-bible-shell-v64/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=64/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('grouped'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('grid'\)"/);
@@ -100,7 +100,8 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   assert.match(dashboard, /class="dashboard-heading"[\s\S]*?data-i18n="dashboardTitle"[\s\S]*?class="dashboard-layout-switcher"/);
   assert.match(styles, /\.dashboard-layout-grid \.dashboard-tools/);
   assert.match(styles, /\.dashboard-layout-list \.dashboard-primary-grid/);
-  assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*1040px/);
+  assert.match(styles, /\.container\s*\{[^}]*width:\s*100%[^}]*background:\s*transparent/);
+  assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*none/);
 });
 
 test("people management styles search and uses edit plus confirmed archival actions", () => {
@@ -642,10 +643,11 @@ test("silent Google restore keeps the saved profile visible when account selecti
   assert.equal(browserContext.isSilentSessionRestore, false);
 });
 
-test("guided tutorial spotlights real views without making requests or writing app data", () => {
+test("first-run tutorial stays interactive, runs local demos, and appears only once", () => {
   const auth = fs.readFileSync(path.join(frontendRoot, "js", "app-auth.js"), "utf8");
   const tutorial = auth.match(/const firstRunTutorialSteps =[\s\S]*?\n      function logoutUser/)?.[0] || "";
   const interactions = auth.match(/function showFirstRunTutorial\(\)[\s\S]*?\n      function finishFirstRunTutorial/)?.[0] || "";
+  const clickHandler = auth.match(/function handleFirstRunTutorialClick\([\s\S]*?\n      function handleFirstRunTutorialKeydown/)?.[0] || "";
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
@@ -655,27 +657,35 @@ test("guided tutorial spotlights real views without making requests or writing a
   assert.match(tutorial, /target: "tutorialSearchAction"/);
   assert.match(tutorial, /target: "tutorialAddAction"/);
   assert.match(tutorial, /target: "appSettingsToolbarButton"/);
+  assert.match(tutorial, /FIRST_RUN_TUTORIAL_KEY/);
+  assert.match(tutorial, /localStorage\.getItem\(FIRST_RUN_TUTORIAL_KEY\) === "true"/);
+  assert.match(tutorial, /localStorage\.setItem\(FIRST_RUN_TUTORIAL_KEY, "true"\)/);
   assert.match(tutorial, /handleFirstRunTutorialClick/);
-  assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|localStorage\.setItem|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
+  assert.doesNotMatch(tutorial, /function replayFirstRunTutorial/);
+  assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
+  assert.doesNotMatch(clickHandler, /event\.preventDefault\(\)|event\.stopImmediatePropagation\(\)|target\.click\(\)/);
   assert.match(tutorial, /if \(isFirstRunTutorialActive\(\)\) \{\s*tutorialDeferredLoginRefreshEmail[\s\S]*?return;/);
   assert.match(tutorial, /refreshRosterCache\(\);\s*refreshAttendanceContext\(\);/);
   assert.match(views, /if \(typeof isFirstRunTutorialActive !== "function" \|\| !isFirstRunTutorialActive\(\)\) \{[\s\S]*?refreshCurrentAttendeesWindow\(\)/);
-  assert.match(views, /tutorialCameraPaused/);
-  assert.match(scanner, /function onScanSuccess\(text\) \{\s*if \(typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive\(\)\) return/);
-  assert.match(scanner, /async function processAttendanceId\([\s\S]*?if \(typeof isFirstRunTutorialActive === "function" && isFirstRunTutorialActive\(\)\) return/);
+  assert.doesNotMatch(views, /tutorialCameraPaused/);
+  assert.doesNotMatch(scanner, /function onScanSuccess\(text\) \{\s*if \(typeof isFirstRunTutorialActive/);
+  assert.match(scanner, /const simulatedContext = currentAttendanceContext/);
+  assert.match(scanner, /translateText\("tutorialNotSaved"\)/);
+  assert.match(scanner, /function showAttendanceResult\(result, fromNameSearch\)[\s\S]*?if \(fromNameSearch\) \{\s*renderResult\(result, true\)/);
+  assert.match(scanner, /async function processScannedText[\s\S]*?showToast\([\s\S]*?"error"\)/);
+  const addStudent = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
+  assert.match(addStudent, /isFirstRunTutorialActive\(\)[\s\S]*?tutorialNotSaved/);
   assert.match(core, /tutorialDialog\?\.classList\.contains\("is-active"\)/);
   assert.match(html, /id="firstRunTutorial"/);
-  assert.match(html, /id="tutorialScrim"/);
+  assert.doesNotMatch(html, /tutorialScrim|tutorialSpotlight/);
   assert.match(html, /id="tutorialScanAction"/);
   assert.match(html, /id="tutorialSearchAction"/);
   assert.match(html, /id="tutorialAddAction"/);
   assert.match(html, /class="btn secondary tutorial-skip"/);
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
-  assert.match(styles, /\.tutorial-scrim-panel/);
-  assert.match(styles, /\.tutorial-spotlight/);
+  assert.match(styles, /\.tutorial-target-highlight/);
   assert.match(styles, /@media \(max-width: 480px\) \{[\s\S]*?\.tutorial-dialog/);
   assert.match(auth, /function skipFirstRunTutorial\(\)/);
-  assert.match(auth, /function replayFirstRunTutorial\(\)/);
 });
 
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {

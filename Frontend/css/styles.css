@@ -31,9 +31,9 @@
         --blob-violet: rgba(144, 86, 255, 0.36);
         --panel-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(119, 90, 255, 0.035) 42%, rgba(25, 200, 170, 0.055));
         --icon-foreground: #f5bd55;
-        --icon-glass-fill: rgba(255, 255, 255, 0.12);
-        --icon-glass-edge: rgba(255, 255, 255, 0.34);
-        --icon-glass-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3), 0 6px 18px rgba(0, 0, 0, 0.2);
+        --icon-glass-fill: rgba(255, 255, 255, 0.18);
+        --icon-glass-edge: rgba(255, 255, 255, 0.46);
+        --icon-glass-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.42), inset 0 -1px 2px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(0, 0, 0, 0.24);
         --select-option-bg: #1c2a36;
         --shadow: 0 26px 56px -18px rgba(0, 0, 0, 0.42);
       }
@@ -98,9 +98,9 @@
         --blob-violet: rgba(148, 105, 245, 0.27);
         --panel-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.46), rgba(152, 130, 255, 0.09) 45%, rgba(76, 198, 171, 0.12));
         --icon-foreground: #a96516;
-        --icon-glass-fill: rgba(255, 255, 255, 0.38);
-        --icon-glass-edge: rgba(255, 255, 255, 0.82);
-        --icon-glass-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 6px 18px rgba(37, 61, 76, 0.14);
+        --icon-glass-fill: rgba(255, 255, 255, 0.46);
+        --icon-glass-edge: rgba(255, 255, 255, 0.92);
+        --icon-glass-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(255, 255, 255, 0.28), 0 8px 22px rgba(37, 61, 76, 0.18);
         --select-option-bg: #ffffff;
         --shadow: 0 24px 52px -20px rgba(37, 61, 76, 0.24);
       }
@@ -302,12 +302,11 @@
         color: var(--text-main);
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        align-items: center;
+        justify-content: flex-start;
+        align-items: stretch;
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
-        padding-top: 70px;
-        padding-bottom: 20px;
+        padding: 64px 0 0;
         position: relative;
       }
 
@@ -1800,42 +1799,40 @@
         }
       }
 
-      /* True Frosted Glass Containers */
+      /* Full-screen app surface */
       .container {
-        max-width: 500px;
-        width: 92%;
-        max-height: 85vh;
+        flex: 1 1 auto;
+        min-height: 0;
+        max-width: none;
+        width: 100%;
+        height: 100%;
+        max-height: none;
         overflow-y: auto;
-        background: var(--panel-gradient), var(--card-bg);
-        backdrop-filter: blur(38px) saturate(155%);
-        -webkit-backdrop-filter: blur(38px) saturate(155%);
-        padding: 24px;
-        border-radius: 28px;
-        box-shadow: var(--shadow);
-        border: 1.5px solid var(--card-border);
-        margin: auto 0;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        padding: clamp(20px, 3vw, 36px) clamp(16px, 5vw, 64px);
+        border-radius: 0;
+        box-shadow: none;
+        border: 0;
+        margin: 0;
         position: relative;
         z-index: 1;
-        animation: viewEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        animation: none;
       }
 
       .container.is-dashboard-view {
-        width: min(100%, 1040px);
-        max-width: 1040px;
-        max-height: calc(100dvh - 100px);
+        width: 100%;
+        max-width: none;
+        max-height: none;
         min-height: 0;
-        backdrop-filter: blur(18px) saturate(130%);
-        -webkit-backdrop-filter: blur(18px) saturate(130%);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         animation: none;
       }
 
       .container::before {
-        content: "";
-        position: absolute;
-        inset: 0 12% auto;
-        height: 1px;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent, var(--glass-edge), transparent);
+        display: none;
       }
 
       .container.is-loading > :not(#loader) {
@@ -1844,12 +1841,6 @@
 
       .container.is-loading {
         overflow: hidden;
-      }
-
-      @supports (height: 100dvh) {
-        .container {
-          max-height: min(85vh, calc(100dvh - 100px));
-        }
       }
 
       @keyframes viewEnter {
@@ -2043,30 +2034,23 @@
         visibility: hidden;
       }
 
-      .tutorial-scrim {
-        position: fixed;
-        inset: 0;
-        z-index: 9996;
-        pointer-events: none;
-      }
-
-      .tutorial-scrim[hidden],
       .tutorial-dialog[hidden] {
         display: none;
       }
 
-      .tutorial-scrim-panel {
-        position: fixed;
-        display: block;
-        background: rgba(0, 0, 0, 0.78);
+      .tutorial-target-highlight {
+        position: relative;
+        z-index: 10001;
+        outline: 2px solid var(--accent-gold);
+        outline-offset: 4px;
+        box-shadow: 0 0 20px rgba(245, 189, 85, 0.58), 0 0 38px rgba(245, 189, 85, 0.26);
+        animation: tutorialTargetPulse 1.8s ease-in-out infinite;
       }
 
-      .tutorial-spotlight {
-        position: absolute;
-        border: 2px solid var(--accent-gold);
-        border-radius: 18px;
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8), 0 0 28px rgba(245, 189, 85, 0.66);
-        transition: all 180ms ease;
+      @keyframes tutorialTargetPulse {
+        50% {
+          box-shadow: 0 0 28px rgba(245, 189, 85, 0.72), 0 0 48px rgba(245, 189, 85, 0.34);
+        }
       }
 
       .tutorial-dialog {
@@ -3052,7 +3036,7 @@
           white-space: nowrap;
           border: 0;
         }
-        .container { width: calc(100% - 20px); padding: 18px; border-radius: 22px; }
+        .container { width: 100%; padding: 18px 14px; border-radius: 0; }
         .grid { gap: 10px; }
         .tile { min-height: 108px; }
         .dashboard-primary-grid .tile { min-height: 108px; }
