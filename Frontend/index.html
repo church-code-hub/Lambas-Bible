@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=70" />
+  <link rel="stylesheet" href="./css/styles.css?v=71" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -96,6 +96,20 @@
             </div>
             <button
               type="button"
+              id="homeBtn"
+              class="toolbar-menu-item"
+              style="display: none"
+              onclick="handleHomeNavigation()"
+              title="الرئيسية"
+              data-i18n-title="home"
+              aria-label="الرئيسية"
+              data-i18n-aria-label="home"
+            >
+              <i class="fa-solid fa-house" aria-hidden="true"></i>
+              <span data-i18n="home">الرئيسية</span>
+            </button>
+            <button
+              type="button"
               class="toolbar-menu-item"
               id="syncNowToolbarButton"
               data-online-only
@@ -145,15 +159,6 @@
       </div>
     </header>
 
-    <button
-      id="homeBtn"
-      class="home-btn"
-      style="display: none"
-      onclick="handleHomeNavigation()"
-    >
-      <i class="fa-solid fa-house"></i> <span data-i18n="home">الرئيسية</span>
-    </button>
-
     <div class="container" id="mainContainer">
       <div id="loader" class="loader-overlay" role="status" aria-live="polite">
         <div class="tech-loader">
@@ -166,21 +171,19 @@
       </div>
 
       <!-- 0. Login View -->
-      <div id="loginView">
-        <h2 data-i18n="loginTitle">🔐 تسجيل الدخول للنظام</h2>
-        <p
-          style="
-            text-align: center;
-            color: var(--text-sub);
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 18px;
-          "
-          data-i18n="loginSub"
-        >
-          يرجى تسجيل الدخول بحساب Google المصرح له للبدء
+      <div id="loginView" class="login-view">
+        <div class="login-mark" aria-hidden="true">
+          <img src="Assets/icons/icon-192.png" alt="" />
+        </div>
+        <p class="login-eyebrow" data-i18n="loginEyebrow">خدمة مدارس الأحد</p>
+        <h2 data-i18n="loginTitle">تسجيل الدخول</h2>
+        <p class="login-description" data-i18n="loginDescription">
+          منصة واحدة لتسجيل الحضور، والبحث عن المخدومين، ومتابعة التقارير والافتقاد بسهولة.
         </p>
-        <div style="display: flex; justify-content: center; margin-top: 10px">
+        <p class="login-instruction" data-i18n="loginSub">
+          سجّل الدخول بحساب Google المصرح له للمتابعة
+        </p>
+        <div class="login-signin">
           <div id="g_id_signin"></div>
         </div>
         <div
@@ -489,7 +492,7 @@
           <span id="tutorialProgressBar"></span>
         </div>
         <p id="tutorialDescription" class="tutorial-description"></p>
-        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Choose the highlighted action. Demo results are not saved and the tour continues automatically.</p>
+  <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Choose the highlighted action. Demo results are not saved and the tour continues automatically.</p>
         <div class="tutorial-actions">
           <button id="tutorialNextButton" type="button" class="btn tutorial-next" onclick="nextFirstRunTutorialStep()">
             <span id="tutorialNextLabel" data-i18n="tutorialNext">Next</span>
@@ -1010,13 +1013,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=69"></script>
-    <script src="./js/app-i18n.js?v=69"></script>
-    <script src="./js/app-core.js?v=69"></script>
-    <script src="./js/app-offline.js?v=69"></script>
-    <script src="./js/app-views.js?v=69"></script>
-    <script src="./js/app-auth.js?v=69"></script>
-    <script src="./js/app-scanner-search.js?v=69"></script>
-    <script src="./js/app-cards-admin.js?v=69"></script>
+  <script src="./js/app-state.js?v=69"></script>
+  <script src="./js/app-i18n.js?v=71"></script>
+  <script src="./js/app-core.js?v=69"></script>
+  <script src="./js/app-offline.js?v=69"></script>
+  <script src="./js/app-views.js?v=69"></script>
+  <script src="./js/app-auth.js?v=71"></script>
+  <script src="./js/app-scanner-search.js?v=69"></script>
+  <script src="./js/app-cards-admin.js?v=69"></script>
   </body>
 </html>

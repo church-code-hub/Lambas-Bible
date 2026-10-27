@@ -250,13 +250,10 @@
       }
 
       const firstRunTutorialSteps = [
-        { title: "tutorialScanTitle", description: "tutorialScanDescription", target: "tutorialScanAction" },
-        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
-        { title: "tutorialNameTitle", description: "tutorialNameDescription", target: "tutorialSearchAction" },
-        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
-        { title: "tutorialAddTitle", description: "tutorialAddDescription", target: "tutorialAddAction" },
-        { title: "tutorialHomeTitle", description: "tutorialHomeDescription", target: "homeBtn" },
-        { title: "tutorialSettingsTitle", description: "tutorialSettingsDescription", target: "appSettingsToolbarButton" },
+        { title: "tutorialScanTitle", description: "tutorialScanDescription", target: "tutorialScanAction", action: "scan" },
+        { title: "tutorialNameTitle", description: "tutorialNameDescription", target: "tutorialSearchAction", action: "search" },
+        { title: "tutorialAddTitle", description: "tutorialAddDescription", target: "tutorialAddAction", action: "add" },
+        { title: "tutorialSettingsTitle", description: "tutorialSettingsDescription", target: "appSettingsToolbarButton", action: "settings" },
       ];
       const FIRST_RUN_TUTORIAL_KEY = "lambas_bible_tutorial_completed";
       var firstRunTutorialStep = 0;
@@ -324,6 +321,7 @@
         pauseDashboardRefreshForTutorial();
         bindFirstRunTutorialHandlers();
         firstRunTutorialStep = 0;
+        tutorialDemoActions = new Set();
         window.setTimeout(() => {
           if (currentUser) showFirstRunTutorial();
           else tutorialPending = false;
@@ -543,6 +541,8 @@
       }
       function showLoader(text) {
         currentLoaderText = text || translations[currentLang].loadingData;
+        const loader = document.getElementById("loader");
+        if (loader.parentElement !== document.body) document.body.appendChild(loader);
         document.getElementById("loaderText").innerText = translateText(
           currentLoaderText,
         );

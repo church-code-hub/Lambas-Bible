@@ -52,6 +52,22 @@ test("splash and toolbar use the requested loading and inner-icon treatments", (
   assert.match(styles, /\.loader-overlay::before/);
 });
 
+test("login landing is described and centered with home navigation in the toolbar", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
+  const toolbar = html.match(/<header class="top-app-bar">[\s\S]*?<\/header>/)?.[0] || "";
+
+  assert.match(html, /id="loginView" class="login-view"[\s\S]*?data-i18n="loginDescription"/);
+  assert.match(translations, /loginDescription:/);
+  assert.match(toolbar, /id="homeBtn"/);
+  assert.equal((html.match(/id="homeBtn"/g) || []).length, 1);
+  assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*\{[^}]*justify-content:\s*center/);
+  assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*>\s*\[id\$="View"\]\s*\{[^}]*margin-block:\s*auto/);
+  assert.match(styles, /\.home-btn\s*\{[^}]*position:\s*static/);
+  assert.match(styles, /--app-bar-bg:\s*linear-gradient/);
+});
+
 test("dashboard view does not use horizontal view-entry animation", () => {
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
   assert.match(
@@ -96,9 +112,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=70/);
-  assert.match(serviceWorker, /lambas-bible-shell-v70/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=70/);
+  assert.match(html, /css\/styles\.css\?v=71/);
+  assert.match(serviceWorker, /lambas-bible-shell-v71/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=71/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -159,12 +175,12 @@ test("request loaders cover the view and prevent navigation until requests settl
   const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
 
-  assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*absolute/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*fixed/);
   assert.match(styles, /\.loader-overlay\s*\{[^}]*inset:\s*0/);
-  assert.match(styles, /\.loader-overlay\s*\{[^}]*background-color:\s*var\(--loader-backdrop\)[^}]*background-image:/);
-  assert.doesNotMatch(styles.match(/\.loader-overlay\s*\{[^}]*\}/)?.[0] || "", /var\(--bg-gradient\)/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*background-color:\s*var\(--loader-backdrop\)/);
   assert.match(styles, /--loader-backdrop:\s*rgba\(16,\s*25,\s*38,\s*0\.46\)/);
   assert.match(styles, /\.container\s*\{[^}]*scroll-behavior:\s*smooth[^}]*-webkit-overflow-scrolling:\s*touch/);
+  assert.doesNotMatch(styles, /\.container\.is-loading\s*>\s*:not\(#loader\)\s*\{[^}]*visibility:\s*hidden/);
   assert.match(styles, /\.container\.is-loading\s*\{[^}]*overflow:\s*hidden/);
   assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
   assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
@@ -719,6 +735,7 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(styles, /\.tutorial-dialog\s*\{[^}]*position:\s*fixed[^}]*top:\s*max/);
   assert.doesNotMatch(styles.match(/\.tutorial-dialog\s*\{[^}]*\}/)?.[0] || "", /bottom:\s*[^;]*target/);
   assert.match(styles, /@media \(max-width: 480px\) \{[\s\S]*?\.tutorial-dialog/);
+  assert.match(auth, /loader\.parentElement !== document\.body\) document\.body\.appendChild\(loader\)/);
 });
 
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {
