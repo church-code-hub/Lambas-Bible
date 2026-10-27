@@ -22,7 +22,7 @@
         --chip-border: rgba(255, 255, 255, 0.2);
         --glass-surface: rgba(255, 255, 255, 0.075);
         --glass-edge: rgba(255, 255, 255, 0.34);
-        --loader-backdrop: rgba(16, 25, 38, 0.78);
+        --loader-backdrop: rgba(16, 25, 38, 0.46);
         --glass-blur: 32px;
         --loader-gradient: linear-gradient(135deg, rgba(36, 151, 255, 0.18), rgba(172, 75, 255, 0.16) 48%, rgba(49, 216, 153, 0.14));
         --blob-pink: rgba(244, 73, 167, 0.55);
@@ -89,7 +89,7 @@
         --chip-border: rgba(50, 71, 88, 0.15);
         --glass-surface: rgba(255, 255, 255, 0.22);
         --glass-edge: rgba(255, 255, 255, 0.78);
-        --loader-backdrop: rgba(232, 240, 244, 0.78);
+        --loader-backdrop: rgba(232, 240, 244, 0.46);
         --glass-blur: 32px;
         --loader-gradient: linear-gradient(135deg, rgba(70, 164, 255, 0.2), rgba(184, 103, 239, 0.14) 48%, rgba(62, 190, 138, 0.16));
         --blob-pink: rgba(246, 103, 162, 0.38);
@@ -882,10 +882,9 @@
         height: auto;
         margin: 0;
         background-color: var(--loader-backdrop);
-        background:
+        background-image:
           var(--loader-gradient),
-          linear-gradient(var(--glass-surface), var(--glass-surface)),
-          var(--bg-gradient);
+          linear-gradient(var(--glass-surface), var(--glass-surface));
         background-size: 100% 100%;
         backdrop-filter: blur(28px) saturate(145%);
         -webkit-backdrop-filter: blur(28px) saturate(145%);
@@ -2041,6 +2040,9 @@
         height: 100%;
         max-height: none;
         overflow-y: auto;
+        overflow-x: hidden;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
         background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
@@ -2062,6 +2064,33 @@
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
         animation: none;
+      }
+
+      #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) {
+        width: min(920px, 100%);
+        min-height: calc(100dvh - 136px);
+        flex-direction: column;
+        justify-content: center;
+        margin-inline: auto;
+        padding-block: clamp(24px, 5vh, 52px);
+      }
+
+      #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) > h2 {
+        margin-bottom: clamp(20px, 3vh, 28px);
+        padding-bottom: 16px;
+        border-bottom: 1px solid color-mix(in srgb, var(--glass-edge) 55%, transparent);
+        font-size: clamp(22px, 3vw, 29px);
+        line-height: 1.3;
+      }
+
+      #mainContainer > #scanView,
+      #mainContainer > #cardPreviewView {
+        align-items: center;
+      }
+
+      #scanView > *,
+      #cardPreviewView > * {
+        width: min(100%, 680px);
       }
 
       .container::before {
@@ -3299,6 +3328,10 @@
           border: 0;
         }
         .container { width: 100%; padding: 18px 14px; border-radius: 0; }
+        #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) {
+          min-height: calc(100dvh - 96px);
+          padding-block: 22px;
+        }
         .grid { gap: 10px; }
         .tile { min-height: 108px; }
       }

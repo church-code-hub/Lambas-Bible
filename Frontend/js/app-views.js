@@ -161,7 +161,7 @@
           const el = document.getElementById(id);
           if (el) {
             el.style.display = id === viewId
-              ? id === "dashboardView" ? "flex" : "block"
+              ? id === "loginView" ? "block" : "flex"
               : "none";
           }
         });

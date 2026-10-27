@@ -60,6 +60,16 @@ test("dashboard view does not use horizontal view-entry animation", () => {
   );
 });
 
+test("subviews use a centered responsive column with viewport-aware spacing", () => {
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+
+  assert.match(views, /id === "loginView" \? "block" : "flex"/);
+  assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*width:\s*min\(920px,\s*100%\)[^}]*min-height:\s*calc\(100dvh - 136px\)[^}]*justify-content:\s*center[^}]*margin-inline:\s*auto/);
+  assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\) > h2\s*\{[^}]*font-size:\s*clamp\(22px,\s*3vw,\s*29px\)/);
+  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*min-height:\s*calc\(100dvh - 96px\)/);
+});
+
 test("dashboard shows all actions in one selectable, full-page grid", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
@@ -86,9 +96,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=68/);
-  assert.match(serviceWorker, /lambas-bible-shell-v68/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=68/);
+  assert.match(html, /css\/styles\.css\?v=70/);
+  assert.match(serviceWorker, /lambas-bible-shell-v70/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=70/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -151,6 +161,10 @@ test("request loaders cover the view and prevent navigation until requests settl
 
   assert.match(styles, /\.loader-overlay\s*\{[^}]*position:\s*absolute/);
   assert.match(styles, /\.loader-overlay\s*\{[^}]*inset:\s*0/);
+  assert.match(styles, /\.loader-overlay\s*\{[^}]*background-color:\s*var\(--loader-backdrop\)[^}]*background-image:/);
+  assert.doesNotMatch(styles.match(/\.loader-overlay\s*\{[^}]*\}/)?.[0] || "", /var\(--bg-gradient\)/);
+  assert.match(styles, /--loader-backdrop:\s*rgba\(16,\s*25,\s*38,\s*0\.46\)/);
+  assert.match(styles, /\.container\s*\{[^}]*scroll-behavior:\s*smooth[^}]*-webkit-overflow-scrolling:\s*touch/);
   assert.match(styles, /\.container\.is-loading\s*\{[^}]*overflow:\s*hidden/);
   assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
   assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
