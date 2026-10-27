@@ -364,6 +364,10 @@
       function renderFirstRunTutorialStep() {
         const step = firstRunTutorialSteps[firstRunTutorialStep];
         if (!step) return;
+        ["tutorialScanDemoButton", "tutorialSearchDemoButton", "tutorialAddDemoButton"].forEach((id) => {
+          const button = document.getElementById(id);
+          if (button) button.hidden = true;
+        });
         if (step.target === "appSettingsToolbarButton") {
           const menu = document.getElementById("toolbarMenu");
           const toggle = document.getElementById("toolbarMenuButton");
@@ -395,6 +399,17 @@
         window.setTimeout(() => target?.focus({ preventScroll: true }), 0);
       }
 
+      function setFirstRunTutorialActionTarget(targetId) {
+        const target = document.getElementById(targetId);
+        if (!target || !isFirstRunTutorialActive()) return;
+        tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
+        tutorialHighlightedTarget = target;
+        target.hidden = false;
+        target.classList.add("tutorial-target-highlight");
+        updateFirstRunTutorialFocus();
+        window.setTimeout(() => target.focus({ preventScroll: true }), 0);
+      }
+
       function handleFirstRunTutorialClick(event) {
         if (!isFirstRunTutorialActive()) return;
         const panel = document.getElementById("firstRunTutorial");
@@ -402,9 +417,27 @@
           panel.contains(event.target) &&
           event.target.closest?.("#tutorialNextButton")
         ) return;
-        const step = firstRunTutorialSteps[firstRunTutorialStep];
-        const target = document.getElementById(step?.target);
-        if (target && (event.target === target || target.contains(event.target))) return;
+        const target = tutorialHighlightedTarget ||
+          document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
+        if (target && (event.target === target || target.contains(event.target))) {
+          const nextActionTarget = {
+            tutorialScanAction: ["scanView", "tutorialScanDemoButton"],
+            tutorialSearchAction: ["searchView", "tutorialSearchDemoButton"],
+            tutorialAddAction: ["addView", "tutorialAddDemoButton"],
+          }[target.id];
+          if (nextActionTarget) {
+            window.setTimeout(() => {
+              if (currentActiveViewId === nextActionTarget[0]) {
+                setFirstRunTutorialActionTarget(nextActionTarget[1]);
+              }
+            }, 0);
+          } else if (target.id === "homeBtn") {
+            window.setTimeout(nextFirstRunTutorialStep, 0);
+          } else if (target.id === "appSettingsToolbarButton") {
+            window.setTimeout(finishFirstRunTutorial, 0);
+          }
+          return;
+        }
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -413,7 +446,8 @@
         if (!isFirstRunTutorialActive()) return;
         const panel = document.getElementById("firstRunTutorial");
         const nextButton = document.getElementById("tutorialNextButton");
-        const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
+        const target = tutorialHighlightedTarget ||
+          document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
         if (event.key === "Tab") {
           const focusTargets = [target, nextButton].filter((element) =>
             element && !element.hidden && element.getClientRects().length > 0,

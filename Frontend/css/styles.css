@@ -876,22 +876,23 @@
       /* Tech Loader Animation */
       .loader-overlay {
         display: none;
-        position: absolute;
+        position: fixed;
         inset: 0;
-        width: auto;
-        height: auto;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
         margin: 0;
-        background-color: var(--loader-backdrop);
+        background-color: rgba(14, 20, 32, 0.66);
         background-image:
           var(--loader-gradient),
-          linear-gradient(var(--glass-surface), var(--glass-surface));
+          linear-gradient(rgba(18, 24, 36, 0.54), rgba(18, 24, 36, 0.54));
         background-size: 100% 100%;
-        backdrop-filter: blur(28px) saturate(145%);
-        -webkit-backdrop-filter: blur(28px) saturate(145%);
-        z-index: 20;
-        border-radius: inherit;
-        border: 1px solid var(--glass-edge);
-        box-shadow: inset 0 1px rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(12px) saturate(125%);
+        -webkit-backdrop-filter: blur(12px) saturate(125%);
+        z-index: 10020;
+        border-radius: 0;
+        border: 0;
+        box-shadow: none;
         flex-direction: column;
         justify-content: center;
         align-items: center;

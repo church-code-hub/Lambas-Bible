@@ -197,6 +197,15 @@
         }
       }
 
+      function runTutorialAddDemo() {
+        if (typeof isFirstRunTutorialActive !== "function" || !isFirstRunTutorialActive()) return;
+        showToast([
+          translateText("tutorialSampleName"),
+          translateText("tutorialNotSaved"),
+        ].join(" · "), "info");
+        nextFirstRunTutorialStep();
+      }
+
       async function retryServantCard(id, button, status) {
         button.disabled = true;
         showLoader("Generating the servant card...");

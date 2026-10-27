@@ -489,7 +489,7 @@
           <span id="tutorialProgressBar"></span>
         </div>
         <p id="tutorialDescription" class="tutorial-description"></p>
-        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Use the highlighted action, then continue with Next.</p>
+        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Choose the highlighted action. Demo results are not saved and the tour continues automatically.</p>
         <div class="tutorial-actions">
           <button id="tutorialNextButton" type="button" class="btn tutorial-next" onclick="nextFirstRunTutorialStep()">
             <span id="tutorialNextLabel" data-i18n="tutorialNext">Next</span>
@@ -541,6 +541,9 @@
           <i class="fa-solid fa-rotate"></i>
           <span data-i18n="restartCamera">إعادة تشغيل الكاميرا</span>
         </button>
+        <button id="tutorialScanDemoButton" class="btn" type="button" data-i18n="tutorialScanDemoButton" onclick="runTutorialScanDemo()" hidden>
+          تجربة مسح تجريبي
+        </button>
       </div>
 
       <!-- 3. Search View -->
@@ -564,6 +567,9 @@
           data-i18n="searchBtn"
         >
           بحث
+        </button>
+        <button id="tutorialSearchDemoButton" class="btn secondary" type="button" data-i18n="tutorialTryNameButton" onclick="runTutorialSearchDemo()" hidden>
+          تجربة البحث والتسجيل
         </button>
         <div
           id="searchResults"
@@ -690,6 +696,9 @@
           data-i18n="saveGenerateBtn"
         >
           حفظ وتوليد الكارت 🎨
+        </button>
+        <button id="tutorialAddDemoButton" class="btn secondary" type="button" data-i18n="tutorialTryAddButton" onclick="runTutorialAddDemo()" hidden>
+          عرض رسالة تجريبية
         </button>
         <div id="addResult" style="margin-top: 12px; text-align: center"></div>
       </div>

@@ -109,6 +109,15 @@
       }
       function onScanError(err) {}
 
+      function runTutorialScanDemo() {
+        if (typeof isFirstRunTutorialActive !== "function" || !isFirstRunTutorialActive()) return;
+        showToast([
+          translateText("tutorialSampleName"),
+          translateText("tutorialNotSaved"),
+        ].join(" · "), "info");
+        nextFirstRunTutorialStep();
+      }
+
       function attendanceFeedback(event, fromNameSearch, offline = false, response = null) {
         const result = offline
           ? {
@@ -428,6 +437,9 @@
             result?.message ? translateText(result.message) : "",
             translateText("tutorialNotSaved"),
           ].filter(Boolean).join(" · "), "info");
+          if (tutorialHighlightedTarget?.id === "tutorialScanDemoButton") {
+            nextFirstRunTutorialStep();
+          }
           return;
         }
         if (navigator.onLine) {
@@ -650,6 +662,15 @@
             addSearchAgainButton(resDiv, document.getElementById("searchNameInput"));
           }
         }
+      }
+
+      function runTutorialSearchDemo() {
+        if (typeof isFirstRunTutorialActive !== "function" || !isFirstRunTutorialActive()) return;
+        showToast([
+          translateText("tutorialSampleName"),
+          translateText("tutorialNotSaved"),
+        ].join(" · "), "info");
+        nextFirstRunTutorialStep();
       }
 
       function renderCardShareResults(res, resDiv) {
