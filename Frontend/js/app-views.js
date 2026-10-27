@@ -42,10 +42,6 @@
       }
 
       function handleHomeNavigation() {
-        if (userActionRequestCount > 0 || isSyncingOfflineQueue) {
-          showToast(translations[currentLang].requestInProgress, "info");
-          return;
-        }
         const viewId = currentActiveViewId;
         if (
           (viewId === "adminSettingsView" || viewId === "scheduleSettingsView") &&
@@ -1390,11 +1386,6 @@
       }
 
       window.addEventListener("popstate", function (e) {
-        if (userActionRequestCount > 0 || isSyncingOfflineQueue) {
-          history.pushState({ view: currentActiveViewId }, "", "");
-          showToast(translations[currentLang].requestInProgress, "info");
-          return;
-        }
         if (e.state && e.state.view) showView(e.state.view, false);
         else showView(currentUser ? "dashboardView" : "loginView", false);
       });

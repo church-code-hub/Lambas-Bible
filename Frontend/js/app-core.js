@@ -1,3 +1,5 @@
+      var keepaliveRequestBytes = 0;
+
       function runAppearanceTransition(update) {
         if (
           window.matchMedia &&
@@ -230,6 +232,12 @@
           idToken: googleIdToken,
           requestId: "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
         };
+        const serializedBody = JSON.stringify(requestBody);
+        const requestSize = new Blob([serializedBody]).size;
+        const keepaliveLimit = 60 * 1024;
+        const useKeepalive = requestSize <= keepaliveLimit &&
+          keepaliveRequestBytes + requestSize <= keepaliveLimit;
+        if (useKeepalive) keepaliveRequestBytes += requestSize;
         const controller = new AbortController();
         const timeoutMs = ["add_student", "generate_student_card", "sync_offline_events"].includes(action) ? 180000 : 30000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -259,7 +267,8 @@
             method: "POST",
             redirect: "follow",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(requestBody),
+            body: serializedBody,
+            keepalive: useKeepalive,
             signal: controller.signal,
           });
           if (!response.ok) throw new Error("HTTP " + response.status);
@@ -287,6 +296,7 @@
           return result;
         } finally {
           clearTimeout(timeoutId);
+          if (useKeepalive) keepaliveRequestBytes = Math.max(0, keepaliveRequestBytes - requestSize);
           activeApiRequestCount = Math.max(0, activeApiRequestCount - 1);
           if (finishUserAction) finishUserAction();
         }

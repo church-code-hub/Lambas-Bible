@@ -58,14 +58,29 @@ test("login landing is described and centered with home navigation in the toolba
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
   const toolbar = html.match(/<header class="top-app-bar">[\s\S]*?<\/header>/)?.[0] || "";
 
-  assert.match(html, /id="loginView" class="login-view"[\s\S]*?data-i18n="loginDescription"/);
-  assert.match(translations, /loginDescription:/);
+  assert.match(html, /id="loginView" class="login-view"[\s\S]*?class="login-title">Lambas Bible<\/h1>[\s\S]*?data-i18n="loginSub"/);
+  assert.match(translations, /loginSub: "يلزم تسجيل الدخول للمتابعة"/);
   assert.match(toolbar, /id="homeBtn"/);
+  assert.ok(toolbar.indexOf('id="homeBtn"') < toolbar.indexOf('class="toolbar-menu-wrap"'));
+  assert.doesNotMatch(toolbar, /<nav id="toolbarMenu"[\s\S]*?id="homeBtn"/);
   assert.equal((html.match(/id="homeBtn"/g) || []).length, 1);
   assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*\{[^}]*justify-content:\s*center/);
   assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*>\s*\[id\$="View"\]\s*\{[^}]*margin-block:\s*auto/);
   assert.match(styles, /\.home-btn\s*\{[^}]*position:\s*static/);
+  assert.match(styles, /\.container\s*\{[^}]*height:\s*calc\(100vh - var\(--app-bar-height\)\)/);
   assert.match(styles, /--app-bar-bg:\s*linear-gradient/);
+});
+
+test("dashboard layout choices are ordered and aligned with the language direction", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const dashboard = html.match(/<div id="dashboardView"[\s\S]*?<div id="appSettingsView"/)?.[0] || "";
+  const choices = Array.from(dashboard.matchAll(/data-dashboard-layout="(one|two|three)"/g), (match) => match[1]);
+
+  assert.deepEqual(choices, ["one", "two", "three"]);
+  assert.match(dashboard, /data-dashboard-layout="two"[^>]*aria-pressed="true"/);
+  assert.match(styles, /\.dashboard-heading-actions\s*\{[^}]*justify-content:\s*flex-start/);
+  assert.match(styles, /\.dashboard-layout-switcher\s*\{[^}]*direction:\s*ltr/);
 });
 
 test("dashboard view does not use horizontal view-entry animation", () => {
@@ -112,9 +127,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=71/);
-  assert.match(serviceWorker, /lambas-bible-shell-v71/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=71/);
+  assert.match(html, /css\/styles\.css\?v=73/);
+  assert.match(serviceWorker, /lambas-bible-shell-v73/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=73/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -169,7 +184,7 @@ test("roster management, attendance trends, and follow-up have dedicated views",
   }
 });
 
-test("request loaders cover the view and prevent navigation until requests settle", () => {
+test("request loaders cover the view and allow home navigation while requests settle", () => {
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
@@ -182,8 +197,8 @@ test("request loaders cover the view and prevent navigation until requests settl
   assert.match(styles, /\.container\s*\{[^}]*scroll-behavior:\s*smooth[^}]*-webkit-overflow-scrolling:\s*touch/);
   assert.doesNotMatch(styles, /\.container\.is-loading\s*>\s*:not\(#loader\)\s*\{[^}]*visibility:\s*hidden/);
   assert.match(styles, /\.container\.is-loading\s*\{[^}]*overflow:\s*hidden/);
-  assert.match(views, /function handleHomeNavigation\(\)\s*\{[^}]*userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
-  assert.match(views, /window\.addEventListener\("popstate"[\s\S]*?userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.doesNotMatch(views, /function handleHomeNavigation\(\)\s*\{[^}]*userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
+  assert.doesNotMatch(views, /window\.addEventListener\("popstate"[\s\S]*?userActionRequestCount > 0 \|\| isSyncingOfflineQueue/);
   assert.doesNotMatch(views, /function showView\([^)]*\)\s*\{\s*if\s*\(/);
   assert.match(core, /activeApiRequestCount\+\+/);
   assert.match(core, /activeApiRequestCount = Math\.max\(0, activeApiRequestCount - 1\)/);
@@ -206,6 +221,7 @@ test("only user-started attendance actions block navigation", async () => {
     AbortController,
     setTimeout,
     clearTimeout,
+    Blob,
     fetch: () => new Promise((resolve) => pendingResponses.push(resolve)),
   });
   for (const script of ["app-state.js", "app-core.js"]) {
@@ -229,6 +245,36 @@ test("only user-started attendance actions block navigation", async () => {
   assert.equal(browserContext.userActionRequestCount, 0);
 });
 
+test("small API requests use keepalive while oversized payloads do not", async () => {
+  const requestOptions = [];
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: {},
+    sessionStorage: { getItem: () => "" },
+    localStorage: { getItem: () => null, removeItem() {} },
+    AbortController,
+    Blob,
+    setTimeout,
+    clearTimeout,
+    fetch: async (_url, options) => {
+      requestOptions.push(options);
+      return { ok: true, json: async () => ({ success: true }) };
+    },
+  });
+  for (const script of ["app-state.js", "app-core.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+
+  await browserContext.apiCall("check_auth", { note: "small request" });
+  await browserContext.apiCall("check_auth", { note: "x".repeat(61 * 1024) });
+  assert.equal(requestOptions[0].keepalive, true);
+  assert.equal(requestOptions[1].keepalive, false);
+});
+
 test("read API calls return cached data before revalidating and notify the view", async () => {
   const cached = { success: true, roster: [{ id: "old" }] };
   const fresh = { success: true, roster: [{ id: "new" }] };
@@ -241,6 +287,7 @@ test("read API calls return cached data before revalidating and notify the view"
     sessionStorage: { getItem: () => "", removeItem() {} },
     localStorage: { getItem: () => null, removeItem() {} },
     AbortController,
+    Blob,
     setTimeout,
     clearTimeout,
     getCachedApiResponse: async () => cached,
@@ -356,9 +403,13 @@ test("home navigation confirms unsaved settings and supports continue or discard
   browserContext.currentActiveViewId = "addView";
   browserContext.activeApiRequestCount = 0;
   browserContext.userActionRequestCount = 1;
-  browserContext.showToast = () => {};
   browserContext.handleHomeNavigation();
-  assert.equal(navigation.length, 3);
+  assert.deepEqual(navigation, [
+    "discard:scheduleSettingsView",
+    "dashboardView",
+    "dashboardView",
+    "dashboardView",
+  ]);
 });
 
 test("current attendees provide a compact table, search, and emergency actions", () => {
@@ -689,11 +740,15 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(tutorial, /target: "tutorialSearchAction"/);
   assert.match(tutorial, /target: "tutorialAddAction"/);
   assert.match(tutorial, /target: "appSettingsToolbarButton"/);
+  assert.match(tutorial, /var tutorialDemoActions = new Set\(\)/);
+  assert.match(tutorial, /function replayFirstRunTutorial\(\)[\s\S]*?firstRunTutorialStep = 0;[\s\S]*?tutorialDemoActions = new Set\(\);[\s\S]*?showFirstRunTutorial\(\)/);
   assert.match(tutorial, /FIRST_RUN_TUTORIAL_KEY/);
   assert.match(tutorial, /localStorage\.getItem\(FIRST_RUN_TUTORIAL_KEY\) === "true"/);
   assert.match(tutorial, /localStorage\.setItem\(FIRST_RUN_TUTORIAL_KEY, "true"\)/);
   assert.match(tutorial, /handleFirstRunTutorialClick/);
-  assert.doesNotMatch(tutorial, /function replayFirstRunTutorial/);
+  assert.match(tutorial, /function replayFirstRunTutorial\(\)/);
+  assert.match(html, /id="tutorialReplayButton"[^>]*onclick="replayFirstRunTutorial\(\)"/);
+  assert.match(html, /data-i18n="tutorialReplay"/);
   assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
   assert.match(clickHandler, /event\.preventDefault\(\);\s*event\.stopImmediatePropagation\(\)/);
   assert.match(clickHandler, /event\.target\.closest\?\.\("#tutorialNextButton"\)/);

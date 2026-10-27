@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-  <link rel="stylesheet" href="./css/styles.css?v=71" />
+  <link rel="stylesheet" href="./css/styles.css?v=73" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -66,6 +66,19 @@
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
+        <button
+          type="button"
+          id="homeBtn"
+          class="icon-btn home-btn"
+          style="display: none"
+          onclick="handleHomeNavigation()"
+          title="الرئيسية"
+          data-i18n-title="home"
+          aria-label="الرئيسية"
+          data-i18n-aria-label="home"
+        >
+          <i class="fa-solid fa-house" aria-hidden="true"></i>
+        </button>
         <div class="toolbar-menu-wrap">
           <button
             type="button"
@@ -94,20 +107,6 @@
               <span class="toolbar-menu-account-label" data-i18n="signedInAs">Signed in as</span>
               <span id="uEmail" class="user-email">email@example.com</span>
             </div>
-            <button
-              type="button"
-              id="homeBtn"
-              class="toolbar-menu-item"
-              style="display: none"
-              onclick="handleHomeNavigation()"
-              title="الرئيسية"
-              data-i18n-title="home"
-              aria-label="الرئيسية"
-              data-i18n-aria-label="home"
-            >
-              <i class="fa-solid fa-house" aria-hidden="true"></i>
-              <span data-i18n="home">الرئيسية</span>
-            </button>
             <button
               type="button"
               class="toolbar-menu-item"
@@ -175,13 +174,9 @@
         <div class="login-mark" aria-hidden="true">
           <img src="Assets/icons/icon-192.png" alt="" />
         </div>
-        <p class="login-eyebrow" data-i18n="loginEyebrow">خدمة مدارس الأحد</p>
-        <h2 data-i18n="loginTitle">تسجيل الدخول</h2>
-        <p class="login-description" data-i18n="loginDescription">
-          منصة واحدة لتسجيل الحضور، والبحث عن المخدومين، ومتابعة التقارير والافتقاد بسهولة.
-        </p>
+        <h1 class="login-title">Lambas Bible</h1>
         <p class="login-instruction" data-i18n="loginSub">
-          سجّل الدخول بحساب Google المصرح له للمتابعة
+          يلزم تسجيل الدخول للمتابعة
         </p>
         <div class="login-signin">
           <div id="g_id_signin"></div>
@@ -210,6 +205,10 @@
           <div class="dashboard-heading-actions">
             <div class="dashboard-layout-switcher" role="group" data-i18n-aria-label="dashboardLayoutSwitcher"
               aria-label="Dashboard layout">
+              <button type="button" data-dashboard-layout="one" data-i18n-title="dashboardLayoutOne"
+                data-i18n-aria-label="dashboardLayoutOne" aria-pressed="false" onclick="setDashboardLayout('one')">
+                <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i><span>1</span>
+              </button>
               <button type="button" data-dashboard-layout="two" data-i18n-title="dashboardLayoutTwo"
                 data-i18n-aria-label="dashboardLayoutTwo" aria-pressed="true" onclick="setDashboardLayout('two')">
                 <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>2</span>
@@ -217,10 +216,6 @@
               <button type="button" data-dashboard-layout="three" data-i18n-title="dashboardLayoutThree"
                 data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
                 <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
-              </button>
-              <button type="button" data-dashboard-layout="one" data-i18n-title="dashboardLayoutOne"
-                data-i18n-aria-label="dashboardLayoutOne" aria-pressed="false" onclick="setDashboardLayout('one')">
-                <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i><span>1</span>
               </button>
             </div>
           </div>
@@ -296,6 +291,13 @@
               <i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span>
             </button>
           </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="tutorialPreferenceTitle">
+          <h3 id="tutorialPreferenceTitle" data-i18n="tutorialReopen">الشرح</h3>
+          <button id="tutorialReplayButton" class="btn secondary" type="button" onclick="replayFirstRunTutorial()">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            <span data-i18n="tutorialReplay">إعادة الجولة التعليمية</span>
+          </button>
         </section>
         <section class="app-preference-group" aria-labelledby="offlineReadinessTitle">
           <h3 id="offlineReadinessTitle" data-i18n="offlineReadinessTitle">Offline readiness</h3>
@@ -1013,13 +1015,13 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=69"></script>
-  <script src="./js/app-i18n.js?v=71"></script>
-  <script src="./js/app-core.js?v=69"></script>
-  <script src="./js/app-offline.js?v=69"></script>
-  <script src="./js/app-views.js?v=69"></script>
-  <script src="./js/app-auth.js?v=71"></script>
-  <script src="./js/app-scanner-search.js?v=69"></script>
-  <script src="./js/app-cards-admin.js?v=69"></script>
+  <script src="./js/app-state.js?v=73"></script>
+  <script src="./js/app-i18n.js?v=73"></script>
+  <script src="./js/app-core.js?v=73"></script>
+  <script src="./js/app-offline.js?v=73"></script>
+  <script src="./js/app-views.js?v=73"></script>
+  <script src="./js/app-auth.js?v=73"></script>
+  <script src="./js/app-scanner-search.js?v=73"></script>
+  <script src="./js/app-cards-admin.js?v=73"></script>
   </body>
 </html>

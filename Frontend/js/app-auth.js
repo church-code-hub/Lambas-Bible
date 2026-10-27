@@ -261,6 +261,7 @@
       var tutorialPending = false;
       var tutorialClickHandlerBound = false;
       var tutorialHighlightedTarget = null;
+      var tutorialDemoActions = new Set();
 
       function isFirstRunTutorialActive() {
         return tutorialPending ||
@@ -326,6 +327,17 @@
           if (currentUser) showFirstRunTutorial();
           else tutorialPending = false;
         }, 350);
+      }
+
+      function replayFirstRunTutorial() {
+        if (!currentUser) return;
+        bindFirstRunTutorialHandlers();
+        pauseDashboardRefreshForTutorial();
+        firstRunTutorialStep = 0;
+        tutorialDemoActions = new Set();
+        tutorialPending = true;
+        showView("dashboardView", false);
+        showFirstRunTutorial();
       }
 
       function pauseDashboardRefreshForTutorial() {
