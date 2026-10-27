@@ -392,17 +392,22 @@
       async function updateOfflineStatus() {
         const toolbarButton = document.getElementById("syncNowToolbarButton");
         const toolbarCount = document.getElementById("syncNowCount");
+        const menuBadge = document.getElementById("syncMenuBadge");
         updateOnlineOnlyControls();
         try {
           const count = await getOfflineEventCount();
           if (toolbarButton) {
-            toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView" || count === 0;
+            toolbarButton.hidden = !currentUser || currentActiveViewId === "loginView";
             toolbarButton.disabled = isSyncingOfflineQueue;
             toolbarButton.setAttribute("aria-busy", String(isSyncingOfflineQueue));
           }
           if (toolbarCount) {
             toolbarCount.hidden = count === 0;
             toolbarCount.textContent = count > 99 ? "99+" : String(count);
+          }
+          if (menuBadge) {
+            menuBadge.hidden = count === 0;
+            menuBadge.textContent = count > 99 ? "99+" : String(count);
           }
           const rosterStatus = document.getElementById("offlineRosterStatus");
           if (rosterStatus) {
@@ -422,6 +427,7 @@
         } catch (error) {
           if (toolbarButton) toolbarButton.hidden = true;
           if (toolbarCount) toolbarCount.hidden = true;
+          if (menuBadge) menuBadge.hidden = true;
           console.error("Could not read local offline readiness data.", error);
           const rosterStatus = document.getElementById("offlineRosterStatus");
           if (rosterStatus) rosterStatus.textContent = translations[currentLang].offlineRosterStatusFailed;

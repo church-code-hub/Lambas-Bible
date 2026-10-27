@@ -60,7 +60,7 @@ test("dashboard view does not use horizontal view-entry animation", () => {
   );
 });
 
-test("dashboard keeps check-in actions prominent and groups secondary tools", () => {
+test("dashboard shows all actions in one selectable, full-page grid", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
@@ -69,14 +69,11 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   const dashboardEnd = html.indexOf('<div id="appSettingsView"', dashboardStart);
   const dashboard = html.slice(dashboardStart, dashboardEnd);
 
-  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?data-i18n="scanQr"/);
-  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?data-i18n="searchName"/);
-  assert.match(dashboard, /class="grid dashboard-primary-grid"[\s\S]*?showView\('addView'\)/);
-  assert.equal((dashboard.match(/<details class="dashboard-tool-group">/g) || []).length, 3);
-  for (const key of ["peopleTools", "attendanceTools", "managementTools"]) {
-    assert.match(dashboard, new RegExp(`data-i18n="${key}"`));
-    assert.equal((translations.match(new RegExp(`${key}:`, "g")) || []).length, 2);
-  }
+  assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?data-i18n="scanQr"/);
+  assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?data-i18n="searchName"/);
+  assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?showView\('addView'\)/);
+  assert.equal((dashboard.match(/class="tile(?: primary)?"/g) || []).length, 10);
+  assert.doesNotMatch(dashboard, /<details|<summary/);
   for (const action of [
     "showView('addView')",
     "showView('cardShareView')",
@@ -88,18 +85,22 @@ test("dashboard keeps check-in actions prominent and groups secondary tools", ()
   ]) {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
-  assert.match(styles, /\.dashboard-tool-group\s*>\s*summary/);
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=64/);
-  assert.match(serviceWorker, /lambas-bible-shell-v64/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=64/);
+  assert.match(html, /css\/styles\.css\?v=68/);
+  assert.match(serviceWorker, /lambas-bible-shell-v68/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=68/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
-  assert.match(dashboard, /onclick="setDashboardLayout\('grouped'\)"/);
-  assert.match(dashboard, /onclick="setDashboardLayout\('grid'\)"/);
-  assert.match(dashboard, /onclick="setDashboardLayout\('list'\)"/);
-  assert.match(dashboard, /class="dashboard-heading"[\s\S]*?data-i18n="dashboardTitle"[\s\S]*?class="dashboard-layout-switcher"/);
-  assert.match(styles, /\.dashboard-layout-grid \.dashboard-tools/);
-  assert.match(styles, /\.dashboard-layout-list \.dashboard-primary-grid/);
+  assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
+  assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
+  assert.match(dashboard, /onclick="setDashboardLayout\('three'\)"/);
+  assert.match(dashboard, /id="dashboardWelcomeName"/);
+  assert.match(html, /class="toolbar-menu-toggle"[\s\S]*?id="toolbarMenu"[\s\S]*?id="syncNowToolbarButton"[\s\S]*?id="appSettingsToolbarButton"/);
+  assert.match(html, /class="toolbar-menu-icon-wrap"[\s\S]*?id="syncNowCount"/);
+  assert.match(html, /id="syncMenuBadge"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(styles, /#dashboardView\[data-layout="one"\] \.dashboard-actions-grid/);
+  assert.match(styles, /#dashboardView\[data-layout="two"\] \.dashboard-actions-grid|--dashboard-columns:\s*2/);
+  assert.match(styles, /#dashboardView\[data-layout="three"\] \.dashboard-actions-grid/);
   assert.match(styles, /\.container\s*\{[^}]*width:\s*100%[^}]*background:\s*transparent/);
   assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*none/);
 });
@@ -344,7 +345,8 @@ test("current attendees provide a compact table, search, and emergency actions",
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?min-width:\s*0/);
   assert.match(views, /currentAttendeesAdminTime[\s\S]*?currentAttendeesActions/);
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
-  assert.match(styles, /\.current-attendees-header\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
+  const responsiveStyles = styles.slice(styles.lastIndexOf("@media (max-width: 480px) {"));
+  assert.match(responsiveStyles, /\.current-attendees-header\s*\{[^}]*grid-template-columns:[^;]*1\.2fr/);
   assert.doesNotMatch(styles, /\.current-attendees-header\s*\{\s*display:\s*none/);
   assert.match(styles, /\.current-attendees-table\s*\{[^}]*overflow:\s*hidden/);
   assert.match(styles, /\.attendance-action-dialog::backdrop/);
@@ -643,7 +645,7 @@ test("silent Google restore keeps the saved profile visible when account selecti
   assert.equal(browserContext.isSilentSessionRestore, false);
 });
 
-test("first-run tutorial stays interactive, runs local demos, and appears only once", () => {
+test("first-run tutorial pins its guide, locks unrelated actions, and advances explicitly", () => {
   const auth = fs.readFileSync(path.join(frontendRoot, "js", "app-auth.js"), "utf8");
   const tutorial = auth.match(/const firstRunTutorialSteps =[\s\S]*?\n      function logoutUser/)?.[0] || "";
   const interactions = auth.match(/function showFirstRunTutorial\(\)[\s\S]*?\n      function finishFirstRunTutorial/)?.[0] || "";
@@ -663,7 +665,12 @@ test("first-run tutorial stays interactive, runs local demos, and appears only o
   assert.match(tutorial, /handleFirstRunTutorialClick/);
   assert.doesNotMatch(tutorial, /function replayFirstRunTutorial/);
   assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
-  assert.doesNotMatch(clickHandler, /event\.preventDefault\(\)|event\.stopImmediatePropagation\(\)|target\.click\(\)/);
+  assert.match(clickHandler, /event\.preventDefault\(\);\s*event\.stopImmediatePropagation\(\)/);
+  assert.match(clickHandler, /event\.target\.closest\?\.\("#tutorialNextButton"\)/);
+  assert.match(clickHandler, /target\.contains\(event\.target\)/);
+  assert.match(tutorial, /function nextFirstRunTutorialStep\(\)/);
+  assert.match(tutorial, /firstRunTutorialStep\+\+;\s*renderFirstRunTutorialStep\(\)/);
+  assert.doesNotMatch(tutorial, /positionFirstRunTutorial/);
   assert.match(tutorial, /if \(isFirstRunTutorialActive\(\)\) \{\s*tutorialDeferredLoginRefreshEmail[\s\S]*?return;/);
   assert.match(tutorial, /refreshRosterCache\(\);\s*refreshAttendanceContext\(\);/);
   assert.match(views, /if \(typeof isFirstRunTutorialActive !== "function" \|\| !isFirstRunTutorialActive\(\)\) \{[\s\S]*?refreshCurrentAttendeesWindow\(\)/);
@@ -678,14 +685,26 @@ test("first-run tutorial stays interactive, runs local demos, and appears only o
   assert.match(core, /tutorialDialog\?\.classList\.contains\("is-active"\)/);
   assert.match(html, /id="firstRunTutorial"/);
   assert.doesNotMatch(html, /tutorialScrim|tutorialSpotlight/);
+  assert.match(html, /id="tutorialFocusWash"[^>]*class="tutorial-focus-wash"/);
   assert.match(html, /id="tutorialScanAction"/);
   assert.match(html, /id="tutorialSearchAction"/);
   assert.match(html, /id="tutorialAddAction"/);
-  assert.match(html, /class="btn secondary tutorial-skip"/);
+  assert.match(html, /id="tutorialNextButton"[^>]*onclick="nextFirstRunTutorialStep\(\)"/);
+  assert.match(html, /id="tutorialNextLabel"[^>]*data-i18n="tutorialNext"/);
+  assert.doesNotMatch(html, /tutorial-skip|onclick="skipFirstRunTutorial/);
+  assert.match(html, /id="firstRunTutorial"[^>]*aria-modal="true"/);
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
-  assert.match(styles, /\.tutorial-target-highlight/);
+  assert.match(styles, /body\.tutorial-active :is\(button, input, select, textarea, a, \[tabindex\]\):not\(\.tutorial-target-highlight\):not\(#tutorialNextButton\)/);
+  assert.match(html, /tutorial-focus-shade-top[\s\S]*?tutorial-focus-shade-left[\s\S]*?tutorial-focus-shade-right[\s\S]*?tutorial-focus-shade-bottom/);
+  assert.match(styles, /\.tutorial-focus-wash[\s\S]*?inset:\s*0[\s\S]*?pointer-events:\s*none/);
+  assert.match(styles, /\.tutorial-focus-shade\s*\{[^}]*background:\s*rgba\(5,\s*10,\s*20,\s*0\.52\)/);
+  assert.match(auth, /function updateFirstRunTutorialFocus\(\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?--tutorial-cutout-top/);
+  assert.match(auth, /window\.addEventListener\("scroll", updateFirstRunTutorialFocus, true\)/);
+  assert.match(styles, /\.tutorial-target-highlight\s*\{[^}]*outline:\s*2px solid/);
+  assert.doesNotMatch(styles.match(/\.tutorial-target-highlight\s*\{[^}]*\}/)?.[0] || "", /background:\s*color-mix/);
+  assert.match(styles, /\.tutorial-dialog\s*\{[^}]*position:\s*fixed[^}]*top:\s*max/);
+  assert.doesNotMatch(styles.match(/\.tutorial-dialog\s*\{[^}]*\}/)?.[0] || "", /bottom:\s*[^;]*target/);
   assert.match(styles, /@media \(max-width: 480px\) \{[\s\S]*?\.tutorial-dialog/);
-  assert.match(auth, /function skipFirstRunTutorial\(\)/);
 });
 
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {

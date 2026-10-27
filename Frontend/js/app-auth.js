@@ -1,7 +1,7 @@
       window.addEventListener("DOMContentLoaded", async function () {
         setLanguage(currentLang);
         applyTheme(currentThemeMode);
-        setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "grouped");
+        setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "two");
         let savedUser = null;
         try {
           savedUser = JSON.parse(localStorage.getItem("app_user") || "null");
@@ -231,6 +231,8 @@
         if (!currentUser) return;
         document.getElementById("uName").innerText = currentUser.name;
         document.getElementById("uEmail").innerText = currentUser.email;
+        const welcomeName = document.getElementById("dashboardWelcomeName");
+        if (welcomeName) welcomeName.textContent = currentUser.name;
         const avatar = document.getElementById("uAvatar");
         const fallback = document.getElementById("uAvatarFallback");
         const showAvatarFallback = () => {
@@ -261,8 +263,6 @@
       var tutorialDeferredLoginRefreshEmail = "";
       var tutorialPending = false;
       var tutorialClickHandlerBound = false;
-      var tutorialAdvanceTimer = 0;
-      var tutorialPositionFrame = 0;
       var tutorialHighlightedTarget = null;
 
       function isFirstRunTutorialActive() {
@@ -292,8 +292,25 @@
         tutorialClickHandlerBound = true;
         document.addEventListener("click", handleFirstRunTutorialClick, true);
         document.addEventListener("keydown", handleFirstRunTutorialKeydown, true);
-        window.addEventListener("resize", positionFirstRunTutorial);
-        window.addEventListener("scroll", positionFirstRunTutorial, true);
+        window.addEventListener("resize", updateFirstRunTutorialFocus);
+        window.addEventListener("scroll", updateFirstRunTutorialFocus, true);
+      }
+
+      function updateFirstRunTutorialFocus() {
+        if (!isFirstRunTutorialActive() || !tutorialHighlightedTarget) return;
+        const focusWash = document.getElementById("tutorialFocusWash");
+        if (!focusWash || focusWash.hidden) return;
+        const bounds = tutorialHighlightedTarget.getBoundingClientRect();
+        const padding = 7;
+        const top = Math.max(0, bounds.top - padding);
+        const left = Math.max(0, bounds.left - padding);
+        const right = Math.min(window.innerWidth, bounds.right + padding);
+        const bottom = Math.min(window.innerHeight, bounds.bottom + padding);
+        focusWash.style.setProperty("--tutorial-cutout-top", `${top}px`);
+        focusWash.style.setProperty("--tutorial-cutout-left", `${left}px`);
+        focusWash.style.setProperty("--tutorial-cutout-right", `${right}px`);
+        focusWash.style.setProperty("--tutorial-cutout-bottom", `${bottom}px`);
+        focusWash.style.setProperty("--tutorial-cutout-height", `${Math.max(0, bottom - top)}px`);
       }
 
       function startFirstRunTutorial() {
@@ -338,13 +355,20 @@
         tutorialPending = false;
         markFirstRunTutorialSeen();
         panel.hidden = false;
+        document.getElementById("tutorialFocusWash").hidden = false;
         panel.classList.add("is-active");
+        document.body.classList.add("tutorial-active");
         renderFirstRunTutorialStep();
       }
 
       function renderFirstRunTutorialStep() {
         const step = firstRunTutorialSteps[firstRunTutorialStep];
         if (!step) return;
+        if (step.target === "appSettingsToolbarButton") {
+          const menu = document.getElementById("toolbarMenu");
+          const toggle = document.getElementById("toolbarMenuButton");
+          if (menu && toggle && menu.hidden) toggleToolbarMenu();
+        }
         const translationsForLanguage = translations[currentLang];
         document.getElementById("tutorialTitle").textContent = translationsForLanguage[step.title];
         document.getElementById("tutorialDescription").textContent =
@@ -355,71 +379,71 @@
             .replace("{total}", String(firstRunTutorialSteps.length));
         document.getElementById("tutorialProgressBar").style.width =
           `${((firstRunTutorialStep + 1) / firstRunTutorialSteps.length) * 100}%`;
+        const nextLabel = document.getElementById("tutorialNextLabel");
+        if (nextLabel) {
+          const labelKey = firstRunTutorialStep === firstRunTutorialSteps.length - 1
+            ? "tutorialFinish"
+            : "tutorialNext";
+          nextLabel.dataset.i18n = labelKey;
+          nextLabel.textContent = translationsForLanguage[labelKey];
+        }
         tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
         tutorialHighlightedTarget = document.getElementById(step.target);
         tutorialHighlightedTarget?.classList.add("tutorial-target-highlight");
-        positionFirstRunTutorial();
+        updateFirstRunTutorialFocus();
         const target = document.getElementById(step.target);
         window.setTimeout(() => target?.focus({ preventScroll: true }), 0);
-      }
-
-      function positionFirstRunTutorial() {
-        if (!isFirstRunTutorialActive()) return;
-        if (tutorialPositionFrame) window.cancelAnimationFrame(tutorialPositionFrame);
-        tutorialPositionFrame = window.requestAnimationFrame(() => {
-          tutorialPositionFrame = 0;
-          const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
-          const panel = document.getElementById("firstRunTutorial");
-          if (!target) return;
-          const rect = target.getBoundingClientRect();
-          if (panel) {
-            const panelHeight = panel.getBoundingClientRect().height;
-            const gap = 16;
-            const roomBelow = window.innerHeight - rect.bottom;
-            const roomAbove = rect.top;
-            if (roomBelow >= panelHeight + gap || roomBelow >= roomAbove) {
-              panel.style.top = `${Math.min(window.innerHeight - panelHeight - 8, rect.bottom + gap)}px`;
-              panel.style.bottom = "auto";
-            } else {
-              panel.style.top = "auto";
-              panel.style.bottom = `${Math.max(8, window.innerHeight - rect.top + gap)}px`;
-            }
-          }
-        });
       }
 
       function handleFirstRunTutorialClick(event) {
         if (!isFirstRunTutorialActive()) return;
         const panel = document.getElementById("firstRunTutorial");
-        if (panel.contains(event.target)) return;
-        if (tutorialAdvanceTimer) return;
+        if (
+          panel.contains(event.target) &&
+          event.target.closest?.("#tutorialNextButton")
+        ) return;
         const step = firstRunTutorialSteps[firstRunTutorialStep];
         const target = document.getElementById(step?.target);
-        if (!target || (event.target !== target && !target.contains(event.target))) {
-          return;
-        }
-        tutorialAdvanceTimer = window.setTimeout(() => {
-          tutorialAdvanceTimer = 0;
-          if (!isFirstRunTutorialActive()) return;
-          if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
-            finishFirstRunTutorial();
-            return;
-          }
-          firstRunTutorialStep++;
-          renderFirstRunTutorialStep();
-        }, 250);
+        if (target && (event.target === target || target.contains(event.target))) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
       }
 
       function handleFirstRunTutorialKeydown(event) {
         if (!isFirstRunTutorialActive()) return;
-        if (event.key === "Escape") {
+        const panel = document.getElementById("firstRunTutorial");
+        const nextButton = document.getElementById("tutorialNextButton");
+        const target = document.getElementById(firstRunTutorialSteps[firstRunTutorialStep]?.target);
+        if (event.key === "Tab") {
+          const focusTargets = [target, nextButton].filter((element) =>
+            element && !element.hidden && element.getClientRects().length > 0,
+          );
+          const currentIndex = focusTargets.indexOf(document.activeElement);
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? focusTargets.length - 1 : currentIndex - 1)
+            : (currentIndex + 1) % focusTargets.length;
           event.preventDefault();
-          finishFirstRunTutorial();
+          focusTargets[nextIndex]?.focus({ preventScroll: true });
+          return;
+        }
+        if (
+          event.key === "Escape" ||
+          (!panel.contains(event.target) &&
+            (!target || (event.target !== target && !target.contains(event.target))))
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
         }
       }
 
-      function skipFirstRunTutorial() {
-        finishFirstRunTutorial();
+      function nextFirstRunTutorialStep() {
+        if (!isFirstRunTutorialActive()) return;
+        if (firstRunTutorialStep >= firstRunTutorialSteps.length - 1) {
+          finishFirstRunTutorial();
+          return;
+        }
+        firstRunTutorialStep++;
+        renderFirstRunTutorialStep();
       }
 
       function finishFirstRunTutorial() {
@@ -427,11 +451,17 @@
         markFirstRunTutorialSeen();
         const panel = document.getElementById("firstRunTutorial");
         panel?.classList.remove("is-active");
+        document.body.classList.remove("tutorial-active");
         if (panel) panel.hidden = true;
+        const focusWash = document.getElementById("tutorialFocusWash");
+        if (focusWash) focusWash.hidden = true;
+        focusWash?.style.removeProperty("--tutorial-cutout-top");
+        focusWash?.style.removeProperty("--tutorial-cutout-left");
+        focusWash?.style.removeProperty("--tutorial-cutout-right");
+        focusWash?.style.removeProperty("--tutorial-cutout-bottom");
+        focusWash?.style.removeProperty("--tutorial-cutout-height");
         tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
         tutorialHighlightedTarget = null;
-        if (tutorialAdvanceTimer) window.clearTimeout(tutorialAdvanceTimer);
-        tutorialAdvanceTimer = 0;
         if (
           currentUser &&
           tutorialDeferredLoginRefreshEmail === String(currentUser.email || "").toLowerCase().trim()

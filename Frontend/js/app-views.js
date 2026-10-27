@@ -12,6 +12,35 @@
         return toast;
       }
 
+      function toggleToolbarMenu() {
+        const toggle = document.getElementById("toolbarMenuButton");
+        const menu = document.getElementById("toolbarMenu");
+        if (!toggle || !menu) return;
+        const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!isExpanded));
+        menu.hidden = isExpanded;
+      }
+
+      function closeToolbarMenu(returnFocus = false) {
+        const toggle = document.getElementById("toolbarMenuButton");
+        const menu = document.getElementById("toolbarMenu");
+        if (!toggle || !menu || menu.hidden) return;
+        toggle.setAttribute("aria-expanded", "false");
+        menu.hidden = true;
+        if (returnFocus) toggle.focus();
+      }
+
+      if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+        document.addEventListener("click", (event) => {
+          const menuWrap = document.querySelector(".toolbar-menu-wrap");
+          if (menuWrap && !menuWrap.contains(event.target)) closeToolbarMenu();
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closeToolbarMenu(true);
+        });
+      }
+
       function handleHomeNavigation() {
         if (userActionRequestCount > 0 || isSyncingOfflineQueue) {
           showToast(translations[currentLang].requestInProgress, "info");
@@ -77,6 +106,7 @@
       function showView(viewId, pushHistory = true) {
         hideLoader();
         const viewChanged = currentActiveViewId !== viewId;
+        closeToolbarMenu();
         document.getElementById("mainContainer")
           .classList.toggle("is-dashboard-view", viewId === "dashboardView");
         if (currentActiveViewId && currentActiveViewId !== viewId)
@@ -129,7 +159,11 @@
           "offlineQueueView",
         ].forEach((id) => {
           const el = document.getElementById(id);
-          if (el) el.style.display = id === viewId ? "block" : "none";
+          if (el) {
+            el.style.display = id === viewId
+              ? id === "dashboardView" ? "flex" : "block"
+              : "none";
+          }
         });
         const activeView = document.getElementById(viewId);
         if (activeView && currentActiveViewId !== viewId) {
@@ -147,9 +181,18 @@
         }
 
         const homeBtn = document.getElementById("homeBtn");
+        const toolbarMenuButton = document.getElementById("toolbarMenuButton");
+        const toolbarMenu = document.getElementById("toolbarMenu");
         const adminToolbarButton = document.getElementById("adminToolbarButton");
         const syncToolbarButton = document.getElementById("syncNowToolbarButton");
         const appSettingsToolbarButton = document.getElementById("appSettingsToolbarButton");
+        if (toolbarMenuButton) {
+          toolbarMenuButton.hidden = !currentUser || viewId === "loginView";
+        }
+        if (toolbarMenu && (!currentUser || viewId === "loginView")) {
+          toolbarMenu.hidden = true;
+          toolbarMenuButton?.setAttribute("aria-expanded", "false");
+        }
         if (adminToolbarButton) {
           adminToolbarButton.hidden = !currentUser || viewId === "loginView";
         }
@@ -260,27 +303,11 @@
       }
 
       function setDashboardLayout(layout) {
-        const availableLayouts = ["grouped", "grid", "list"];
-        const selectedLayout = availableLayouts.includes(layout) ? layout : "grouped";
+        const availableLayouts = ["one", "two", "three"];
+        const selectedLayout = availableLayouts.includes(layout) ? layout : "two";
         const dashboard = document.getElementById("dashboardView");
         if (!dashboard) return;
-        dashboard.classList.remove(
-          "dashboard-layout-grouped",
-          "dashboard-layout-grid",
-          "dashboard-layout-list",
-        );
-        dashboard.classList.add(`dashboard-layout-${selectedLayout}`);
-        dashboard.querySelectorAll(".dashboard-tool-group").forEach((group) => {
-          if (!group.dataset.layoutToggleBound) {
-            group.querySelector("summary").addEventListener("click", (event) => {
-              if (!dashboard.classList.contains("dashboard-layout-grouped")) {
-                event.preventDefault();
-              }
-            });
-            group.dataset.layoutToggleBound = "true";
-          }
-          group.open = selectedLayout !== "grouped";
-        });
+        dashboard.dataset.layout = selectedLayout;
         dashboard.querySelectorAll("[data-dashboard-layout]").forEach((button) => {
           button.setAttribute(
             "aria-pressed",

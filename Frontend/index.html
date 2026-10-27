@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=64" />
+    <link rel="stylesheet" href="./css/styles.css?v=68" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -66,44 +66,82 @@
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
-        <button
-          class="icon-btn sync-now-btn"
-          id="syncNowToolbarButton"
-          data-online-only
-          onclick="syncFromToolbar()"
-          title="مزامنة الآن"
-          data-i18n-title="syncNow"
-          aria-label="مزامنة الآن"
-          data-i18n-aria-label="syncNow"
-          hidden
-        >
-          <i class="fa-solid fa-rotate"></i>
-          <span class="sync-now-label" data-i18n="syncNow">مزامنة الآن</span>
-          <span id="syncNowCount" class="sync-now-count" aria-hidden="true" hidden></span>
-        </button>
-        <button
-          class="icon-btn"
-          id="adminToolbarButton"
-          data-online-only
-          onclick="openAdminSettings()"
-          title=" إدارة الخدام"
-          data-i18n-title="adminTooltip"
-          hidden
-        >
-          <i class="fa-solid fa-user-shield"></i>
-        </button>
-        <button
-          class="icon-btn"
-          id="appSettingsToolbarButton"
-          onclick="openAppSettings()"
-          title="إعدادات التطبيق"
-          data-i18n-title="appSettingsTitle"
-          aria-label="إعدادات التطبيق"
-          data-i18n-aria-label="appSettingsTitle"
-          hidden
-        >
-          <i class="fa-solid fa-sliders"></i>
-        </button>
+        <div class="toolbar-menu-wrap">
+          <button
+            type="button"
+            class="toolbar-menu-toggle"
+            id="toolbarMenuButton"
+            onclick="toggleToolbarMenu()"
+            aria-haspopup="true"
+            aria-controls="toolbarMenu"
+            aria-expanded="false"
+            data-i18n-aria-label="openOptionsMenu"
+            aria-label="Open options"
+            hidden
+          >
+            <span class="toolbar-avatar-wrap">
+              <img id="uAvatar" class="user-avatar" src="" alt="" aria-hidden="true" />
+              <span id="uAvatarFallback" class="user-avatar-fallback" aria-hidden="true" hidden>
+                <i class="fa-solid fa-user"></i>
+              </span>
+            </span>
+            <span id="uName" class="toolbar-user-name">Name</span>
+            <i class="fa-solid fa-chevron-down toolbar-menu-chevron" aria-hidden="true"></i>
+            <span id="syncMenuBadge" class="sync-menu-badge" aria-hidden="true" hidden></span>
+          </button>
+          <nav id="toolbarMenu" class="toolbar-menu" aria-label="App options" hidden>
+            <div class="toolbar-menu-account">
+              <span class="toolbar-menu-account-label" data-i18n="signedInAs">Signed in as</span>
+              <span id="uEmail" class="user-email">email@example.com</span>
+            </div>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="syncNowToolbarButton"
+              data-online-only
+              onclick="syncFromToolbar()"
+              title="مزامنة الآن"
+              data-i18n-title="syncNow"
+              aria-label="مزامنة الآن"
+              data-i18n-aria-label="syncNow"
+            >
+              <span class="toolbar-menu-icon-wrap">
+                <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                <span id="syncNowCount" class="sync-now-count" aria-hidden="true" hidden></span>
+              </span>
+              <span data-i18n="syncNow">مزامنة الآن</span>
+            </button>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="adminToolbarButton"
+              data-online-only
+              onclick="openAdminSettings()"
+              title="إدارة الخدام"
+              data-i18n-title="adminTooltip"
+            >
+              <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+              <span data-i18n="adminTooltip">إدارة الخدام</span>
+            </button>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="appSettingsToolbarButton"
+              onclick="openAppSettings()"
+              title="إعدادات التطبيق"
+              data-i18n-title="appSettingsTitle"
+              aria-label="إعدادات التطبيق"
+              data-i18n-aria-label="appSettingsTitle"
+            >
+              <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+              <span data-i18n="appSettingsTitle">إعدادات التطبيق</span>
+            </button>
+            <button type="button" class="toolbar-menu-item toolbar-menu-logout" onclick="logoutUser()">
+              <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+              <span data-i18n="logout">خروج</span>
+            </button>
+          </nav>
+        </div>
       </div>
     </header>
 
@@ -158,50 +196,33 @@
       </div>
 
       <!-- 1. Dashboard View -->
-      <div id="dashboardView" class="dashboard-layout-grouped" style="display: none">
-        <div class="user-profile-bar">
-          <div class="user-info">
-            <span class="user-avatar-wrap">
-              <img id="uAvatar" class="user-avatar" src="" alt="" aria-hidden="true" />
-              <span id="uAvatarFallback" class="user-avatar-fallback" aria-hidden="true" hidden>
-                <i class="fa-solid fa-user"></i>
-              </span>
-            </span>
-            <div class="user-details">
-              <span id="uName" class="user-name">الاسم</span>
-              <span id="uEmail" class="user-email">email@gmail.com</span>
-            </div>
-          </div>
-          <button class="logout-btn" onclick="logoutUser()">
-            <span data-i18n="logout">خروج</span>
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
-        </div>
-
-        <div class="dashboard-heading">
-          <h2 data-i18n="dashboardTitle">🏠 لوحة التحكم</h2>
+      <div id="dashboardView" data-layout="two" style="display: none">
+        <section class="dashboard-welcome">
+          <p class="dashboard-welcome-kicker" data-i18n="dashboardWelcomeKicker">YOUR SERVICE SPACE</p>
+          <h1>
+            <span data-i18n="welcomeBack">Welcome back</span>
+            <span id="dashboardWelcomeName">Name</span>
+          </h1>
+          <p class="dashboard-welcome-copy" data-i18n="dashboardWelcomeCopy">Everything you need for today, in one place.</p>
           <div class="dashboard-heading-actions">
             <div class="dashboard-layout-switcher" role="group" data-i18n-aria-label="dashboardLayoutSwitcher"
               aria-label="Dashboard layout">
-            <button type="button" data-dashboard-layout="grouped" data-i18n-title="dashboardLayoutGrouped"
-              data-i18n-aria-label="dashboardLayoutGrouped" aria-pressed="true"
-              onclick="setDashboardLayout('grouped')">
-              <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-            </button>
-            <button type="button" data-dashboard-layout="grid" data-i18n-title="dashboardLayoutGrid"
-              data-i18n-aria-label="dashboardLayoutGrid" aria-pressed="false"
-              onclick="setDashboardLayout('grid')">
-              <i class="fa-solid fa-border-all" aria-hidden="true"></i>
-            </button>
-            <button type="button" data-dashboard-layout="list" data-i18n-title="dashboardLayoutList"
-              data-i18n-aria-label="dashboardLayoutList" aria-pressed="false"
-              onclick="setDashboardLayout('list')">
-              <i class="fa-solid fa-list" aria-hidden="true"></i>
-            </button>
+              <button type="button" data-dashboard-layout="two" data-i18n-title="dashboardLayoutTwo"
+                data-i18n-aria-label="dashboardLayoutTwo" aria-pressed="true" onclick="setDashboardLayout('two')">
+                <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>2</span>
+              </button>
+              <button type="button" data-dashboard-layout="three" data-i18n-title="dashboardLayoutThree"
+                data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
+                <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
+              </button>
+              <button type="button" data-dashboard-layout="one" data-i18n-title="dashboardLayoutOne"
+                data-i18n-aria-label="dashboardLayoutOne" aria-pressed="false" onclick="setDashboardLayout('one')">
+                <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i><span>1</span>
+              </button>
             </div>
           </div>
-        </div>
-        <div class="grid dashboard-primary-grid">
+        </section>
+        <div class="grid dashboard-actions-grid">
           <button id="tutorialScanAction" class="tile primary" onclick="showView('scanView')">
             <span class="ico"><i class="fa-solid fa-qrcode"></i></span
             ><span data-i18n="scanQr">مسح QR</span>
@@ -214,64 +235,35 @@
             <span class="ico"><i class="fa-solid fa-user-plus"></i></span
             ><span data-i18n="addStudent">إضافة مخدوم</span>
           </button>
-        </div>
-        <div class="dashboard-tools">
-          <details class="dashboard-tool-group">
-            <summary>
-              <i class="fa-solid fa-users" aria-hidden="true"></i>
-              <span data-i18n="peopleTools">الأشخاص والبطاقات</span>
-              <i class="fa-solid fa-chevron-down dashboard-tool-chevron" aria-hidden="true"></i>
-            </summary>
-            <div class="grid dashboard-secondary-grid">
-              <button class="tile" data-online-only onclick="openRosterManagement()">
-                <span class="ico"><i class="fa-solid fa-address-book"></i></span
-                ><span data-i18n="manageRoster">Manage people</span>
-              </button>
-              <button class="tile" data-online-only onclick="showView('cardShareView')">
-                <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
-                ><span data-i18n="shareCard">مشاركة كارت QR</span>
-              </button>
-            </div>
-          </details>
-          <details class="dashboard-tool-group">
-            <summary>
-              <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>
-              <span data-i18n="attendanceTools">الحضور والتقارير</span>
-              <i class="fa-solid fa-chevron-down dashboard-tool-chevron" aria-hidden="true"></i>
-            </summary>
-            <div class="grid dashboard-secondary-grid">
-              <button class="tile" data-online-only onclick="openAttendanceReport()">
-                <span class="ico"><i class="fa-solid fa-chart-column"></i></span
-                ><span data-i18n="attendanceReports">تقارير الحضور</span>
-              </button>
-              <button class="tile" data-online-only onclick="openFollowupView()">
-                <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
-                ><span data-i18n="followupsTitle">الافتقاد</span>
-              </button>
-              <button class="tile" data-online-only onclick="openSheet()">
-                <span class="ico"><i class="fa-solid fa-table"></i></span
-                ><span data-i18n="openSheet">فتح الشيت</span>
-              </button>
-              <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
-                <span class="ico"><i class="fa-solid fa-people-group"></i></span
-                ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
-                <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
-              </button>
-            </div>
-          </details>
-          <details class="dashboard-tool-group">
-            <summary>
-              <i class="fa-solid fa-sliders" aria-hidden="true"></i>
-              <span data-i18n="managementTools">إدارة الاجتماع</span>
-              <i class="fa-solid fa-chevron-down dashboard-tool-chevron" aria-hidden="true"></i>
-            </summary>
-            <div class="grid dashboard-secondary-grid">
-              <button class="tile" data-online-only onclick="openScheduleSettings()">
-                <span class="ico"><i class="fa-solid fa-gear"></i></span
-                ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
-              </button>
-            </div>
-          </details>
+          <button class="tile" data-online-only onclick="openRosterManagement()">
+            <span class="ico"><i class="fa-solid fa-address-book"></i></span
+            ><span data-i18n="manageRoster">إدارة قائمة الأشخاص</span>
+          </button>
+          <button class="tile" data-online-only onclick="showView('cardShareView')">
+            <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
+            ><span data-i18n="shareCard">مشاركة كارت QR</span>
+          </button>
+          <button class="tile" data-online-only onclick="openAttendanceReport()">
+            <span class="ico"><i class="fa-solid fa-chart-column"></i></span
+            ><span data-i18n="attendanceReports">تقارير الحضور</span>
+          </button>
+          <button class="tile" data-online-only onclick="openFollowupView()">
+            <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
+            ><span data-i18n="followupsTitle">الافتقاد</span>
+          </button>
+          <button class="tile" data-online-only onclick="openSheet()">
+            <span class="ico"><i class="fa-solid fa-table"></i></span
+            ><span data-i18n="openSheet">فتح الشيت</span>
+          </button>
+          <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
+            <span class="ico"><i class="fa-solid fa-people-group"></i></span
+            ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
+            <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
+          </button>
+          <button class="tile" data-online-only onclick="openScheduleSettings()">
+            <span class="ico"><i class="fa-solid fa-gear"></i></span
+            ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
+          </button>
         </div>
       </div>
 
@@ -480,7 +472,13 @@
         </div>
       </dialog>
 
-      <section id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription" role="dialog" aria-modal="false" hidden>
+      <div id="tutorialFocusWash" class="tutorial-focus-wash" aria-hidden="true" hidden>
+        <div class="tutorial-focus-shade tutorial-focus-shade-top"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-left"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-right"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-bottom"></div>
+      </div>
+      <section id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription" role="dialog" aria-modal="true" hidden>
         <div class="tutorial-header">
           <div>
             <p id="tutorialStepCount" class="tutorial-step-count"></p>
@@ -491,10 +489,11 @@
           <span id="tutorialProgressBar"></span>
         </div>
         <p id="tutorialDescription" class="tutorial-description"></p>
-        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Use the app normally; tutorial actions are not saved.</p>
+        <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Use the highlighted action, then continue with Next.</p>
         <div class="tutorial-actions">
-          <button type="button" class="btn secondary tutorial-skip" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
-            Skip tutorial
+          <button id="tutorialNextButton" type="button" class="btn tutorial-next" onclick="nextFirstRunTutorialStep()">
+            <span id="tutorialNextLabel" data-i18n="tutorialNext">Next</span>
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
           </button>
         </div>
       </section>
@@ -1002,13 +1001,13 @@
       </div>
     </div>
 
-    <script src="./js/app-state.js?v=64"></script>
-    <script src="./js/app-i18n.js?v=64"></script>
-    <script src="./js/app-core.js?v=64"></script>
-    <script src="./js/app-offline.js?v=64"></script>
-    <script src="./js/app-views.js?v=64"></script>
-    <script src="./js/app-auth.js?v=64"></script>
-    <script src="./js/app-scanner-search.js?v=64"></script>
-    <script src="./js/app-cards-admin.js?v=64"></script>
+    <script src="./js/app-state.js?v=67"></script>
+    <script src="./js/app-i18n.js?v=67"></script>
+    <script src="./js/app-core.js?v=67"></script>
+    <script src="./js/app-offline.js?v=67"></script>
+    <script src="./js/app-views.js?v=67"></script>
+    <script src="./js/app-auth.js?v=67"></script>
+    <script src="./js/app-scanner-search.js?v=67"></script>
+    <script src="./js/app-cards-admin.js?v=67"></script>
   </body>
 </html>
