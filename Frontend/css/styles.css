@@ -307,7 +307,7 @@
         align-items: stretch;
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
-        padding: 0;
+        padding: 64px 0 0;
         position: relative;
       }
 
