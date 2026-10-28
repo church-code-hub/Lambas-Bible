@@ -778,6 +778,7 @@ function runTutorialSearchDemo() {
     !isFirstRunTutorialActive()
   )
     return;
+  showTutorialSearchPreview("searchNameInput", "searchResults");
   showToast(
     [
       translateText("tutorialSampleName"),

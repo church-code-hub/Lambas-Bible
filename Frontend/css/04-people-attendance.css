@@ -157,6 +157,12 @@
   margin: 0;
 }
 
+.followup-person-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-sub);
+}
+
 .attendance-person-card > div:first-child {
   display: grid;
   gap: 4px;
@@ -260,13 +266,33 @@
   justify-content: center;
   gap: 6px;
   width: auto;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 8px 10px;
   font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .current-attendees-action-label {
   min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .current-attendees-row {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.4fr);
+    gap: 6px;
+    padding: 9px 6px;
+  }
+
+  .current-attendees-actions .btn {
+    flex: 1 1 100%;
+    padding: 7px 5px;
+    font-size: 11px;
+  }
 }
 
 .attendance-window-note {

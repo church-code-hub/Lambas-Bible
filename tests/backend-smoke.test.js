@@ -689,13 +689,14 @@ test("builds a daily attendance report and can find an absent person by name", (
   );
 });
 
-test("adds previously attending people missing three meetings to follow-up", () => {
+test("lists three missed meetings in descending order and removes completed follow-ups", () => {
   const { context, rosterSheet } = createBackendContext([
     ["ID", "Name", "Card URL"],
     [1, "Alice", ""],
-    [2, "Bob", ""],
+    [2, "Beth", ""],
+    [3, "Bob", ""],
   ]);
-  const dates = [21, 14, 7, 0].map((daysAgo) => {
+  const dates = [35, 28, 21, 14, 7].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     date.setHours(12, 0, 0, 0);
@@ -703,8 +704,6 @@ test("adds previously attending people missing three meetings to follow-up", () 
   });
   const makeSheet = (rows) => ({
     rows,
-    writeCount: 0,
-    appendCount: 0,
     getLastRow: () => rows.length,
     getLastColumn: () => Math.max(...rows.map((row) => row.length)),
     getRange(row, column, rowCount, columnCount) {
@@ -712,56 +711,44 @@ test("adds previously attending people missing three meetings to follow-up", () 
         getValues: () => rows
           .slice(row - 1, row - 1 + rowCount)
           .map((values) => values.slice(column - 1, column - 1 + columnCount)),
-        setValues: (values) => {
-          this.writeCount++;
-          values.forEach((valuesRow, rowOffset) => {
-            const targetRow = row - 1 + rowOffset;
-            rows[targetRow] ||= [];
-            valuesRow.forEach((value, columnOffset) => {
-              rows[targetRow][column - 1 + columnOffset] = value;
-            });
-          });
-        },
       };
     },
-    appendRow(values) {
-      this.appendCount++;
-      rows.push(values);
+    deleteRow(row) {
+      rows.splice(row - 1, 1);
     },
   });
   const attendanceSheet = makeSheet([
     ["ID", "Name", ...dates],
-    [1, "Alice", "-", "", "", ""],
-    [2, "Bob", "", "", "", ""],
+    [1, "Alice", "-", "", "", "", ""],
+    [2, "Beth", "", "-", "", "", ""],
+    [3, "Bob", "", "", "", "", ""],
+  ]);
+  const followupSheet = makeSheet([
+    ["ID", "Name", "Missed Meetings", "Last Attended", "Status", "Updated At", "Completed By"],
+    [1, "Alice", 4, "", "Active", "", ""],
+    [2, "Beth", 3, "", "Active", "", ""],
   ]);
   const sheets = new Map([
     ["Attendance", attendanceSheet],
     ["Roster", rosterSheet],
+    ["Follow-up", followupSheet],
   ]);
   context.SpreadsheetApp.getActiveSpreadsheet = () => ({
     getSheetByName: (name) => sheets.get(name) || null,
-    insertSheet: (name) => {
-      const sheet = makeSheet([]);
-      sheets.set(name, sheet);
-      return sheet;
-    },
   });
 
   const firstList = context.getFollowupCandidates_();
   assert.deepEqual(
     Array.from(firstList.followups, (person) => [person.id, person.missedMeetings]),
-    [["1", 3]],
+    [["1", 4], ["2", 3]],
   );
-  const followupSheet = sheets.get("Follow-up");
-  assert.equal(followupSheet.writeCount, 2);
-  assert.equal(followupSheet.appendCount, 0);
-  assert.equal(context.completeFollowup_("1", "admin@example.com").success, true);
+  assert.equal(context.completeFollowup_("1").success, true);
+  assert.equal(followupSheet.rows.some((row) => String(row[0]) === "1"), false);
   const refreshedList = context.getFollowupCandidates_();
   assert.deepEqual(
     Array.from(refreshedList.followups, (person) => person.id),
-    [],
+    ["2"],
   );
-  assert.equal(followupSheet.writeCount, 4);
 });
 
 test("cancels today's check-in by removing its row and retaining an audit record", () => {

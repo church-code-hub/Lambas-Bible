@@ -228,13 +228,28 @@ function showView(viewId, pushHistory = true) {
     }
   });
 
-  if (viewId === "attendanceReportView" && viewChanged) {
+  if (
+    viewId === "attendanceReportView" &&
+    viewChanged &&
+    (typeof isFirstRunTutorialActive !== "function" ||
+      !isFirstRunTutorialActive())
+  ) {
     selectAttendanceReportTab(attendanceReportTab, true);
   }
-  if (viewId === "followupView" && viewChanged) {
+  if (
+    viewId === "followupView" &&
+    viewChanged &&
+    (typeof isFirstRunTutorialActive !== "function" ||
+      !isFirstRunTutorialActive())
+  ) {
     loadFollowups();
   }
-  if (viewId === "currentAttendeesView" && viewChanged) {
+  if (
+    viewId === "currentAttendeesView" &&
+    viewChanged &&
+    (typeof isFirstRunTutorialActive !== "function" ||
+      !isFirstRunTutorialActive())
+  ) {
     showCurrentAttendeesSkeleton();
     loadCurrentAttendees(false);
     currentAttendeesRefreshTimer = window.setInterval(
@@ -255,7 +270,11 @@ function showView(viewId, pushHistory = true) {
   }
   if (viewId === "scanView") {
     isProcessingScan = false;
-    setTimeout(startLiveScanner, 150);
+    if (
+      typeof isFirstRunTutorialActive !== "function" ||
+      !isFirstRunTutorialActive()
+    )
+      setTimeout(startLiveScanner, 150);
   }
 }
 
@@ -895,19 +914,15 @@ function renderCurrentAttendees(checkoutOpen) {
       button.addEventListener("click", onClick);
       actions.appendChild(button);
     };
-    if (checkoutOpen) {
-      addActionButton(
-        "current-attendees-checkout",
-        "fa-right-from-bracket",
-        translations[currentLang].attendanceCheckout,
-        () => checkoutAttendance(person.id),
-      );
-    }
     addActionButton(
-      "emergency-checkout-button",
-      "fa-triangle-exclamation",
-      translations[currentLang].emergencyCheckout,
-      () => showEmergencyCheckoutDialog(person),
+      checkoutOpen ? "current-attendees-checkout" : "emergency-checkout-button",
+      checkoutOpen ? "fa-right-from-bracket" : "fa-triangle-exclamation",
+      checkoutOpen
+        ? translations[currentLang].attendanceCheckout
+        : translations[currentLang].emergencyCheckout,
+      checkoutOpen
+        ? () => checkoutAttendance(person.id)
+        : () => showEmergencyCheckoutDialog(person),
     );
     addActionButton(
       "attendance-cancel-button",
@@ -1010,6 +1025,21 @@ function selectAttendanceReportTab(tab, forceReload = false) {
   trendsButton.classList.toggle("is-active", isTrends);
   attendanceButton.setAttribute("aria-selected", String(!isTrends));
   trendsButton.setAttribute("aria-selected", String(isTrends));
+  if (
+    typeof isFirstRunTutorialActive === "function" &&
+    isFirstRunTutorialActive()
+  ) {
+    const result = document.getElementById(
+      isTrends ? "attendanceTrendsResults" : "attendanceReportResults",
+    );
+    if (result) {
+      const preview = document.createElement("p");
+      preview.className = "tutorial-preview report-note";
+      preview.textContent = translations[currentLang].tutorialPreview;
+      result.replaceChildren(preview);
+    }
+    return;
+  }
   if (isTrends) loadAttendanceTrends();
   else if (
     forceReload ||
@@ -1106,7 +1136,12 @@ async function loadFollowups() {
         return;
       if (!result || !result.success) throw new Error(result && result.message);
       followupReportPeople = Array.isArray(result.followups)
-        ? result.followups
+        ? result.followups.slice().sort((left, right) =>
+            Number(right.missedMeetings) - Number(left.missedMeetings) ||
+            String(left.lastAttended || "").localeCompare(
+              String(right.lastAttended || ""),
+            ),
+          )
         : [];
       renderFollowupResults();
       updateOnlineOnlyControls();
@@ -1166,7 +1201,16 @@ function renderFollowupResults() {
     name.textContent = person.name;
     const note = document.createElement("small");
     note.style.cssText = "display:block;color:var(--text-sub);margin-top:4px;";
-    note.textContent = `${person.missedMeetings} · ${person.lastMissed}`;
+    note.textContent = [
+      translations[currentLang].followupMissedMeetings.replace(
+        "{count}",
+        String(person.missedMeetings),
+      ),
+      `${translations[currentLang].followupLastAttended}: ${formatAttendanceDateOption(
+        person.lastAttended,
+        localDateInputValue(new Date()),
+      )}`,
+    ].join(" · ");
     details.append(name, note);
     const completeButton = document.createElement("button");
     completeButton.type = "button";
@@ -1451,6 +1495,35 @@ function showAttendanceSheetResult(report) {
     `${sheetMessage} · ${selectionLabel} · ${date}`;
   document.getElementById("attendanceSheetOpenLink").href =
     `${GOOGLE_SHEET_URL}#gid=${report.report.sheetId}`;
+  const spreadsheetMatch = GOOGLE_SHEET_URL.match(
+    /\/spreadsheets\/d\/([^/?#]+)/,
+  );
+  const exportLinks = [
+    ["attendanceSheetExcelLink", "xlsx"],
+    ["attendanceSheetPdfLink", "pdf"],
+  ];
+  exportLinks.forEach(([id, format]) => {
+    const link = document.getElementById(id);
+    if (!spreadsheetMatch) {
+      link.hidden = true;
+      return;
+    }
+    const parameters = new URLSearchParams({
+      format,
+      gid: String(report.report.sheetId),
+    });
+    if (format === "pdf") {
+      parameters.set("portrait", "true");
+      parameters.set("fitw", "true");
+      parameters.set("sheetnames", "false");
+      parameters.set("printtitle", "false");
+      parameters.set("pagenumbers", "false");
+      parameters.set("gridlines", "false");
+    }
+    link.href =
+      `https://docs.google.com/spreadsheets/d/${spreadsheetMatch[1]}/export?${parameters}`;
+    link.hidden = false;
+  });
   if (!dialog.open) dialog.showModal();
 }
 

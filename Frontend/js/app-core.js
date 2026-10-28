@@ -35,6 +35,14 @@ function setLanguage(lang) {
     document
       .getElementById("languageEnglishOption")
       ?.setAttribute("aria-pressed", String(lang === "en"));
+    document
+      .querySelectorAll("[data-setup-language]")
+      .forEach((button) =>
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.setupLanguage === lang),
+        ),
+      );
     updateOfflineStatus();
 
     document.querySelectorAll("[data-i18n]").forEach((el) => {
@@ -174,6 +182,14 @@ function applyTheme(mode) {
     document
       .getElementById("themeDarkOption")
       ?.setAttribute("aria-pressed", String(mode === "dark"));
+    document
+      .querySelectorAll("[data-setup-theme]")
+      .forEach((button) =>
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.setupTheme === mode),
+        ),
+      );
   };
   if (!themeChanged) changeTheme();
   else runAppearanceTransition(changeTheme);

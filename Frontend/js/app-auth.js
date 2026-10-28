@@ -88,6 +88,13 @@ async function validateSavedSession() {
   }
 }
 
+function restoreTutorialDisabledTargets() {
+  tutorialDisabledTargets.forEach((wasDisabled, target) => {
+    target.disabled = wasDisabled;
+  });
+  tutorialDisabledTargets.clear();
+}
+
 function dismissStartupScreen() {
   const startupScreen = document.getElementById("startupScreen");
   if (!startupScreen) return;
@@ -269,8 +276,8 @@ function setupUserProfileUI() {
   avatar.onerror = showAvatarFallback;
   avatar.src = currentUser.picture || "";
   if (!currentUser.picture) showAvatarFallback();
-  startFirstRunTutorial();
   showView("dashboardView");
+  startFirstRunTutorial();
   dismissStartupScreen();
 }
 
@@ -279,34 +286,107 @@ const firstRunTutorialSteps = [
     title: "tutorialScanTitle",
     description: "tutorialScanDescription",
     target: "tutorialScanAction",
-    action: "scan",
+    view: "dashboardView",
+    previewView: "scanView",
+    demoTarget: "tutorialScanDemoButton",
   },
   {
     title: "tutorialNameTitle",
     description: "tutorialNameDescription",
     target: "tutorialSearchAction",
-    action: "search",
+    view: "dashboardView",
+    previewView: "searchView",
+    demoTarget: "tutorialSearchDemoButton",
   },
   {
     title: "tutorialAddTitle",
     description: "tutorialAddDescription",
     target: "tutorialAddAction",
-    action: "add",
+    view: "dashboardView",
+    previewView: "addView",
+    demoTarget: "tutorialAddDemoButton",
+  },
+  {
+    title: "manageRoster",
+    description: "tutorialPreviewDescription",
+    target: "tutorialRosterAction",
+    view: "dashboardView",
+    previewView: "rosterView",
+  },
+  {
+    title: "shareCard",
+    description: "tutorialPreviewDescription",
+    target: "tutorialShareAction",
+    view: "dashboardView",
+    previewView: "cardShareView",
+  },
+  {
+    title: "attendanceReports",
+    description: "tutorialPreviewDescription",
+    target: "tutorialReportsAction",
+    view: "dashboardView",
+    previewView: "attendanceReportView",
+    previewTab: "attendance",
+  },
+  {
+    title: "attendanceTab",
+    description: "tutorialPreviewDescription",
+    target: "attendanceTabButton",
+    view: "attendanceReportView",
+    previewTab: "attendance",
+  },
+  {
+    title: "attendanceTrendsTitle",
+    description: "tutorialPreviewDescription",
+    target: "trendsTabButton",
+    view: "attendanceReportView",
+    previewTab: "trends",
+  },
+  {
+    title: "followupsTitle",
+    description: "tutorialPreviewDescription",
+    target: "tutorialFollowupAction",
+    view: "dashboardView",
+    previewView: "followupView",
+  },
+  {
+    title: "openSheet",
+    description: "tutorialPreviewDescription",
+    target: "tutorialSheetAction",
+    view: "dashboardView",
+  },
+  {
+    title: "currentAttendeesTitle",
+    description: "tutorialPreviewDescription",
+    target: "currentAttendeesTile",
+    view: "dashboardView",
+    previewView: "currentAttendeesView",
+  },
+  {
+    title: "meetingSchedule",
+    description: "tutorialPreviewDescription",
+    target: "tutorialScheduleAction",
+    view: "dashboardView",
+    previewView: "scheduleSettingsView",
   },
   {
     title: "tutorialSettingsTitle",
     description: "tutorialSettingsDescription",
     target: "appSettingsToolbarButton",
+    view: "dashboardView",
     action: "settings",
   },
 ];
 const FIRST_RUN_TUTORIAL_KEY = "lambas_bible_tutorial_completed";
+const FIRST_RUN_SETUP_KEY = "lambas_bible_setup_completed";
 var firstRunTutorialStep = 0;
 var tutorialDeferredLoginRefreshEmail = "";
 var tutorialPending = false;
 var tutorialClickHandlerBound = false;
 var tutorialHighlightedTarget = null;
 var tutorialDemoActions = new Set();
+var tutorialSavedScrollTop = 0;
+var tutorialDisabledTargets = new Map();
 
 function isFirstRunTutorialActive() {
   return (
@@ -341,6 +421,14 @@ function bindFirstRunTutorialHandlers() {
   tutorialClickHandlerBound = true;
   document.addEventListener("click", handleFirstRunTutorialClick, true);
   document.addEventListener("keydown", handleFirstRunTutorialKeydown, true);
+  document.addEventListener("wheel", handleFirstRunTutorialScroll, {
+    capture: true,
+    passive: false,
+  });
+  document.addEventListener("touchmove", handleFirstRunTutorialScroll, {
+    capture: true,
+    passive: false,
+  });
   window.addEventListener("resize", updateFirstRunTutorialFocus);
   window.addEventListener("scroll", updateFirstRunTutorialFocus, true);
 }
@@ -350,11 +438,24 @@ function updateFirstRunTutorialFocus() {
   const focusWash = document.getElementById("tutorialFocusWash");
   if (!focusWash || focusWash.hidden) return;
   const bounds = tutorialHighlightedTarget.getBoundingClientRect();
+  if (
+    bounds.bottom <= 0 ||
+    bounds.top >= window.innerHeight ||
+    bounds.right <= 0 ||
+    bounds.left >= window.innerWidth
+  ) {
+    tutorialHighlightedTarget.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: "instant",
+    });
+  }
+  const updatedBounds = tutorialHighlightedTarget.getBoundingClientRect();
   const padding = 7;
-  const top = Math.max(0, bounds.top - padding);
-  const left = Math.max(0, bounds.left - padding);
-  const right = Math.min(window.innerWidth, bounds.right + padding);
-  const bottom = Math.min(window.innerHeight, bounds.bottom + padding);
+  const top = Math.max(0, updatedBounds.top - padding);
+  const left = Math.max(0, updatedBounds.left - padding);
+  const right = Math.min(window.innerWidth, updatedBounds.right + padding);
+  const bottom = Math.min(window.innerHeight, updatedBounds.bottom + padding);
   focusWash.style.setProperty("--tutorial-cutout-top", `${top}px`);
   focusWash.style.setProperty("--tutorial-cutout-left", `${left}px`);
   focusWash.style.setProperty("--tutorial-cutout-right", `${right}px`);
@@ -368,10 +469,56 @@ function updateFirstRunTutorialFocus() {
 function startFirstRunTutorial() {
   if (
     !currentUser ||
-    new URLSearchParams(window.location.search).has("id") ||
-    hasSeenFirstRunTutorial()
+    new URLSearchParams(window.location.search).has("id")
   )
     return;
+  if (localStorage.getItem(FIRST_RUN_SETUP_KEY) !== "true") {
+    showFirstRunSetup();
+    return;
+  }
+  beginFirstRunTutorial();
+}
+
+function showFirstRunSetup() {
+  const dialog = document.getElementById("firstRunSetupDialog");
+  if (!dialog || dialog.open || !currentUser) return;
+  dialog
+    .querySelectorAll("[data-setup-language]")
+    .forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.setupLanguage === currentLang),
+      ),
+    );
+  dialog
+    .querySelectorAll("[data-setup-theme]")
+    .forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.setupTheme === currentThemeMode),
+      ),
+    );
+  if (!dialog.open) dialog.showModal();
+}
+
+function finishFirstRunSetup(continueToTutorial) {
+  if (!currentUser) return;
+  try {
+    localStorage.setItem(FIRST_RUN_SETUP_KEY, "true");
+  } catch (error) {
+    console.warn("Could not save first-run setup status.", error);
+  }
+  const dialog = document.getElementById("firstRunSetupDialog");
+  if (dialog?.open) dialog.close();
+  if (continueToTutorial) {
+    beginFirstRunTutorial();
+  } else {
+    markFirstRunTutorialSeen();
+  }
+}
+
+function beginFirstRunTutorial() {
+  if (hasSeenFirstRunTutorial()) return;
   if (isFirstRunTutorialActive()) return;
   tutorialPending = true;
   pauseDashboardRefreshForTutorial();
@@ -425,12 +572,18 @@ function showFirstRunTutorial() {
   document.getElementById("tutorialFocusWash").hidden = false;
   panel.classList.add("is-active");
   document.body.classList.add("tutorial-active");
+  const mainContainer = document.getElementById("mainContainer");
+  tutorialSavedScrollTop = mainContainer.scrollTop;
+  mainContainer.scrollTop = 0;
   renderFirstRunTutorialStep();
 }
 
 function renderFirstRunTutorialStep() {
   const step = firstRunTutorialSteps[firstRunTutorialStep];
   if (!step) return;
+  if (step.view && currentActiveViewId !== step.view) {
+    showView(step.view, false);
+  }
   [
     "tutorialScanDemoButton",
     "tutorialSearchDemoButton",
@@ -465,11 +618,80 @@ function renderFirstRunTutorialStep() {
     nextLabel.textContent = translationsForLanguage[labelKey];
   }
   tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
-  tutorialHighlightedTarget = document.getElementById(step.target);
-  tutorialHighlightedTarget?.classList.add("tutorial-target-highlight");
-  updateFirstRunTutorialFocus();
-  const target = document.getElementById(step.target);
+  restoreTutorialDisabledTargets();
+  tutorialHighlightedTarget = null;
+  setFirstRunTutorialActionTarget(step.target);
+  const target = tutorialHighlightedTarget;
   window.setTimeout(() => target?.focus({ preventScroll: true }), 0);
+}
+
+function renderFirstRunTutorialPreview(step) {
+  const sampleName = translations[currentLang].tutorialSampleName;
+  const message = translations[currentLang].tutorialPreview;
+  const view = document.getElementById(step.previewView);
+  if (!view) {
+    showToast(message, "info");
+    return;
+  }
+  if (step.previewTab) selectAttendanceReportTab(step.previewTab);
+  const resultId = {
+    searchView: "searchResults",
+    rosterView: "rosterManagementResults",
+    cardShareView: "shareResults",
+    attendanceReportView:
+      step.previewTab === "trends"
+        ? "attendanceTrendsResults"
+        : "attendanceReportResults",
+    followupView: "followupResults",
+    currentAttendeesView: "currentAttendeesResults",
+  }[step.previewView];
+  if (step.previewView === "searchView") {
+    const input = document.getElementById("searchNameInput");
+    input.value = sampleName;
+  } else if (step.previewView === "rosterView") {
+    document.getElementById("rosterSearchInput").value = sampleName;
+  } else if (step.previewView === "cardShareView") {
+    document.getElementById("shareNameInput").value = sampleName;
+  } else if (step.previewView === "followupView") {
+    document.getElementById("followupPersonQuery").value = sampleName;
+    followupReportPeople = [{
+      id: "tutorial-preview",
+      name: sampleName,
+      missedMeetings: 3,
+      lastAttended: "",
+    }];
+  } else if (step.previewView === "currentAttendeesView") {
+    currentAttendeesData = [{
+      id: "tutorial-preview",
+      name: sampleName,
+      checkedInBy: translations[currentLang].tutorialPreviewAdmin,
+      checkinTime: new Date().toISOString(),
+    }];
+  }
+  const results = resultId && document.getElementById(resultId);
+  if (results) {
+    const preview = document.createElement("p");
+    preview.className = "tutorial-preview report-note";
+    preview.textContent = `${sampleName} · ${message}`;
+    results.replaceChildren(preview);
+  } else {
+    const preview = document.createElement("p");
+    preview.className = "tutorial-preview report-note";
+    preview.textContent = `${sampleName} · ${message}`;
+    view.appendChild(preview);
+  }
+}
+
+function showTutorialSearchPreview(inputId, resultsId) {
+  const sampleName = translations[currentLang].tutorialSampleName;
+  const input = document.getElementById(inputId);
+  const results = document.getElementById(resultsId);
+  if (input) input.value = sampleName;
+  if (!results) return;
+  const preview = document.createElement("p");
+  preview.className = "tutorial-preview report-note";
+  preview.textContent = `${sampleName} · ${translations[currentLang].tutorialPreview}`;
+  results.replaceChildren(preview);
 }
 
 function setFirstRunTutorialActionTarget(targetId) {
@@ -477,7 +699,13 @@ function setFirstRunTutorialActionTarget(targetId) {
   if (!target || !isFirstRunTutorialActive()) return;
   tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
   tutorialHighlightedTarget = target;
-  target.hidden = false;
+  if ("disabled" in target && target.disabled) {
+    if (!tutorialDisabledTargets.has(target)) {
+      tutorialDisabledTargets.set(target, true);
+    }
+    target.disabled = false;
+  }
+  if ("hidden" in target) target.hidden = false;
   target.classList.add("tutorial-target-highlight");
   updateFirstRunTutorialFocus();
   window.setTimeout(() => target.focus({ preventScroll: true }), 0);
@@ -488,7 +716,7 @@ function handleFirstRunTutorialClick(event) {
   const panel = document.getElementById("firstRunTutorial");
   if (
     panel.contains(event.target) &&
-    event.target.closest?.("#tutorialNextButton")
+    event.target.closest?.("#tutorialNextButton, #tutorialSkipButton")
   )
     return;
   const target =
@@ -497,6 +725,24 @@ function handleFirstRunTutorialClick(event) {
       firstRunTutorialSteps[firstRunTutorialStep]?.target,
     );
   if (target && (event.target === target || target.contains(event.target))) {
+    const step = firstRunTutorialSteps[firstRunTutorialStep];
+    if (step && target.id === step.target && step.previewView) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showView(step.previewView, false);
+      renderFirstRunTutorialPreview(step);
+      setFirstRunTutorialActionTarget(
+        step.demoTarget || "tutorialNextButton",
+      );
+      return;
+    }
+    if (step && target.id === step.target && !step.previewView) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showToast(translations[currentLang].tutorialPreview, "info");
+      setFirstRunTutorialActionTarget("tutorialNextButton");
+      return;
+    }
     const nextActionTarget = {
       tutorialScanAction: ["scanView", "tutorialScanDemoButton"],
       tutorialSearchAction: ["searchView", "tutorialSearchDemoButton"],
@@ -523,13 +769,14 @@ function handleFirstRunTutorialKeydown(event) {
   if (!isFirstRunTutorialActive()) return;
   const panel = document.getElementById("firstRunTutorial");
   const nextButton = document.getElementById("tutorialNextButton");
+  const skipButton = document.getElementById("tutorialSkipButton");
   const target =
     tutorialHighlightedTarget ||
     document.getElementById(
       firstRunTutorialSteps[firstRunTutorialStep]?.target,
     );
   if (event.key === "Tab") {
-    const focusTargets = [target, nextButton].filter(
+    const focusTargets = [...new Set([target, nextButton, skipButton])].filter(
       (element) =>
         element && !element.hidden && element.getClientRects().length > 0,
     );
@@ -544,6 +791,16 @@ function handleFirstRunTutorialKeydown(event) {
     return;
   }
   if (
+    ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "]
+      .includes(event.key) &&
+    !panel.contains(event.target) &&
+    (!target || (event.target !== target && !target.contains(event.target)))
+  ) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  if (
     event.key === "Escape" ||
     (!panel.contains(event.target) &&
       (!target || (event.target !== target && !target.contains(event.target))))
@@ -551,6 +808,12 @@ function handleFirstRunTutorialKeydown(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
   }
+}
+
+function handleFirstRunTutorialScroll(event) {
+  if (!isFirstRunTutorialActive()) return;
+  const panel = document.getElementById("firstRunTutorial");
+  if (!panel?.contains(event.target)) event.preventDefault();
 }
 
 function nextFirstRunTutorialStep() {
@@ -563,12 +826,19 @@ function nextFirstRunTutorialStep() {
   renderFirstRunTutorialStep();
 }
 
+function skipFirstRunTutorial() {
+  if (!isFirstRunTutorialActive()) return;
+  finishFirstRunTutorial();
+}
+
 function finishFirstRunTutorial() {
   tutorialPending = false;
   markFirstRunTutorialSeen();
   const panel = document.getElementById("firstRunTutorial");
   panel?.classList.remove("is-active");
   document.body.classList.remove("tutorial-active");
+  const mainContainer = document.getElementById("mainContainer");
+  mainContainer.scrollTop = tutorialSavedScrollTop;
   if (panel) panel.hidden = true;
   const focusWash = document.getElementById("tutorialFocusWash");
   if (focusWash) focusWash.hidden = true;
@@ -578,6 +848,7 @@ function finishFirstRunTutorial() {
   focusWash?.style.removeProperty("--tutorial-cutout-bottom");
   focusWash?.style.removeProperty("--tutorial-cutout-height");
   tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
+  restoreTutorialDisabledTargets();
   tutorialHighlightedTarget = null;
   if (
     currentUser &&

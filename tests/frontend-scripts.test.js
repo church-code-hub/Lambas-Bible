@@ -69,6 +69,29 @@ test("imports and precaches CSS modules in cascade order", () => {
   assert.equal(fs.existsSync(path.join(frontendRoot, "css", "responsive.css")), false);
 });
 
+test("attendance report links open the generated tab and export it as Excel or PDF", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const exportFlow = views.match(/function showAttendanceSheetResult\(report\)[\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(html, /id="attendanceSheetOpenLink"/);
+  assert.match(html, /id="attendanceSheetExcelLink"/);
+  assert.match(html, /id="attendanceSheetPdfLink"/);
+  assert.match(exportFlow, /format[\s\S]*?gid/);
+  assert.match(exportFlow, /format === "pdf"[\s\S]*?fitw/);
+});
+
+test("current attendees expose one contextual checkout action without narrow-screen overflow", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const styles = readStyles();
+  const renderer = views.match(/function renderCurrentAttendees\(checkoutOpen\)[\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(renderer, /checkoutOpen\s*\?[\s\S]*?attendanceCheckout[\s\S]*?emergencyCheckout/);
+  assert.equal((renderer.match(/addActionButton\(\s*checkoutOpen/g) || []).length, 1);
+  assert.match(styles, /\.current-attendees-actions \.btn\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
+  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?\.current-attendees-actions \.btn\s*\{[^}]*flex:\s*1 1 100%/);
+});
+
 test("splash and toolbar use the requested loading and inner-icon treatments", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const styles = readStyles();
@@ -175,9 +198,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=75/);
-  assert.match(serviceWorker, /lambas-bible-shell-v77/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=75/);
+  assert.match(html, /css\/styles\.css\?v=76/);
+  assert.match(serviceWorker, /lambas-bible-shell-v78/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=76/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -190,6 +213,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="one"\] \.dashboard-actions-grid/);
   assert.match(styles, /#dashboardView\[data-layout="two"\] \.dashboard-actions-grid|--dashboard-columns:\s*2/);
   assert.match(styles, /#dashboardView\[data-layout="three"\] \.dashboard-actions-grid/);
+  assert.match(styles, /#dashboardView\[data-layout="three"\][\s\S]*?\.dashboard-actions-grid[\s\S]*?\.tile:last-child:nth-child\(3n \+ 1\)\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(styles, /\.container\s*\{[^}]*width:\s*100%[^}]*background:\s*transparent/);
   assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*none/);
 });
@@ -776,9 +800,13 @@ test("silent Google restore keeps the saved profile visible when account selecti
 
 test("first-run tutorial pins its guide, locks unrelated actions, and advances explicitly", () => {
   const auth = fs.readFileSync(path.join(frontendRoot, "js", "app-auth.js"), "utf8");
-  const tutorial = auth.match(/const firstRunTutorialSteps =[\s\S]*?\n      function logoutUser/)?.[0] || "";
+  const tutorialStart = auth.indexOf("const firstRunTutorialSteps =");
+  const tutorialEnd = auth.indexOf("function logoutUser", tutorialStart);
+  const tutorial = auth.slice(tutorialStart, tutorialEnd);
   const interactions = auth.match(/function showFirstRunTutorial\(\)[\s\S]*?\n      function finishFirstRunTutorial/)?.[0] || "";
-  const clickHandler = auth.match(/function handleFirstRunTutorialClick\([\s\S]*?\n      function handleFirstRunTutorialKeydown/)?.[0] || "";
+  const clickStart = auth.indexOf("function handleFirstRunTutorialClick");
+  const clickEnd = auth.indexOf("function handleFirstRunTutorialKeydown", clickStart);
+  const clickHandler = auth.slice(clickStart, clickEnd);
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
@@ -787,6 +815,15 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(tutorial, /target: "tutorialScanAction"/);
   assert.match(tutorial, /target: "tutorialSearchAction"/);
   assert.match(tutorial, /target: "tutorialAddAction"/);
+  assert.match(tutorial, /target: "tutorialRosterAction"/);
+  assert.match(tutorial, /target: "tutorialShareAction"/);
+  assert.match(tutorial, /target: "tutorialReportsAction"/);
+  assert.match(tutorial, /target: "attendanceTabButton"/);
+  assert.match(tutorial, /target: "trendsTabButton"/);
+  assert.match(tutorial, /target: "tutorialFollowupAction"/);
+  assert.match(tutorial, /target: "tutorialSheetAction"/);
+  assert.match(tutorial, /target: "currentAttendeesTile"/);
+  assert.match(tutorial, /target: "tutorialScheduleAction"/);
   assert.match(tutorial, /target: "appSettingsToolbarButton"/);
   assert.match(tutorial, /var tutorialDemoActions = new Set\(\)/);
   assert.match(tutorial, /function replayFirstRunTutorial\(\)[\s\S]*?firstRunTutorialStep = 0;[\s\S]*?tutorialDemoActions = new Set\(\);[\s\S]*?showFirstRunTutorial\(\)/);
@@ -799,14 +836,15 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(html, /data-i18n="tutorialReplay"/);
   assert.doesNotMatch(interactions, /apiCall|enqueueOnlineEventForSync|queueOfflineEvent|getCachedRoster|refreshAttendanceContext|refreshRosterCache/);
   assert.match(clickHandler, /event\.preventDefault\(\);\s*event\.stopImmediatePropagation\(\)/);
-  assert.match(clickHandler, /event\.target\.closest\?\.\("#tutorialNextButton"\)/);
+  assert.match(clickHandler, /event\.target\.closest\?\.\("#tutorialNextButton, #tutorialSkipButton"\)/);
   assert.match(clickHandler, /target\.contains\(event\.target\)/);
   assert.match(tutorial, /function nextFirstRunTutorialStep\(\)/);
   assert.match(tutorial, /firstRunTutorialStep\+\+;\s*renderFirstRunTutorialStep\(\)/);
   assert.doesNotMatch(tutorial, /positionFirstRunTutorial/);
   assert.match(tutorial, /if \(isFirstRunTutorialActive\(\)\) \{\s*tutorialDeferredLoginRefreshEmail[\s\S]*?return;/);
   assert.match(tutorial, /refreshRosterCache\(\);\s*refreshAttendanceContext\(\);/);
-  assert.match(views, /if \(typeof isFirstRunTutorialActive !== "function" \|\| !isFirstRunTutorialActive\(\)\) \{[\s\S]*?refreshCurrentAttendeesWindow\(\)/);
+  assert.match(views, /function refreshCurrentAttendeesWindow\(\)[\s\S]*?isFirstRunTutorialActive\(\)[\s\S]*?return;/);
+  assert.match(views, /viewId === "currentAttendeesView"[\s\S]*?isFirstRunTutorialActive\(\)/);
   assert.doesNotMatch(views, /tutorialCameraPaused/);
   assert.doesNotMatch(scanner, /function onScanSuccess\(text\) \{\s*if \(typeof isFirstRunTutorialActive/);
   assert.match(scanner, /const simulatedContext = currentAttendanceContext/);
@@ -824,10 +862,17 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(html, /id="tutorialAddAction"/);
   assert.match(html, /id="tutorialNextButton"[^>]*onclick="nextFirstRunTutorialStep\(\)"/);
   assert.match(html, /id="tutorialNextLabel"[^>]*data-i18n="tutorialNext"/);
-  assert.doesNotMatch(html, /tutorial-skip|onclick="skipFirstRunTutorial/);
+  assert.match(html, /id="tutorialSkipButton"[^>]*onclick="skipFirstRunTutorial\(\)"/);
+  assert.match(html, /id="firstRunSetupDialog"/);
+  assert.match(html, /data-setup-language="ar"/);
+  assert.match(html, /data-setup-theme="light"/);
+  assert.match(auth, /function finishFirstRunSetup\(continueToTutorial\)/);
+  assert.match(auth, /localStorage\.setItem\(FIRST_RUN_SETUP_KEY,\s*"true"\)/);
+  assert.match(auth, /function renderFirstRunTutorialPreview\(step\)/);
+  assert.match(auth, /function handleFirstRunTutorialScroll\(event\)/);
   assert.match(html, /id="firstRunTutorial"[^>]*aria-modal="true"/);
   const styles = readStyles();
-  assert.match(styles, /body\.tutorial-active :is\(button, input, select, textarea, a, \[tabindex\]\):not\(\.tutorial-target-highlight\):not\(#tutorialNextButton\)/);
+  assert.match(styles, /body\.tutorial-active[\s\S]*?:not\(#tutorialNextButton\):not\(#tutorialSkipButton\)/);
   assert.match(html, /tutorial-focus-shade-top[\s\S]*?tutorial-focus-shade-left[\s\S]*?tutorial-focus-shade-right[\s\S]*?tutorial-focus-shade-bottom/);
   assert.match(styles, /\.tutorial-focus-wash[\s\S]*?inset:\s*0[\s\S]*?pointer-events:\s*none/);
   assert.match(styles, /\.tutorial-focus-shade\s*\{[^}]*background:\s*rgba\(5,\s*10,\s*20,\s*0\.52\)/);

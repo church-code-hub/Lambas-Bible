@@ -498,6 +498,24 @@
   margin: 0;
 }
 
+.attendance-sheet-downloads {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-sheet-downloads .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding-inline: 8px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
 .attendance-sheet-open-link {
   text-decoration: none;
 }

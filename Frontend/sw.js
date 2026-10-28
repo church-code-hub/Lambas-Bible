@@ -1,8 +1,8 @@
-const CACHE_NAME = "lambas-bible-shell-v77";
+const CACHE_NAME = "lambas-bible-shell-v78";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=75",
+  "./css/styles.css?v=76",
   "./css/01-foundation.css",
   "./css/02-app-chrome.css",
   "./css/03-feedback.css",

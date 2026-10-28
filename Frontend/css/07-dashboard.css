@@ -169,10 +169,20 @@
 body.tutorial-active
   :is(button, input, select, textarea, a, [tabindex]):not(
     .tutorial-target-highlight
-  ):not(#tutorialNextButton) {
+  ):not(#tutorialNextButton):not(#tutorialSkipButton) {
   pointer-events: none !important;
   opacity: 0.46 !important;
   filter: grayscale(0.35);
+}
+
+body.tutorial-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.tutorial-active #mainContainer {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .tutorial-target-highlight {
@@ -201,9 +211,8 @@ body.tutorial-active
   transform: translateX(-50%);
   width: min(520px, calc(100vw - 32px));
   max-width: none;
-  max-height: min(36dvh, 280px);
-  overflow-x: hidden;
-  overflow-y: auto;
+  max-height: min(42dvh, 320px);
+  overflow: hidden;
   padding: clamp(20px, 5vw, 34px);
   border: 1px solid var(--glass-edge);
   border-radius: 28px;
@@ -279,7 +288,8 @@ body.tutorial-active
 
 .tutorial-actions .btn {
   width: auto;
-  min-width: 120px;
+  min-width: 0;
+  flex: 1 1 0;
   margin: 0;
 }
 
@@ -311,7 +321,7 @@ body.tutorial-active
     right: auto;
     transform: translateX(-50%);
     width: calc(100vw - 28px);
-    max-height: min(34dvh, 250px);
+    max-height: min(42dvh, 320px);
     padding: 18px 16px;
     border-radius: 20px;
   }
@@ -337,14 +347,63 @@ body.tutorial-active
     padding-top: 12px;
   }
   .tutorial-actions .btn {
-    min-width: 100px;
-    padding: 10px 16px;
+    min-width: 0;
+    padding: 9px 10px;
+    font-size: 12px;
   }
 }
 .user-email {
   font-size: 11px;
   color: var(--text-sub);
   overflow-wrap: anywhere;
+}
+
+.first-run-setup-dialog {
+  width: min(94vw, 560px);
+  max-width: 560px;
+  max-height: min(88dvh, 760px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  background: var(--panel-gradient), var(--card-bg);
+  color: var(--text-main);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(155%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(155%);
+}
+
+.first-run-setup-dialog::backdrop {
+  background: rgba(5, 10, 20, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.first-run-setup-content {
+  display: grid;
+  gap: 14px;
+  padding: clamp(20px, 5vw, 32px);
+}
+
+.first-run-setup-content > h2 {
+  margin: 0;
+}
+
+.first-run-setup-content .app-preference-group {
+  margin: 0;
+}
+
+.first-run-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.first-run-setup-actions .btn {
+  width: auto;
+  flex: 1 1 180px;
+  margin: 0;
 }
 
 .grid {
@@ -367,8 +426,8 @@ body.tutorial-active
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 clamp(20px, 3vh, 30px);
+  gap: 6px;
+  margin: 0 0 clamp(12px, 2vh, 18px);
   text-align: center;
 }
 
@@ -417,10 +476,10 @@ body.tutorial-active
 }
 
 .dashboard-welcome-copy {
-  max-width: 46ch;
+  max-width: 40ch;
   color: var(--text-sub);
-  font-size: clamp(13px, 1.5vw, 15px);
-  line-height: 1.65;
+  font-size: clamp(12px, 1.3vw, 14px);
+  line-height: 1.45;
 }
 
 .dashboard-actions-grid {
@@ -437,6 +496,16 @@ body.tutorial-active
 
 #dashboardView[data-layout="three"] .dashboard-actions-grid {
   --dashboard-columns: 3;
+}
+
+#dashboardView[data-layout="three"]
+  .dashboard-actions-grid
+  > .tile:last-child:nth-child(3n + 1) {
+  grid-column: 1 / -1;
+  min-height: 82px;
+  flex-direction: row;
+  justify-content: center;
+  gap: 14px;
 }
 
 #dashboardView[data-layout="one"] .dashboard-actions-grid {

@@ -216,8 +216,8 @@
     min-height: calc(100dvh - 60px - 36px);
   }
   .dashboard-welcome {
-    gap: 8px;
-    margin-bottom: 20px;
+    gap: 5px;
+    margin-bottom: 14px;
   }
   .dashboard-welcome-kicker {
     font-size: 9px;
@@ -227,8 +227,9 @@
     font-size: clamp(26px, 8vw, 36px);
   }
   .dashboard-welcome-copy {
-    max-width: 34ch;
-    font-size: 13px;
+    max-width: 40ch;
+    font-size: 12px;
+    line-height: 1.45;
   }
   .dashboard-layout-switcher {
     gap: 3px;
@@ -258,6 +259,11 @@
     min-height: 96px;
     gap: 7px;
     padding: 10px 4px;
+  }
+  #dashboardView[data-layout="three"]
+    .dashboard-actions-grid
+    > .tile:last-child:nth-child(3n + 1) {
+    min-height: 76px;
     font-size: 11px;
   }
   #dashboardView[data-layout="three"] .dashboard-actions-grid .tile .ico,

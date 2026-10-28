@@ -244,6 +244,7 @@ function runTutorialAddDemo() {
     !isFirstRunTutorialActive()
   )
     return;
+  showTutorialSearchPreview("newStudentName", "addResult");
   showToast(
     [
       translateText("tutorialSampleName"),

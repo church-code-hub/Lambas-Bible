@@ -199,7 +199,7 @@ function doPost(e) {
       result = getFollowupCandidates_();
     } else if (action === "complete_followup") {
       result = withScriptLock_(() =>
-        completeFollowup_(data.id, identity.email),
+        completeFollowup_(data.id),
       );
     } else if (action === "cancel_checkin") {
       result = withScriptLock_(() => cancelCheckin_(data.id, identity.email));
@@ -1821,8 +1821,9 @@ function getFollowupCandidates_() {
 
   const rosterLastRow = rosterSheet.getLastRow();
   const rosterRows = rosterLastRow >= 2
-    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 2).getValues()
+    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
     : [];
+  const scriptProperties = PropertiesService.getScriptProperties();
   const attendanceById = new Map();
   attendanceRows.slice(1).forEach((row) => {
     const id = String(row[0] || "").trim();
@@ -1843,7 +1844,7 @@ function getFollowupCandidates_() {
       if (isPresentForDate(id, column, attendanceRow)) break;
       missedMeetings++;
     }
-    if (missedMeetings < 2) return;
+    if (missedMeetings < 3) return;
     for (const column of meetingColumns.slice(missedMeetings)) {
       if (isPresentForDate(id, column, attendanceRow)) {
         lastAttended = column.date;
@@ -1851,6 +1852,10 @@ function getFollowupCandidates_() {
       }
     }
     if (!lastAttended) return;
+    const completedKey = scriptProperties.getProperty(
+      "FOLLOWUP_COMPLETED_" + id,
+    );
+    if (completedKey === lastAttended) return;
     candidates.push({
       id: id,
       name: String(row[1]),
@@ -1859,102 +1864,39 @@ function getFollowupCandidates_() {
       lastMissed: meetingColumns[0].date,
     });
   });
-
-  const sheetName = "Follow-up";
-  let followupSheet = spreadsheet.getSheetByName(sheetName);
-  if (!followupSheet) {
-    followupSheet = spreadsheet.insertSheet(sheetName);
-    followupSheet.getRange(1, 1, 1, 7).setValues([[
-      "ID",
-      "Name",
-      "Missed Meetings",
-      "Last Attended",
-      "Status",
-      "Updated At",
-      "Completed By",
-    ]]);
-  }
-  const lastRow = followupSheet.getLastRow();
-  const savedRows = lastRow >= 2
-    ? followupSheet.getRange(2, 1, lastRow - 1, 7).getValues()
-    : [];
-  const savedIndexById = new Map();
-  savedRows.forEach((row, index) => {
-    const id = String(row[0] || "").trim();
-    if (id && !savedIndexById.has(id)) savedIndexById.set(id, index);
-  });
-  const now = new Date();
-  const pendingUpdates = [];
-  const addedRows = [];
-  candidates.forEach((candidate) => {
-    const rowIndex = savedIndexById.get(candidate.id);
-    if (rowIndex === undefined) {
-      addedRows.push([
-        candidate.id,
-        candidate.name,
-        candidate.missedMeetings,
-        candidate.lastAttended,
-        "مفتوح",
-        now,
-        "",
-      ]);
-      candidate.status = "مفتوح";
-      return;
-    }
-    const saved = savedRows[rowIndex];
-    const status = saved[4] === "مكتمل" && saved[3] === candidate.lastAttended
-      ? "مكتمل"
-      : "مفتوح";
-    pendingUpdates.push({
-      rowIndex: rowIndex,
-      values: [
-        candidate.name,
-        candidate.missedMeetings,
-        candidate.lastAttended,
-        status,
-        now,
-        status === "مكتمل" ? saved[6] : "",
-      ],
-    });
-    candidate.status = status;
-  });
-  pendingUpdates.sort((left, right) => left.rowIndex - right.rowIndex);
-  for (let index = 0; index < pendingUpdates.length;) {
-    const start = index;
-    const firstRowIndex = pendingUpdates[index].rowIndex;
-    index++;
-    while (
-      index < pendingUpdates.length &&
-      pendingUpdates[index].rowIndex === pendingUpdates[index - 1].rowIndex + 1
-    ) index++;
-    followupSheet
-      .getRange(firstRowIndex + 2, 2, index - start, 6)
-      .setValues(pendingUpdates.slice(start, index).map((update) => update.values));
-  }
-  if (addedRows.length) {
-    followupSheet.getRange(lastRow + 1, 1, addedRows.length, 7).setValues(addedRows);
-  }
+  candidates.sort((left, right) =>
+    right.missedMeetings - left.missedMeetings ||
+    left.lastAttended.localeCompare(right.lastAttended) ||
+    left.name.localeCompare(right.name),
+  );
 
   return {
     success: true,
-    followups: candidates.filter((candidate) => candidate.status !== "مكتمل"),
+    followups: candidates,
   };
 }
 
-function completeFollowup_(id, adminEmail) {
+function completeFollowup_(id) {
   const cleanId = String(id || "").trim();
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Follow-up");
-  if (!cleanId || !sheet || sheet.getLastRow() < 2) {
+  if (!cleanId) {
     return { success: false, code: "FOLLOWUP_NOT_FOUND" };
   }
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
-  const index = rows.findIndex((row) => String(row[0]).trim() === cleanId);
-  if (index === -1) return { success: false, code: "FOLLOWUP_NOT_FOUND" };
-  sheet.getRange(index + 2, 5, 1, 3).setValues([[
-    "مكتمل",
-    new Date(),
-    getAdminNameByEmail(adminEmail),
-  ]]);
+  const candidate = getFollowupCandidates_().followups.find(
+    (person) => person.id === cleanId,
+  );
+  if (!candidate) return { success: false, code: "FOLLOWUP_NOT_FOUND" };
+
+  PropertiesService.getScriptProperties().setProperty(
+    "FOLLOWUP_COMPLETED_" + cleanId,
+    candidate.lastAttended,
+  );
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Follow-up");
+  if (sheet && sheet.getLastRow() >= 2) {
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let index = rows.length - 1; index >= 0; index--) {
+      if (String(rows[index][0]).trim() === cleanId) sheet.deleteRow(index + 2);
+    }
+  }
   return { success: true };
 }
 

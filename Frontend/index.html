@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=75" />
+    <link rel="stylesheet" href="./css/styles.css?v=76" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -233,23 +233,23 @@
             <span class="ico"><i class="fa-solid fa-user-plus"></i></span
             ><span data-i18n="addStudent">إضافة مخدوم</span>
           </button>
-          <button class="tile" data-online-only onclick="openRosterManagement()">
+          <button id="tutorialRosterAction" class="tile" data-online-only onclick="openRosterManagement()">
             <span class="ico"><i class="fa-solid fa-address-book"></i></span
             ><span data-i18n="manageRoster">إدارة قائمة الأشخاص</span>
           </button>
-          <button class="tile" data-online-only onclick="showView('cardShareView')">
+          <button id="tutorialShareAction" class="tile" data-online-only onclick="showView('cardShareView')">
             <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
             ><span data-i18n="shareCard">مشاركة كارت QR</span>
           </button>
-          <button class="tile" data-online-only onclick="openAttendanceReport()">
+          <button id="tutorialReportsAction" class="tile" data-online-only onclick="openAttendanceReport()">
             <span class="ico"><i class="fa-solid fa-chart-column"></i></span
             ><span data-i18n="attendanceReports">تقارير الحضور</span>
           </button>
-          <button class="tile" data-online-only onclick="openFollowupView()">
+          <button id="tutorialFollowupAction" class="tile" data-online-only onclick="openFollowupView()">
             <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
             ><span data-i18n="followupsTitle">الافتقاد</span>
           </button>
-          <button class="tile" data-online-only onclick="openSheet()">
+          <button id="tutorialSheetAction" class="tile" data-online-only onclick="openSheet()">
             <span class="ico"><i class="fa-solid fa-table"></i></span
             ><span data-i18n="openSheet">فتح الشيت</span>
           </button>
@@ -258,7 +258,7 @@
             ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
             <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
           </button>
-          <button class="tile" data-online-only onclick="openScheduleSettings()">
+          <button id="tutorialScheduleAction" class="tile" data-online-only onclick="openScheduleSettings()">
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
@@ -462,6 +462,16 @@
             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
             <span data-i18n="openAttendanceSheet">Open Google Sheet</span>
           </a>
+          <div class="attendance-sheet-downloads">
+            <a id="attendanceSheetExcelLink" class="btn secondary" target="_blank" rel="noopener noreferrer">
+              <i class="fa-solid fa-file-excel" aria-hidden="true"></i>
+              <span data-i18n="downloadAttendanceExcel">Download Excel</span>
+            </a>
+            <a id="attendanceSheetPdfLink" class="btn secondary" target="_blank" rel="noopener noreferrer">
+              <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+              <span data-i18n="downloadAttendancePdf">Download PDF</span>
+            </a>
+          </div>
           <button class="btn secondary attendance-sheet-done-button" type="button" onclick="closeAttendanceSheetResult()" data-i18n="done">Done</button>
         </div>
       </dialog>
@@ -500,8 +510,35 @@
             <span id="tutorialNextLabel" data-i18n="tutorialNext">Next</span>
             <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
           </button>
+          <button id="tutorialSkipButton" type="button" class="btn secondary" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
+            Skip tutorial
+          </button>
         </div>
       </section>
+      <dialog id="firstRunSetupDialog" class="first-run-setup-dialog" aria-labelledby="firstRunSetupTitle" aria-describedby="firstRunSetupDescription" oncancel="event.preventDefault()">
+        <div class="first-run-setup-content">
+          <h2 id="firstRunSetupTitle" data-i18n="firstRunSetupTitle">Welcome</h2>
+          <p id="firstRunSetupDescription" class="report-note" data-i18n="firstRunSetupDescription"></p>
+          <section class="app-preference-group" aria-labelledby="firstRunSetupLanguageTitle">
+            <h3 id="firstRunSetupLanguageTitle" data-i18n="firstRunSetupLanguage"></h3>
+            <div class="preference-options" role="group" aria-labelledby="firstRunSetupLanguageTitle">
+              <button type="button" class="preference-option" data-setup-language="ar" aria-pressed="false" onclick="setLanguage('ar')"><span>ع</span><span data-i18n="arabicLanguage">العربية</span></button>
+              <button type="button" class="preference-option" data-setup-language="en" aria-pressed="false" onclick="setLanguage('en')"><span>EN</span><span data-i18n="englishLanguage">English</span></button>
+            </div>
+          </section>
+          <section class="app-preference-group" aria-labelledby="firstRunSetupThemeTitle">
+            <h3 id="firstRunSetupThemeTitle" data-i18n="firstRunSetupTheme"></h3>
+            <div class="preference-options" role="group" aria-labelledby="firstRunSetupThemeTitle">
+              <button type="button" class="preference-option" data-setup-theme="light" aria-pressed="false" onclick="applyTheme('light')"><i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">فاتح</span></button>
+              <button type="button" class="preference-option" data-setup-theme="dark" aria-pressed="false" onclick="applyTheme('dark')"><i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span></button>
+            </div>
+          </section>
+          <div class="first-run-setup-actions">
+            <button type="button" class="btn" onclick="finishFirstRunSetup(true)" data-i18n="firstRunSetupContinue">Continue to tutorial</button>
+            <button type="button" class="btn secondary" onclick="finishFirstRunSetup(false)" data-i18n="firstRunSetupSkip">Skip tutorial</button>
+          </div>
+        </div>
+      </dialog>
 
       <div id="offlineQueueView" style="display: none">
         <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
