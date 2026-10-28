@@ -72,6 +72,13 @@ test("login landing is described and centered with home navigation in the toolba
   assert.match(styles, /--app-bar-bg:\s*linear-gradient/);
 });
 
+test("view navigation resets the scrollable app container", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+
+  assert.match(views, /currentActiveViewId = viewId;\s*document\.getElementById\("mainContainer"\)\.scrollTop = 0;/);
+  assert.doesNotMatch(views, /window\.scrollTo\(\{\s*top:\s*0/);
+});
+
 test("dashboard layout choices are ordered and aligned with the language direction", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
@@ -129,7 +136,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
   assert.match(html, /css\/styles\.css\?v=73/);
-  assert.match(serviceWorker, /lambas-bible-shell-v73/);
+  assert.match(serviceWorker, /lambas-bible-shell-v74/);
   assert.match(serviceWorker, /css\/styles\.css\?v=73/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
