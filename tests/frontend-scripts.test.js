@@ -15,6 +15,23 @@ const scriptOrder = [
   "app-scanner-search.js",
   "app-cards-admin.js",
 ];
+const styleOrder = [
+  "01-foundation.css",
+  "02-app-chrome.css",
+  "03-feedback.css",
+  "04-people-attendance.css",
+  "05-dialogs-reports.css",
+  "06-app-layout.css",
+  "07-dashboard.css",
+  "08-scanner-controls.css",
+  "09-sync-progress.css",
+];
+
+function readStyles() {
+  return styleOrder
+    .map((file) => fs.readFileSync(path.join(frontendRoot, "css", file), "utf8"))
+    .join("\n");
+}
 
 test("loads frontend scripts in dependency order as classic scripts and precaches each file", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
@@ -36,9 +53,25 @@ test("loads frontend scripts in dependency order as classic scripts and precache
   assert.equal(fs.existsSync(path.join(frontendRoot, "js", "app.js")), false);
 });
 
+test("imports and precaches CSS modules in cascade order", () => {
+  const stylesheet = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+  const importedStyles = Array.from(
+    stylesheet.matchAll(/@import\s+url\("\.\/([^"]+)"\);/g),
+    (match) => match[1],
+  );
+
+  assert.deepEqual(importedStyles, styleOrder);
+  for (const file of styleOrder) {
+    assert.equal(fs.existsSync(path.join(frontendRoot, "css", file)), true);
+    assert.ok(serviceWorker.includes(`"./css/${file}"`), `${file} should be precached`);
+  }
+  assert.equal(fs.existsSync(path.join(frontendRoot, "css", "responsive.css")), false);
+});
+
 test("splash and toolbar use the requested loading and inner-icon treatments", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const splash = html.match(/<section id="startupScreen"[\s\S]*?<\/section>/)?.[0] || "";
 
   assert.match(splash, /<h1>Lambas Bible<\/h1>/);
@@ -54,7 +87,7 @@ test("splash and toolbar use the requested loading and inner-icon treatments", (
 
 test("login landing is described and centered with home navigation in the toolbar", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
   const toolbar = html.match(/<header class="top-app-bar">[\s\S]*?<\/header>/)?.[0] || "";
 
@@ -74,7 +107,7 @@ test("login landing is described and centered with home navigation in the toolba
 
 test("view navigation resets the scrollable app container", () => {
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
 
   assert.match(views, /const mainContainer = document\.getElementById\("mainContainer"\);\s*mainContainer\.scrollTo\(\{ top: 0, behavior: "instant" \}\);\s*window\.requestAnimationFrame\(\(\) => \{\s*if \(currentActiveViewId === viewId\) \{\s*mainContainer\.scrollTo\(\{ top: 0, behavior: "instant" \}\);/);
   assert.doesNotMatch(views, /window\.scrollTo\(\{\s*top:\s*0/);
@@ -83,7 +116,7 @@ test("view navigation resets the scrollable app container", () => {
 
 test("dashboard layout choices are ordered and aligned with the language direction", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const dashboard = html.match(/<div id="dashboardView"[\s\S]*?<div id="appSettingsView"/)?.[0] || "";
   const choices = Array.from(dashboard.matchAll(/data-dashboard-layout="(one|two|three)"/g), (match) => match[1]);
 
@@ -94,7 +127,7 @@ test("dashboard layout choices are ordered and aligned with the language directi
 });
 
 test("dashboard view does not use horizontal view-entry animation", () => {
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   assert.match(
     styles,
     /#dashboardView\.view-enter-forward,\s*#dashboardView\.view-enter-back\s*\{\s*animation:\s*none;/,
@@ -102,7 +135,7 @@ test("dashboard view does not use horizontal view-entry animation", () => {
 });
 
 test("subviews use full-screen layout with glass styling and no outer frame", () => {
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
 
   assert.match(views, /id === "loginView" \? "block" : "flex"/);
@@ -119,7 +152,7 @@ test("subviews use full-screen layout with glass styling and no outer frame", ()
 test("dashboard shows all actions in one selectable, full-page grid", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
   const dashboardStart = html.indexOf('<div id="dashboardView"');
   const dashboardEnd = html.indexOf('<div id="appSettingsView"', dashboardStart);
@@ -142,9 +175,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=74/);
-  assert.match(serviceWorker, /lambas-bible-shell-v76/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=74/);
+  assert.match(html, /css\/styles\.css\?v=75/);
+  assert.match(serviceWorker, /lambas-bible-shell-v77/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=75/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -164,7 +197,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
 test("people management styles search and uses edit plus confirmed archival actions", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const translations = fs.readFileSync(path.join(frontendRoot, "js", "app-i18n.js"), "utf8");
 
   assert.match(html, /id="rosterSearchInput"[^>]*class="roster-search"/);
@@ -200,7 +233,7 @@ test("roster management, attendance trends, and follow-up have dedicated views",
 });
 
 test("request loaders cover the view and allow home navigation while requests settle", () => {
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const core = fs.readFileSync(path.join(frontendRoot, "js", "app-core.js"), "utf8");
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
@@ -358,7 +391,7 @@ test("online attendance uses the scan endpoint and preserves queued action sync"
 });
 
 test("toast animation duration follows its configured visible duration", () => {
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
 
   assert.match(views, /duration = 5000/);
@@ -430,7 +463,7 @@ test("home navigation confirms unsaved settings and supports continue or discard
 test("current attendees provide a compact table, search, and emergency actions", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
 
   assert.match(html, /id="currentAttendeesSearch"[^>]*oninput="filterCurrentAttendees\(\)"/);
   assert.match(html, /id="emergencyCheckoutDialog"[^>]*class="attendance-action-dialog"/);
@@ -506,7 +539,7 @@ test("current attendees stay closed and show a toast when clicked outside the at
   assert.match(views, /tile\.setAttribute\("aria-disabled", String\(!navigator\.onLine\)\)/);
   assert.match(offline, /currentAttendeesTile\.disabled = !navigator\.onLine/);
   assert.doesNotMatch(offline, /currentAttendeesTile\.disabled =\s*!navigator\.onLine \|\| !currentAttendeesWindowOpen/);
-  assert.match(fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8"), /\.tile\.is-window-closed\s*\{[^}]*filter:\s*grayscale/);
+  assert.match(readStyles(), /\.tile\.is-window-closed\s*\{[^}]*filter:\s*grayscale/);
   for (const key of ["attendanceWindowBeforeMeeting", "attendanceWindowAfterMeeting", "attendanceWindowNoMeetingToday"]) {
     assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 2);
   }
@@ -793,7 +826,7 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.match(html, /id="tutorialNextLabel"[^>]*data-i18n="tutorialNext"/);
   assert.doesNotMatch(html, /tutorial-skip|onclick="skipFirstRunTutorial/);
   assert.match(html, /id="firstRunTutorial"[^>]*aria-modal="true"/);
-  const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
+  const styles = readStyles();
   assert.match(styles, /body\.tutorial-active :is\(button, input, select, textarea, a, \[tabindex\]\):not\(\.tutorial-target-highlight\):not\(#tutorialNextButton\)/);
   assert.match(html, /tutorial-focus-shade-top[\s\S]*?tutorial-focus-shade-left[\s\S]*?tutorial-focus-shade-right[\s\S]*?tutorial-focus-shade-bottom/);
   assert.match(styles, /\.tutorial-focus-wash[\s\S]*?inset:\s*0[\s\S]*?pointer-events:\s*none/);

@@ -1,0 +1,296 @@
+.report-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.report-panel {
+  overflow: hidden;
+  margin-top: 12px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: var(--panel-gradient), var(--glass-surface);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.18),
+    0 14px 36px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(30px) saturate(155%);
+  -webkit-backdrop-filter: blur(30px) saturate(155%);
+}
+
+.report-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--accent-gold);
+  background: linear-gradient(
+    100deg,
+    rgba(69, 163, 255, 0.09),
+    rgba(194, 92, 255, 0.08),
+    rgba(54, 211, 162, 0.08)
+  );
+}
+
+.attendance-person-card {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.roster-person-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.roster-person-row:last-child {
+  border-bottom: 0;
+}
+
+.roster-person-details {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.roster-person-details strong {
+  overflow-wrap: anywhere;
+  color: var(--text-main);
+}
+
+.roster-person-details small {
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.roster-person-actions,
+.roster-person-edit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.roster-person-actions .btn,
+.roster-person-actions .admin-del-btn,
+.roster-person-edit .btn {
+  width: auto;
+  min-height: 38px;
+  margin: 0;
+}
+
+.roster-person-edit {
+  width: 100%;
+}
+
+.roster-person-edit input[type="text"] {
+  min-width: 0;
+  flex: 1 1 180px;
+  margin: 0;
+}
+
+.roster-search-wrap {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 14px;
+  padding: 0 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 15px;
+  background: var(--panel-gradient), var(--input-bg);
+  color: var(--text-sub);
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.12),
+    0 8px 18px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.roster-search-wrap:focus-within {
+  border-color: var(--accent-gold);
+  box-shadow:
+    0 0 0 3px rgba(245, 189, 85, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.roster-search {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 14px;
+  text-align: start;
+  box-shadow: none;
+}
+
+.roster-search::placeholder {
+  color: var(--text-sub);
+  opacity: 0.85;
+}
+
+.attendance-person-card:last-child {
+  border-bottom: 0;
+}
+
+.followup-person-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.followup-person-card .btn {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.attendance-person-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.attendance-person-card > div:first-child strong {
+  color: var(--text-main);
+  font-size: 15px;
+}
+
+.attendance-person-card small {
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.current-attendees-search {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 10px 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  outline: none;
+  background: var(--panel-gradient), var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 14px;
+  text-align: start;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.12),
+    0 8px 18px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.current-attendees-search::placeholder {
+  color: var(--text-sub);
+  opacity: 0.85;
+}
+
+.current-attendees-search:focus-visible {
+  border-color: var(--accent-gold);
+  box-shadow:
+    0 0 0 3px rgba(245, 189, 85, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.current-attendees-table {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.current-attendees-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.current-attendees-row > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.current-attendees-row:last-child {
+  border-bottom: 0;
+}
+
+.current-attendees-header {
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.current-attendees-meta {
+  display: grid;
+  gap: 3px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.current-attendees-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.current-attendees-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.current-attendees-action-label {
+  min-width: 0;
+}
+
+.attendance-window-note {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--panel-gradient), var(--glass-surface);
+  color: var(--text-sub);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.attendance-window-note.is-open {
+  border-color: rgba(49, 190, 134, 0.45);
+  color: #35a879;
+}
+
+.attendance-window-note.is-closed {
+  border-color: rgba(239, 100, 100, 0.35);
+}
+
+.emergency-checkout-submit {
+  background: linear-gradient(120deg, #db8c31, #ce557e);
+  color: #fff;
+}

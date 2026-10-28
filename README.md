@@ -9,7 +9,16 @@ QR attendance Progressive Web App for a church community. The frontend is static
 ```text
 Backend/Code.js                 Apps Script API and business logic
 Frontend/index.html             PWA entry point
-Frontend/css/styles.css         Application styles
+Frontend/css/styles.css         Ordered stylesheet entry point
+Frontend/css/01-foundation.css  Theme tokens, startup screen, and page background
+Frontend/css/02-app-chrome.css  App bar, account menu, preferences, and shared chrome
+Frontend/css/03-feedback.css    Toasts, loaders, and search feedback
+Frontend/css/04-people-attendance.css Roster and attendee components
+Frontend/css/05-dialogs-reports.css Attendance dialogs, reports, and filters
+Frontend/css/06-app-layout.css  Full-screen app surface and view transitions
+Frontend/css/07-dashboard.css   Dashboard layout, action tiles, and welcome area
+Frontend/css/08-scanner-controls.css Shared controls, forms, and QR scanner
+Frontend/css/09-sync-progress.css Sync queue progress and related responsive rules
 Frontend/js/app-state.js        Shared browser state and configuration
 Frontend/js/app-i18n.js         Translations and text mapping
 Frontend/js/app-core.js         Theme, API, and appearance helpers
@@ -32,6 +41,8 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 3. The frontend JavaScript is loaded as ordered classic scripts so existing inline UI handlers and shared application state continue to work.
 4. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
 5. Run the checks with `node --test tests/*.test.js`.
+
+The CSS entry point imports the numbered modules in cascade order. Add styles to the module that owns the component or view, and keep view-specific responsive rules beside those styles so the existing override order remains predictable. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the frontend architecture and change workflow.
 
 After one successful online load, a previously authenticated user can scan QR cards, search the saved roster by name, and queue new attendees while offline. Each attendance scan is first committed to the IndexedDB queue with `pending` status and its scan-time timestamp, then sent immediately to the GAS sync endpoint. Existing scan feedback appears after a randomized 1–2 second delay without waiting for the network. If the request cannot complete, the event remains pending for the existing manual queue sync or the public `triggerManualSync()` function; supported browsers also register the `sync-pending-events` Background Sync tag so the service worker can retry after the page is closed. Background sync needs the saved ID token to authorize its GAS request, so that credential is stored in the device's IndexedDB while queued events remain. Keep devices physically controlled and sign out only on trusted devices.
 
