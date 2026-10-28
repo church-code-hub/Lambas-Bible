@@ -64,7 +64,7 @@ test("login landing is described and centered with home navigation in the toolba
   assert.ok(toolbar.indexOf('id="homeBtn"') < toolbar.indexOf('class="toolbar-menu-wrap"'));
   assert.doesNotMatch(toolbar, /<nav id="toolbarMenu"[\s\S]*?id="homeBtn"/);
   assert.equal((html.match(/id="homeBtn"/g) || []).length, 1);
-  assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*\{[^}]*justify-content:\s*center/);
+  assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*\{[^}]*justify-content:\s*flex-start/);
   assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*>\s*\[id\$="View"\]\s*\{[^}]*margin-block:\s*auto/);
   assert.match(styles, /\.home-btn\s*\{[^}]*position:\s*static/);
   assert.match(styles, /\.container\s*\{[^}]*position:\s*fixed[^}]*inset-block:\s*var\(--app-bar-height\) 0/);

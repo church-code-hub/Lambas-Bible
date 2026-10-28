@@ -2103,7 +2103,7 @@
       .container:not(.is-dashboard-view) {
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
       }
 
       .container:not(.is-dashboard-view) > [id$="View"] {
