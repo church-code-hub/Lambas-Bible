@@ -213,7 +213,13 @@
         }
 
         currentActiveViewId = viewId;
-        document.getElementById("mainContainer").scrollTop = 0;
+        const mainContainer = document.getElementById("mainContainer");
+        mainContainer.scrollTo({ top: 0, behavior: "instant" });
+        window.requestAnimationFrame(() => {
+          if (currentActiveViewId === viewId) {
+            mainContainer.scrollTo({ top: 0, behavior: "instant" });
+          }
+        });
 
         if (viewId === "attendanceReportView" && viewChanged) {
           selectAttendanceReportTab(attendanceReportTab, true);

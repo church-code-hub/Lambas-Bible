@@ -2082,6 +2082,11 @@
         padding-block: clamp(24px, 5vh, 52px);
       }
 
+      #mainContainer > #rosterView {
+        justify-content: flex-start;
+        margin-block: 0;
+      }
+
       #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) > h2 {
         margin-bottom: clamp(20px, 3vh, 28px);
         padding-bottom: 16px;
