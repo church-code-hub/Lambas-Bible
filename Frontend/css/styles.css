@@ -2075,7 +2075,6 @@
 
       #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) {
         width: min(920px, 100%);
-        min-height: calc(100dvh - 136px);
         flex-direction: column;
         justify-content: center;
         margin-inline: auto;
@@ -3398,7 +3397,6 @@
         }
         .container { width: 100%; padding: 18px 14px; border-radius: 0; }
         #mainContainer > [id$="View"]:not(#dashboardView):not(#loginView) {
-          min-height: calc(100dvh - 96px);
           padding-block: 22px;
         }
         .grid { gap: 10px; }
