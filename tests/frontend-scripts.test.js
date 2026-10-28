@@ -101,13 +101,15 @@ test("dashboard view does not use horizontal view-entry animation", () => {
   );
 });
 
-test("subviews use a centered responsive column with viewport-aware spacing", () => {
+test("subviews use full-screen layout with glass styling and no outer frame", () => {
   const styles = fs.readFileSync(path.join(frontendRoot, "css", "styles.css"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
 
   assert.match(views, /id === "loginView" \? "block" : "flex"/);
+  assert.match(styles, /\.container\s*\{[^}]*position:\s*fixed[^}]*inset-block:\s*var\(--app-bar-height\)\s*0[^}]*inset-inline:\s*0[^}]*background:\s*transparent[^}]*border-radius:\s*0[^}]*box-shadow:\s*none[^}]*border:\s*0/);
   assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*width:\s*min\(920px,\s*100%\)[^}]*min-height:\s*calc\(100dvh - 136px\)[^}]*justify-content:\s*center[^}]*margin-inline:\s*auto/);
   assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\) > h2\s*\{[^}]*font-size:\s*clamp\(22px,\s*3vw,\s*29px\)/);
+  assert.match(styles, /\.camera-wrapper\s*\{[^}]*background:\s*var\(--glass-surface\)[^}]*backdrop-filter:\s*blur\(var\(--glass-blur\)\)/);
   assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*min-height:\s*calc\(100dvh - 96px\)/);
 });
 
