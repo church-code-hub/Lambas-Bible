@@ -307,7 +307,7 @@
         align-items: stretch;
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
-        padding: var(--app-bar-height) 0 0;
+        padding: 0;
         position: relative;
       }
 
@@ -2037,33 +2037,30 @@
 
       /* Full-screen app surface */
       .container {
-        flex: 1 1 auto;
+        flex: none;
         min-height: 0;
         max-width: none;
         width: 100%;
-        height: calc(100vh - var(--app-bar-height));
+        position: fixed;
+        inset-block: var(--app-bar-height) 0;
+        inset-inline: 0;
+        height: auto;
         max-height: none;
         overflow-y: auto;
         overflow-x: hidden;
         scroll-behavior: smooth;
+        scroll-padding-block: 24px;
         -webkit-overflow-scrolling: touch;
         background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
-        padding: clamp(20px, 3vw, 36px) clamp(16px, 5vw, 64px);
+        padding: clamp(24px, 3vw, 40px) clamp(16px, 5vw, 64px);
         border-radius: 0;
         box-shadow: none;
         border: 0;
         margin: 0;
-        position: relative;
         z-index: 1;
         animation: none;
-      }
-
-      @supports (height: 100dvh) {
-        .container {
-          height: calc(100dvh - var(--app-bar-height));
-        }
       }
 
       .container.is-dashboard-view {
@@ -3328,7 +3325,7 @@
         }
 
         .top-app-bar { height: 60px; padding: 0 12px; }
-        body { padding-top: var(--app-bar-height); }
+        body { padding: 0; }
         .top-actions { gap: 5px; }
         .top-app-bar .brand { gap: 8px; font-size: 15px; }
         .top-app-bar .brand img { width: 32px; height: 32px; }
