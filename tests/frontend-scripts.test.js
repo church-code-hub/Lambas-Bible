@@ -107,10 +107,13 @@ test("subviews use full-screen layout with glass styling and no outer frame", ()
 
   assert.match(views, /id === "loginView" \? "block" : "flex"/);
   assert.match(styles, /\.container\s*\{[^}]*position:\s*fixed[^}]*inset-block:\s*var\(--app-bar-height\)\s*0[^}]*inset-inline:\s*0[^}]*background:\s*transparent[^}]*border-radius:\s*0[^}]*box-shadow:\s*none[^}]*border:\s*0/);
-  assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*width:\s*min\(920px,\s*100%\)[^}]*min-height:\s*calc\(100dvh - 136px\)[^}]*justify-content:\s*center[^}]*margin-inline:\s*auto/);
+  assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*width:\s*min\(920px,\s*100%\)[^}]*justify-content:\s*center[^}]*margin-inline:\s*auto/);
+  const subviewLayout = styles.match(/#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{([^}]*)\}/);
+  assert.ok(subviewLayout);
+  assert.doesNotMatch(subviewLayout[1], /min-height\s*:/);
   assert.match(styles, /#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\) > h2\s*\{[^}]*font-size:\s*clamp\(22px,\s*3vw,\s*29px\)/);
   assert.match(styles, /\.camera-wrapper\s*\{[^}]*background:\s*var\(--glass-surface\)[^}]*backdrop-filter:\s*blur\(var\(--glass-blur\)\)/);
-  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{[^}]*min-height:\s*calc\(100dvh - 96px\)/);
+  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?#mainContainer > \[id\$="View"\]:not\(#dashboardView\):not\(#loginView\)\s*\{\s*padding-block:\s*22px;/);
 });
 
 test("dashboard shows all actions in one selectable, full-page grid", () => {
