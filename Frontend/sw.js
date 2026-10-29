@@ -1,4 +1,4 @@
-const CACHE_NAME = "lambas-bible-shell-v78";
+const CACHE_NAME = "lambas-bible-shell-v79";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -20,7 +20,6 @@ const APP_SHELL = [
   "./js/app-auth.js?v=73",
   "./js/app-scanner-search.js?v=73",
   "./js/app-cards-admin.js?v=73",
-  "./js/config.example.js",
   "./manifest.json",
   "./Assets/icons/icon-192.png",
   "./Assets/icons/icon-512.png",
@@ -30,7 +29,14 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then(async (cache) => {
+        await cache.addAll(APP_SHELL);
+        try {
+          await cache.add("./js/config.js");
+        } catch {
+          // Local development may not have a generated config.js.
+        }
+      })
       .then(() => self.skipWaiting())
   );
 });

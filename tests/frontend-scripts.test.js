@@ -199,7 +199,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
   assert.match(html, /css\/styles\.css\?v=76/);
-  assert.match(serviceWorker, /lambas-bible-shell-v78/);
+  assert.match(serviceWorker, /lambas-bible-shell-v79/);
   assert.match(serviceWorker, /css\/styles\.css\?v=76/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
@@ -216,6 +216,23 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="three"\][\s\S]*?\.dashboard-actions-grid[\s\S]*?\.tile:last-child:nth-child\(3n \+ 1\)\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(styles, /\.container\s*\{[^}]*width:\s*100%[^}]*background:\s*transparent/);
   assert.match(styles, /\.container\.is-dashboard-view\s*\{[^}]*max-width:\s*none/);
+});
+
+test("service worker precache contains only existing frontend files", () => {
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+  const appShell = serviceWorker.match(/const APP_SHELL = \[([\s\S]*?)\n\];/)?.[1] || "";
+  const assets = Array.from(appShell.matchAll(/"([^\"]+)"/g), (match) => match[1]);
+
+  assert.ok(assets.length > 0);
+  for (const asset of assets) {
+    const url = new URL(asset, "https://example.test/Frontend/");
+    const relativePath = decodeURIComponent(url.pathname.replace(/^\/Frontend\//, ""));
+    assert.ok(
+      fs.existsSync(path.join(frontendRoot, relativePath)),
+      `pre-cached asset must exist: ${asset}`,
+    );
+  }
+  assert.match(serviceWorker, /cache\.add\("\.\/js\/config\.js"\)/);
 });
 
 test("people management styles search and uses edit plus confirmed archival actions", () => {
