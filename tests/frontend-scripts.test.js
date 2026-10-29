@@ -88,8 +88,9 @@ test("current attendees expose one contextual checkout action without narrow-scr
 
   assert.match(renderer, /checkoutOpen\s*\?[\s\S]*?attendanceCheckout[\s\S]*?emergencyCheckout/);
   assert.equal((renderer.match(/addActionButton\(\s*checkoutOpen/g) || []).length, 1);
-  assert.match(styles, /\.current-attendees-actions \.btn\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
-  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?\.current-attendees-actions \.btn\s*\{[^}]*flex:\s*1 1 100%/);
+    assert.match(styles, /\.current-attendees-actions \.btn\s*\{[^}]*max-width:\s*100%;[^}]*overflow-wrap:\s*anywhere/);
+  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?\.current-attendees-actions\s*\{[^}]*display:\s*grid/);
+  assert.match(styles, /@media \(max-width: 480px\)[\s\S]*?\.current-attendees-actions \.btn\s*\{[^}]*width:\s*100%/);
 });
 
 test("splash and toolbar use the requested loading and inner-icon treatments", () => {
@@ -116,13 +117,12 @@ test("login landing is described and centered with home navigation in the toolba
 
   assert.match(html, /id="loginView" class="login-view"[\s\S]*?class="login-title">Lambas Bible<\/h1>[\s\S]*?data-i18n="loginSub"/);
   assert.match(translations, /loginSub: "يلزم تسجيل الدخول للمتابعة"/);
-  assert.match(toolbar, /id="homeBtn"/);
-  assert.ok(toolbar.indexOf('id="homeBtn"') < toolbar.indexOf('class="toolbar-menu-wrap"'));
-  assert.doesNotMatch(toolbar, /<nav id="toolbarMenu"[\s\S]*?id="homeBtn"/);
+  assert.doesNotMatch(toolbar, /id="homeBtn"/);
+  assert.match(html, /<\/header>\s*<button[^>]*id="homeBtn"[^>]*class="icon-btn home-btn"/);
   assert.equal((html.match(/id="homeBtn"/g) || []).length, 1);
   assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*\{[^}]*justify-content:\s*flex-start/);
   assert.match(styles, /\.container:not\(\.is-dashboard-view\)\s*>\s*\[id\$="View"\]\s*\{[^}]*margin-block:\s*auto/);
-  assert.match(styles, /\.home-btn\s*\{[^}]*position:\s*static/);
+  assert.match(styles, /\.container\.has-home-navigation\s*\{[^}]*padding-bottom:/);
   assert.match(styles, /\.container\s*\{[^}]*position:\s*fixed[^}]*inset-block:\s*var\(--app-bar-height\) 0/);
   assert.match(styles, /\.container\s*\{[^}]*scroll-padding-block:\s*24px/);
   assert.match(styles, /--app-bar-bg:\s*linear-gradient/);
@@ -516,9 +516,13 @@ test("current attendees provide a compact table, search, and emergency actions",
   assert.match(views, /currentAttendeesAdminTime[\s\S]*?currentAttendeesActions/);
   assert.match(styles, /\.current-attendees-row\s*\{[\s\S]*?grid-template-columns:[^;]*3/);
   const responsiveStyles = styles.slice(styles.lastIndexOf("@media (max-width: 480px) {"));
-  assert.match(responsiveStyles, /\.current-attendees-header\s*\{[^}]*grid-template-columns:[^;]*1\.2fr/);
+  assert.match(responsiveStyles, /\.current-attendees-header\s*\{[^}]*position:\s*absolute/);
+  assert.match(responsiveStyles, /\.current-attendees-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   assert.doesNotMatch(styles, /\.current-attendees-header\s*\{\s*display:\s*none/);
-  assert.match(styles, /\.current-attendees-table\s*\{[^}]*overflow:\s*hidden/);
+    assert.match(styles, /\.current-attendees-table\s*\{[^}]*overflow-x:\s*auto/);
+    assert.match(views, /nameCell\.dataset\.label = translations\[currentLang\]\.studentNameLabel/);
+    assert.match(views, /actions\.dataset\.label = translations\[currentLang\]\.currentAttendeesActions/);
+    assert.match(styles, /\.current-attendees-row > \[role="cell"\]::before\s*\{[^}]*content:\s*attr\(data-label\)/);
   assert.match(styles, /\.attendance-action-dialog::backdrop/);
 });
 
@@ -675,17 +679,17 @@ test("attendance sheet action remains separate from display filters and sync que
   assert.match(html, /id="attendanceSheetResultDialog"/);
   assert.match(views, /function filterAttendanceReport\(\)/);
   assert.match(views, /list\.hidden = Boolean\(query\);[\s\S]*?searchResult\.hidden = !query;/);
-  assert.match(views, /if \(!query\) \{[\s\S]*?list\.appendChild\(panel\);[\s\S]*?\n        \}/);
+  assert.match(views, /if \(!query\) \{[\s\S]*?list\.appendChild\(panel\);[\s\S]*?\n\s*\}/);
   assert.match(views, /function startAttendanceSearchAgain\(\)/);
-  assert.match(views, /attendanceSummaryAttended\.replace\("\{count\}", report\.count\)/);
-  assert.match(views, /attendanceSummaryAbsent\.replace\("\{count\}", absentCount\)/);
-  assert.match(views, /attendanceSummaryAll[\s\S]*?\.replace\("\{attended\}", report\.count\)[\s\S]*?\.replace\("\{absent\}", absentCount\)/);
+  assert.match(views, /attendanceSummaryAttended\.replace\([\s\S]*?"\{count\}"[\s\S]*?report\.count[\s\S]*?\)/);
+  assert.match(views, /attendanceSummaryAbsent\.replace\([\s\S]*?"\{count\}"[\s\S]*?absentCount[\s\S]*?\)/);
+  assert.match(views, /attendanceSummaryAll[\s\S]*?\.replace\([\s\S]*?"\{attended\}"[\s\S]*?report\.count[\s\S]*?\)[\s\S]*?\.replace\([\s\S]*?"\{absent\}"[\s\S]*?absentCount[\s\S]*?\)/);
   assert.match(views, /function showAttendanceSheetResult\(report\)/);
-  assert.match(offline, /async function syncFromToolbar\(\)[\s\S]*?await openOfflineQueueView\(\);[\s\S]*?\n      }/);
-  assert.doesNotMatch(
-    offline.match(/async function syncFromToolbar\(\)[\s\S]*?\n      }/)[0],
-    /syncOfflineQueue/,
-  );
+  assert.match(views, /link\.download = format === "xlsx"[\s\S]*?attendance-\$\{report\.date\}\.pdf/);
+  assert.doesNotMatch(html, /id="attendanceSheet(?:Excel|Pdf)Link"[^>]*target="_blank"/);
+  const toolbarSync = offline.match(/async function syncFromToolbar\(\)\s*\{([^}]*)\}/)?.[1] || "";
+  assert.match(toolbarSync, /await openOfflineQueueView\(\)/);
+  assert.doesNotMatch(toolbarSync, /syncOfflineQueue/);
   assert.match(offline, /toolbarButton\.disabled = isSyncingOfflineQueue;/);
   assert.match(backend, /exportedPeople\.forEach\(\(person\) => reportRows\.push\(\[/);
   assert.doesNotMatch(backend, /attendees\.forEach\(\(person\) => reportRows\.push\(\[/);
@@ -1200,7 +1204,7 @@ test("online background events remain serialized in action order", async () => {
 
 test("saved offline queue actions remain deletable when offline", () => {
   const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
-  const deletion = offline.match(/async function deleteQueuedOfflineEvent\(eventId\)[\s\S]*?\n      \}/)?.[0] || "";
+  const deletion = offline.match(/async function deleteQueuedOfflineEvent\(eventId\)[\s\S]*?\n\}/)?.[0] || "";
   const rendering = offline.match(/async function renderOfflineQueue\(\)[\s\S]*?\n      \}/)?.[0] || "";
 
   assert.match(rendering, /deleteQueuedOfflineEvent\(event\.eventId\)/);

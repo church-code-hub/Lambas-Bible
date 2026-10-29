@@ -211,8 +211,10 @@ function showView(viewId, pushHistory = true) {
   }
   if (viewId === "dashboardView" || viewId === "loginView") {
     homeBtn.style.display = "none";
+    document.getElementById("mainContainer").classList.remove("has-home-navigation");
   } else {
     homeBtn.style.display = "flex";
+    document.getElementById("mainContainer").classList.add("has-home-navigation");
   }
 
   if (pushHistory && currentActiveViewId !== viewId && viewId !== "loginView") {
@@ -877,10 +879,12 @@ function renderCurrentAttendees(checkoutOpen) {
     row.setAttribute("role", "row");
     const nameCell = document.createElement("strong");
     nameCell.setAttribute("role", "cell");
+    nameCell.dataset.label = translations[currentLang].studentNameLabel;
     nameCell.textContent = person.name;
     const metaCell = document.createElement("div");
     metaCell.className = "current-attendees-meta";
     metaCell.setAttribute("role", "cell");
+    metaCell.dataset.label = translations[currentLang].currentAttendeesAdminTime;
     const admin = document.createElement("span");
     admin.textContent = person.checkedInBy || "—";
     const time = document.createElement("time");
@@ -897,6 +901,7 @@ function renderCurrentAttendees(checkoutOpen) {
     const actions = document.createElement("div");
     actions.className = "current-attendees-actions";
     actions.setAttribute("role", "cell");
+    actions.dataset.label = translations[currentLang].currentAttendeesActions;
     const addActionButton = (className, iconName, label, onClick) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -1522,6 +1527,9 @@ function showAttendanceSheetResult(report) {
     }
     link.href =
       `https://docs.google.com/spreadsheets/d/${spreadsheetMatch[1]}/export?${parameters}`;
+    link.download = format === "xlsx"
+      ? `attendance-${report.date}.xlsx`
+      : `attendance-${report.date}.pdf`;
     link.hidden = false;
   });
   if (!dialog.open) dialog.showModal();

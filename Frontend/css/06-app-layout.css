@@ -26,6 +26,10 @@
   animation: none;
 }
 
+.container.has-home-navigation {
+  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+}
+
 .container.is-dashboard-view {
   width: 100%;
   max-width: none;

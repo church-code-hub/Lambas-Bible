@@ -195,7 +195,10 @@ h2 > i {
 }
 
 .home-btn {
-  position: static;
+  position: fixed;
+  z-index: 1200;
+  inset-inline-start: 20px;
+  bottom: 20px;
   flex: 0 0 40px;
   width: 40px;
   height: 40px;
@@ -227,6 +230,54 @@ h2 > i {
     height: 38px;
     justify-content: center;
     padding: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .home-btn {
+    left: 50%;
+    inset-inline-start: auto;
+    inset-inline-end: auto;
+    bottom: max(14px, calc(env(safe-area-inset-bottom, 0px) + 10px));
+    width: 56px;
+    height: 56px;
+    flex-basis: 56px;
+    border-radius: 50%;
+    background: var(--app-bar-bg);
+    box-shadow: var(--icon-glass-shadow);
+    transform: translateX(-50%);
+  }
+
+  .home-btn:hover {
+    transform: translate(-50%, -1px);
+  }
+
+  .home-btn:active {
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (max-width: 720px) {
+  .home-btn {
+    position: fixed;
+    z-index: 1200;
+    left: 50%;
+    inset-inline-end: auto;
+    bottom: max(14px, calc(env(safe-area-inset-bottom, 0px) + 10px));
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--app-bar-bg);
+    box-shadow: var(--icon-glass-shadow);
+    transform: translateX(-50%);
+  }
+
+  .home-btn:hover {
+    transform: translate(-50%, -1px);
+  }
+
+  .home-btn:active {
+    transform: translate(-50%, 0);
   }
 }
 

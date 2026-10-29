@@ -75,6 +75,21 @@
   border-bottom: 1px solid var(--card-border);
 }
 
+.attendance-report-table {
+  min-width: min(100%, 420px);
+}
+
+.attendance-report-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--select-option-bg);
+}
+
+.attendance-report-row:not(.attendance-report-header):nth-child(even) {
+  background: color-mix(in srgb, var(--glass-surface) 56%, transparent);
+}
+
 .attendance-report-header {
   color: var(--text-sub);
   font-size: 12px;
@@ -371,22 +386,17 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  gap: 8px;
   margin: 0;
-  padding: 8px;
-  font-size: 15px;
+  padding: 8px 11px;
+  font-size: 13px;
 }
 
 .compact-control-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  display: inline;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .attendance-sheet-button i {

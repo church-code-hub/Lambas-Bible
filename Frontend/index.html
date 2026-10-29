@@ -66,19 +66,6 @@
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
-        <button
-          type="button"
-          id="homeBtn"
-          class="icon-btn home-btn"
-          style="display: none"
-          onclick="handleHomeNavigation()"
-          title="الرئيسية"
-          data-i18n-title="home"
-          aria-label="الرئيسية"
-          data-i18n-aria-label="home"
-        >
-          <i class="fa-solid fa-house" aria-hidden="true"></i>
-        </button>
         <div class="toolbar-menu-wrap">
           <button
             type="button"
@@ -157,6 +144,20 @@
         </div>
       </div>
     </header>
+
+    <button
+      type="button"
+      id="homeBtn"
+      class="icon-btn home-btn"
+      style="display: none"
+      onclick="handleHomeNavigation()"
+      title="الرئيسية"
+      data-i18n-title="home"
+      aria-label="الرئيسية"
+      data-i18n-aria-label="home"
+    >
+      <i class="fa-solid fa-house" aria-hidden="true"></i>
+    </button>
 
     <div class="container" id="mainContainer">
       <div id="loader" class="loader-overlay" role="status" aria-live="polite">
@@ -463,11 +464,11 @@
             <span data-i18n="openAttendanceSheet">Open Google Sheet</span>
           </a>
           <div class="attendance-sheet-downloads">
-            <a id="attendanceSheetExcelLink" class="btn secondary" target="_blank" rel="noopener noreferrer">
+            <a id="attendanceSheetExcelLink" class="btn secondary" download="attendance.xlsx">
               <i class="fa-solid fa-file-excel" aria-hidden="true"></i>
               <span data-i18n="downloadAttendanceExcel">Download Excel</span>
             </a>
-            <a id="attendanceSheetPdfLink" class="btn secondary" target="_blank" rel="noopener noreferrer">
+            <a id="attendanceSheetPdfLink" class="btn secondary" download="attendance.pdf">
               <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
               <span data-i18n="downloadAttendancePdf">Download PDF</span>
             </a>
