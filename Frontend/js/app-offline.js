@@ -181,6 +181,8 @@ async function refreshRosterCache() {
       );
     }
     await cacheRosterResponse(response);
+    if (typeof notifyBirthdayRoster === "function")
+      notifyBirthdayRoster(response.roster);
     return true;
   } catch (error) {
     console.error("Could not refresh the saved offline roster.", error);
@@ -207,9 +209,12 @@ async function cacheRosterResponse(response) {
       id: String(person.id).trim(),
       name: String(person.name),
       qrId: String(person.qrId || "").trim(),
+      birthdate: String(person.birthdate || "").trim(),
+      phone: String(person.phone || "").trim(),
     }));
   await saveCachedRoster(roster);
   await updateOfflineStatus();
+  if (typeof notifyBirthdayRoster === "function") notifyBirthdayRoster(roster);
 }
 
 async function manuallyRefreshRosterCache() {
@@ -686,6 +691,16 @@ async function saveOfflineSyncFailure(event, message) {
     lastSyncError: message,
     lastSyncFailedAt: new Date().toISOString(),
   });
+  if (typeof recordAppNotification === "function") {
+    const name = event.personName || event.name || event.eventId;
+    recordAppNotification(
+      `sync-failed:${event.eventId}`,
+      "syncFailureNotificationTitle",
+      translations[currentLang].syncFailureNotificationBody
+        .replace("{name}", name)
+        .replace("{message}", message),
+    );
+  }
 }
 
 var immediateOfflineSyncIds = new Set();
@@ -1128,6 +1143,16 @@ async function renderOfflineQueue() {
         details.appendChild(status);
         const actions = document.createElement("div");
         actions.className = "offline-event-actions";
+        const actionMenu = document.createElement("details");
+        actionMenu.className = "row-action-menu";
+        const actionTrigger = document.createElement("summary");
+        actionTrigger.title = translations[currentLang].moreActions;
+        actionTrigger.setAttribute("aria-label", translations[currentLang].moreActions);
+        actionTrigger.innerHTML = '<i class="fa-solid fa-ellipsis" aria-hidden="true"></i>';
+        const actionItems = document.createElement("div");
+        actionItems.className = "row-action-menu-items";
+        actionMenu.append(actionTrigger, actionItems);
+        actions.appendChild(actionMenu);
         const retryButton = document.createElement("button");
         retryButton.type = "button";
         retryButton.className = "btn secondary";
@@ -1137,20 +1162,22 @@ async function renderOfflineQueue() {
           : translations[currentLang].offlineSyncEvent;
         retryButton.disabled =
           event.queuedBy !== currentUser?.email || isSyncingOfflineQueue;
-        retryButton.addEventListener("click", () =>
-          syncOfflineQueue(event.eventId, true),
-        );
-        actions.appendChild(retryButton);
+        retryButton.addEventListener("click", () => {
+          actionMenu.open = false;
+          runButtonAction(retryButton, () => syncOfflineQueue(event.eventId, true));
+        });
+        actionItems.appendChild(retryButton);
         const deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.className = "admin-del-btn";
         deleteButton.textContent =
           translations[currentLang].deleteOfflineEventBtn;
         deleteButton.disabled = isSyncingOfflineQueue;
-        deleteButton.addEventListener("click", () =>
-          deleteQueuedOfflineEvent(event.eventId),
-        );
-        actions.appendChild(deleteButton);
+        deleteButton.addEventListener("click", () => {
+          actionMenu.open = false;
+          runButtonAction(deleteButton, () => deleteQueuedOfflineEvent(event.eventId));
+        });
+        actionItems.appendChild(deleteButton);
         item.append(details, actions);
         groupPanel.appendChild(item);
       }

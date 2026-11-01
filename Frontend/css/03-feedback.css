@@ -54,6 +54,38 @@
   border-color: rgba(37, 99, 235, 0.48);
 }
 
+.notification-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.notification-controls .btn {
+  width: auto;
+  margin: 0;
+}
+.notification-list {
+  overflow: hidden;
+}
+.notification-item {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+.notification-item:last-child {
+  border-bottom: 0;
+}
+.notification-item p,
+.notification-item small {
+  margin: 0;
+  color: var(--text-sub);
+  overflow-wrap: anywhere;
+}
+.notification-item.is-read {
+  opacity: 0.68;
+}
+
 @keyframes toastIn {
   0% {
     opacity: 0;

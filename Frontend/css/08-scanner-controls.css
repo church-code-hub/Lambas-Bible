@@ -127,6 +127,39 @@ h2 > i {
   justify-content: center;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
+.scan-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 auto 14px;
+  padding: 4px;
+  width: min(100%, 440px);
+  border: 1px solid var(--chip-border);
+  border-radius: 12px;
+  background: var(--chip-bg);
+}
+.scan-mode-button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-sub);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.scan-mode-button[aria-pressed="true"] {
+  background: var(--app-bar-bg);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+#scanView.payment-mode .camera-wrapper {
+  min-height: min(62vh, 560px);
+}
+#scanView.payment-mode #qr-reader {
+  max-width: 760px;
+}
 #qr-reader {
   width: 100%;
 }

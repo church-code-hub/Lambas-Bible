@@ -15,6 +15,23 @@ function showToast(message, type = "error", duration = 5000) {
   return toast;
 }
 
+async function runButtonAction(button, action) {
+  if (!button || button.disabled) return;
+  const label = button.querySelector(".current-attendees-action-label") ||
+    button.querySelector("span") || button;
+  const originalText = label.textContent;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  label.textContent = translations[currentLang].loadingAction;
+  try {
+    return await action();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    label.textContent = originalText;
+  }
+}
+
 function toggleToolbarMenu() {
   const toggle = document.getElementById("toolbarMenuButton");
   const menu = document.getElementById("toolbarMenu");
@@ -158,6 +175,9 @@ function showView(viewId, pushHistory = true) {
     "adminSettingsView",
     "appSettingsView",
     "rosterView",
+    "attendeeProfileView",
+    "birthdaysView",
+    "notificationsView",
     "scheduleSettingsView",
     "resultView",
     "attendanceReportView",
@@ -222,6 +242,7 @@ function showView(viewId, pushHistory = true) {
   }
 
   currentActiveViewId = viewId;
+  updateAppNotificationBadge();
   const mainContainer = document.getElementById("mainContainer");
   mainContainer.scrollTo({ top: 0, behavior: "instant" });
   window.requestAnimationFrame(() => {
@@ -247,6 +268,14 @@ function showView(viewId, pushHistory = true) {
     loadFollowups();
   }
   if (
+    viewId === "birthdaysView" &&
+    viewChanged &&
+    (typeof isFirstRunTutorialActive !== "function" ||
+      !isFirstRunTutorialActive())
+  ) {
+    loadBirthdays();
+  }
+  if (
     viewId === "currentAttendeesView" &&
     viewChanged &&
     (typeof isFirstRunTutorialActive !== "function" ||
@@ -264,10 +293,13 @@ function showView(viewId, pushHistory = true) {
       typeof isFirstRunTutorialActive !== "function" ||
       !isFirstRunTutorialActive()
     ) {
+        scheduleRosterRefresh();
       refreshCurrentAttendeesWindow();
       if (typeof refreshAttendanceContext === "function") {
         refreshAttendanceContext();
       }
+      recordAppOpeningNotification();
+      checkCachedBirthdayNotifications();
     }
   }
   if (viewId === "scanView") {
@@ -338,6 +370,187 @@ function openAppSettings() {
 function openRosterManagement() {
   showView("rosterView");
   loadRosterManagement();
+}
+
+function scheduleRosterRefresh() {
+  if (rosterRefreshTimer) window.clearTimeout(rosterRefreshTimer);
+  if (!currentUser) return;
+  rosterRefreshTimer = window.setTimeout(async () => {
+    rosterRefreshTimer = 0;
+    if (
+      navigator.onLine &&
+      document.visibilityState !== "hidden" &&
+      currentActiveViewId !== "scanView"
+    ) await refreshRosterCache();
+    scheduleRosterRefresh();
+  }, 300000);
+}
+
+function openBirthdaysView() {
+  showView("birthdaysView");
+}
+
+function openNotificationsView() {
+  showView("notificationsView");
+  markAppNotificationsRead();
+}
+
+function getAppNotifications() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("app_notifications_v1") || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function updateAppNotificationBadge() {
+  const badge = document.getElementById("notificationsMenuBadge");
+  if (!badge) return;
+  const count = getAppNotifications().filter((item) => !item.read).length;
+  badge.textContent = count > 99 ? "99+" : String(count);
+  badge.hidden = count === 0;
+}
+
+function sendSystemNotification(title, body, tag) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted")
+    return;
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        if (registration.showNotification)
+          return registration.showNotification(title, {
+            body,
+            tag,
+            icon: "./Assets/icons/icon-192.png",
+          });
+        return new Notification(title, { body, tag });
+      })
+      .catch(() => {});
+  } else {
+    new Notification(title, { body, tag });
+  }
+}
+
+function recordAppNotification(key, title, body) {
+  const notifications = getAppNotifications();
+  if (notifications.some((item) => item.key === key)) return;
+  notifications.unshift({
+    key,
+    title,
+    body,
+    createdAt: new Date().toISOString(),
+    read: false,
+  });
+  try {
+    localStorage.setItem("app_notifications_v1", JSON.stringify(notifications.slice(0, 60)));
+  } catch (error) {}
+  updateAppNotificationBadge();
+  showToast(`${translateText(title)} · ${translateText(body)}`, "info", 8000);
+  sendSystemNotification(translateText(title), translateText(body), key);
+  if (currentActiveViewId === "notificationsView") renderAppNotifications();
+}
+
+function renderAppNotifications() {
+  const container = document.getElementById("notificationResults");
+  if (!container) return;
+  const notifications = getAppNotifications();
+  if (!notifications.length) {
+    const empty = document.createElement("p");
+    empty.className = "report-note";
+    empty.textContent = translations[currentLang].noNotifications;
+    container.replaceChildren(empty);
+    return;
+  }
+  const panel = document.createElement("section");
+  panel.className = "report-panel notification-list";
+  notifications.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = `notification-item${item.read ? " is-read" : ""}`;
+    const heading = document.createElement("strong");
+    heading.textContent = translateText(item.title);
+    const message = document.createElement("p");
+    message.textContent = translateText(item.body);
+    const date = document.createElement("small");
+    date.textContent = new Date(item.createdAt).toLocaleString(
+      currentLang === "ar" ? "ar" : "en",
+    );
+    row.append(heading, message, date);
+    panel.appendChild(row);
+  });
+  container.replaceChildren(panel);
+}
+
+function markAppNotificationsRead() {
+  const notifications = getAppNotifications().map((item) => ({ ...item, read: true }));
+  try {
+    localStorage.setItem("app_notifications_v1", JSON.stringify(notifications));
+  } catch (error) {}
+  updateAppNotificationBadge();
+  renderAppNotifications();
+}
+
+async function requestBrowserNotifications() {
+  if (typeof Notification === "undefined") {
+    showToast(translations[currentLang].browserNotificationsUnsupported, "info");
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    showToast(
+      permission === "granted"
+        ? translations[currentLang].browserNotificationsEnabled
+        : translations[currentLang].browserNotificationsDenied,
+      permission === "granted" ? "success" : "info",
+    );
+  } catch (error) {
+    showToast(translations[currentLang].browserNotificationsDenied, "error");
+  }
+}
+
+function notifyBirthdayRoster(roster) {
+  if (!Array.isArray(roster)) return;
+  const today = new Date();
+  const todayKey = `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const yearKey = `${today.getFullYear()}-${todayKey}`;
+  roster.forEach((person) => {
+    if (String(person.birthdate || "") !== todayKey) return;
+    const body = translations[currentLang].birthdayNotificationBody.replace(
+      "{name}",
+      person.name,
+    );
+    recordAppNotification(
+      `birthday:${yearKey}:${person.id}`,
+      "birthdayNotificationTitle",
+      body,
+    );
+  });
+}
+
+function checkCachedBirthdayNotifications() {
+  if (typeof getCachedRoster !== "function" || !currentUser) return;
+  getCachedRoster().then(notifyBirthdayRoster).catch(() => {});
+}
+
+function recordAppOpeningNotification() {
+  const today = localDateInputValue(new Date());
+  recordAppNotification(
+    `app-open:${today}`,
+    "appOpenedNotificationTitle",
+    "appOpenedNotificationBody",
+  );
+}
+
+function updateAttendanceWindowNotification(windowOpen) {
+  const wasOpen = currentAttendeesWindowOpen;
+  currentAttendeesWindowOpen = windowOpen;
+  if (!windowOpen || wasOpen) return;
+  const today = localDateInputValue(new Date());
+  recordAppNotification(
+    `meeting-open:${today}`,
+    "meetingOpenedNotificationTitle",
+    "meetingOpenedNotificationBody",
+  );
 }
 
 function setDashboardLayout(layout) {
@@ -411,20 +624,16 @@ function renderRosterManagement() {
     row.className = "roster-person-row";
     const details = document.createElement("div");
     details.className = "roster-person-details";
-    const title = document.createElement("strong");
+    const title = document.createElement("button");
+    title.type = "button";
+    title.className = "roster-person-open";
     title.textContent = person.name;
+    title.addEventListener("click", () => beginRosterPersonEdit(row, person));
     const id = document.createElement("small");
     id.textContent = `#${person.id}`;
     details.append(title, id);
     const actions = document.createElement("div");
     actions.className = "roster-person-actions";
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "btn secondary";
-    editButton.textContent = translations[currentLang].editRosterPerson;
-    editButton.addEventListener("click", () =>
-      beginRosterPersonEdit(row, person),
-    );
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "admin-del-btn roster-delete-btn";
@@ -433,7 +642,7 @@ function renderRosterManagement() {
     deleteButton.addEventListener("click", () =>
       deactivateRosterPerson(person),
     );
-    actions.append(editButton, deleteButton);
+    actions.append(deleteButton);
     row.append(details, actions);
     panel.appendChild(row);
   });
@@ -442,43 +651,78 @@ function renderRosterManagement() {
 }
 
 function beginRosterPersonEdit(row, person) {
-  const form = document.createElement("form");
-  form.className = "roster-person-edit";
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    saveRosterPerson(form, person);
-  });
-  const nameInput = document.createElement("input");
-  nameInput.type = "text";
-  nameInput.maxLength = 120;
-  nameInput.value = person.name;
-  nameInput.setAttribute(
-    "aria-label",
-    translations[currentLang].rosterNameLabel,
-  );
-  const saveButton = document.createElement("button");
-  saveButton.type = "submit";
-  saveButton.className = "btn secondary";
-  saveButton.dataset.onlineOnly = "";
-  saveButton.textContent = translations[currentLang].saveRosterName;
-  const cancelButton = document.createElement("button");
-  cancelButton.type = "button";
-  cancelButton.className = "btn tertiary";
-  cancelButton.textContent = translations[currentLang].cancelRosterEdit;
-  cancelButton.addEventListener("click", () => renderRosterManagement());
-  form.append(nameInput, saveButton, cancelButton);
-  row.replaceChildren(form);
-  nameInput.focus();
-  updateOnlineOnlyControls();
+  openAttendeeProfile(person.id);
 }
 
-async function saveRosterPerson(form, person) {
-  const name = form.querySelector("input").value.trim();
+function openAttendeeProfile(id) {
+  const person = rosterManagementPeople.find(
+    (entry) => String(entry.id) === String(id),
+  );
+  if (!person) return;
+  currentProfilePersonId = String(person.id);
+  document.getElementById("attendeeProfileName").value = person.name || "";
+  document.getElementById("attendeeProfilePhone").value = person.phone || "";
+  const [month = "", day = ""] = String(person.birthdate || "").split("-");
+  document.getElementById("attendeeProfileBirthMonth").value = month;
+  document.getElementById("attendeeProfileBirthDay").value = day;
+  showView("attendeeProfileView");
+}
+
+async function copyAttendeePhone() {
+  const phone = document.getElementById("attendeeProfilePhone").value.trim();
+  if (!phone) {
+    showToast(translations[currentLang].phoneNumberMissing, "info");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(phone);
+    showToast(translations[currentLang].phoneCopied, "success");
+  } catch (error) {
+    showToast(translations[currentLang].phoneCopyFailed, "error");
+  }
+}
+
+async function saveAttendeeProfile(event) {
+  event.preventDefault();
+  const person = rosterManagementPeople.find(
+    (entry) => String(entry.id) === currentProfilePersonId,
+  );
+  if (!person) return;
+  const name = document.getElementById("attendeeProfileName").value.trim();
+  const phone = document.getElementById("attendeeProfilePhone").value.trim();
+  const month = document.getElementById("attendeeProfileBirthMonth").value;
+  const day = document.getElementById("attendeeProfileBirthDay").value;
+  if (Boolean(month) !== Boolean(day)) {
+    showToast(translations[currentLang].birthdayDateInvalid, "error");
+    return;
+  }
+  if (phone && !/^[+0-9().\-\s]+$/.test(phone)) {
+    showToast(translations[currentLang].phoneNumberInvalid, "error");
+    return;
+  }
+  let birthdate = "";
+  if (month && day) {
+    const parsedDate = new Date(Date.UTC(2000, Number(month) - 1, Number(day)));
+    if (
+      parsedDate.getUTCMonth() !== Number(month) - 1 ||
+      parsedDate.getUTCDate() !== Number(day)
+    ) {
+      showToast(translations[currentLang].birthdayDateInvalid, "error");
+      return;
+    }
+    birthdate = `${month}-${day}`;
+  }
+  const submitButton = document.getElementById("saveAttendeeProfileButton");
+  if (submitButton.disabled) return;
+  submitButton.disabled = true;
+  submitButton.setAttribute("aria-busy", "true");
   try {
     const result = await apiCall("update_roster_person", {
       id: person.id,
       name,
       active: true,
+      birthdate,
+      phone,
     });
     if (!result || !result.success)
       throw new Error(
@@ -486,15 +730,96 @@ async function saveRosterPerson(form, person) {
           ? result.message
           : translations[currentLang].offlineSyncFailed,
       );
-    showToast(translations[currentLang].rosterSaved, "success");
-    await loadRosterManagement();
+    Object.assign(person, result.person || {}, { birthdate, phone });
+    showToast(
+      result.person?.oldCardCleanupFailed
+        ? translations[currentLang].oldCardCleanupFailed
+        : translations[currentLang].rosterSaved,
+      result.person?.oldCardCleanupFailed ? "info" : "success",
+    );
     await refreshRosterCache();
   } catch (error) {
     showToast(
       error.message || translations[currentLang].offlineSyncFailed,
       "error",
     );
+  } finally {
+    submitButton.disabled = false;
+    submitButton.removeAttribute("aria-busy");
   }
+}
+
+async function loadBirthdays() {
+  const requestId = ++birthdayRequestId;
+  const container = document.getElementById("birthdayResults");
+  showReportSkeleton(container, 4);
+  const applyResult = (result) => {
+    if (
+      requestId !== birthdayRequestId ||
+      currentActiveViewId !== "birthdaysView" ||
+      !result ||
+      result.success !== true ||
+      !Array.isArray(result.roster)
+    ) return;
+    birthdayPeople = result.roster;
+    renderBirthdays();
+  };
+  try {
+    const result = await apiCall("get_roster", {}, applyResult);
+    if (!result || result.success !== true) {
+      throw new Error(result?.message || translations[currentLang].offlineSyncFailed);
+    }
+    applyResult(result);
+  } catch (error) {
+    if (requestId !== birthdayRequestId) return;
+    container.replaceChildren();
+    const note = document.createElement("p");
+    note.className = "report-note";
+    note.textContent = error.message || translations[currentLang].offlineSyncFailed;
+    container.appendChild(note);
+  }
+}
+
+function renderBirthdays(now = new Date()) {
+  const container = document.getElementById("birthdayResults");
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const upcoming = birthdayPeople
+    .map((person) => {
+      const match = String(person.birthdate || "").match(/^(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      let next = new Date(now.getFullYear(), month - 1, day);
+      if (next < today) next = new Date(now.getFullYear() + 1, month - 1, day);
+      const daysUntil = Math.round((next - today) / 86400000);
+      return { ...person, daysUntil };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.daysUntil - right.daysUntil || left.name.localeCompare(right.name));
+  if (!upcoming.length) {
+    const empty = document.createElement("p");
+    empty.className = "report-note";
+    empty.textContent = translations[currentLang].noBirthdays;
+    container.replaceChildren(empty);
+    return;
+  }
+  const panel = document.createElement("section");
+  panel.className = "report-panel birthdays-list";
+  upcoming.forEach((person) => {
+    const row = document.createElement("article");
+    row.className = "birthday-person-row";
+    const name = document.createElement("strong");
+    name.textContent = person.name;
+    const date = document.createElement("span");
+    date.textContent = person.birthdate;
+    const timing = document.createElement("small");
+    timing.textContent = person.daysUntil === 0
+      ? translations[currentLang].birthdayToday
+      : translations[currentLang].birthdayInDays.replace("{days}", String(person.daysUntil));
+    row.append(name, date, timing);
+    panel.appendChild(row);
+  });
+  container.replaceChildren(panel);
 }
 
 async function deactivateRosterPerson(person) {
@@ -548,7 +873,7 @@ async function openCurrentAttendeesView() {
       )
         return;
       revalidatedWindowResult = freshResult;
-      currentAttendeesWindowOpen = freshResult.windowOpen;
+      updateAttendanceWindowNotification(freshResult.windowOpen);
       currentAttendeesWindowCloseReason = freshResult.closeReason || "";
       updateCurrentAttendeesTileState();
       if (freshResult.windowOpen && currentActiveViewId === sourceViewId) {
@@ -580,7 +905,7 @@ async function openCurrentAttendeesView() {
           : translations[currentLang].attendanceWindowCheckFailed,
       );
     }
-    currentAttendeesWindowOpen = effectiveResult.windowOpen;
+    updateAttendanceWindowNotification(effectiveResult.windowOpen);
     currentAttendeesWindowCloseReason = effectiveResult.closeReason || "";
     updateCurrentAttendeesTileState();
     if (!effectiveResult.windowOpen) {
@@ -669,7 +994,7 @@ async function refreshCurrentAttendeesWindow() {
         typeof freshResult.windowOpen !== "boolean"
       )
         return;
-      currentAttendeesWindowOpen = freshResult.windowOpen;
+      updateAttendanceWindowNotification(freshResult.windowOpen);
       currentAttendeesWindowCloseReason = freshResult.closeReason || "";
       if (Number.isFinite(Number(freshResult.nextCheckMs))) {
         nextWindowCheckMs = Number(freshResult.nextCheckMs);
@@ -684,7 +1009,7 @@ async function refreshCurrentAttendeesWindow() {
           : "Invalid attendance window response",
       );
     }
-    currentAttendeesWindowOpen = result.windowOpen;
+    updateAttendanceWindowNotification(result.windowOpen);
     currentAttendeesWindowCloseReason = result.closeReason || "";
     if (Number.isFinite(Number(result?.nextCheckMs))) {
       nextWindowCheckMs = Number(result.nextCheckMs);
@@ -902,6 +1227,16 @@ function renderCurrentAttendees(checkoutOpen) {
     actions.className = "current-attendees-actions";
     actions.setAttribute("role", "cell");
     actions.dataset.label = translations[currentLang].currentAttendeesActions;
+    const actionMenu = document.createElement("details");
+    actionMenu.className = "row-action-menu";
+    const actionTrigger = document.createElement("summary");
+    actionTrigger.title = translations[currentLang].moreActions;
+    actionTrigger.setAttribute("aria-label", translations[currentLang].moreActions);
+    actionTrigger.innerHTML = '<i class="fa-solid fa-ellipsis" aria-hidden="true"></i>';
+    const actionItems = document.createElement("div");
+    actionItems.className = "row-action-menu-items";
+    actionMenu.append(actionTrigger, actionItems);
+    actions.appendChild(actionMenu);
     const addActionButton = (className, iconName, label, onClick) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -916,8 +1251,11 @@ function renderCurrentAttendees(checkoutOpen) {
       text.className = "current-attendees-action-label";
       text.textContent = label;
       button.append(icon, text);
-      button.addEventListener("click", onClick);
-      actions.appendChild(button);
+      button.addEventListener("click", () => {
+        actionMenu.open = false;
+        runButtonAction(button, onClick);
+      });
+      actionItems.appendChild(button);
     };
     addActionButton(
       checkoutOpen ? "current-attendees-checkout" : "emergency-checkout-button",
@@ -982,6 +1320,9 @@ async function submitEmergencyCheckout(event) {
   currentAttendeeActionsInFlight.add(actionKey);
   const submit = document.getElementById("emergencyCheckoutSubmit");
   submit.disabled = true;
+  submit.setAttribute("aria-busy", "true");
+  const submitLabel = submit.textContent;
+  submit.textContent = translations[currentLang].loadingAction;
   try {
     const result = await apiCall("emergency_checkout_attendance", {
       id: id,
@@ -1007,6 +1348,8 @@ async function submitEmergencyCheckout(event) {
   } finally {
     currentAttendeeActionsInFlight.delete(actionKey);
     submit.disabled = false;
+    submit.removeAttribute("aria-busy");
+    submit.textContent = submitLabel;
   }
 }
 
@@ -1500,39 +1843,57 @@ function showAttendanceSheetResult(report) {
     `${sheetMessage} · ${selectionLabel} · ${date}`;
   document.getElementById("attendanceSheetOpenLink").href =
     `${GOOGLE_SHEET_URL}#gid=${report.report.sheetId}`;
-  const spreadsheetMatch = GOOGLE_SHEET_URL.match(
-    /\/spreadsheets\/d\/([^/?#]+)/,
-  );
-  const exportLinks = [
-    ["attendanceSheetExcelLink", "xlsx"],
-    ["attendanceSheetPdfLink", "pdf"],
-  ];
-  exportLinks.forEach(([id, format]) => {
-    const link = document.getElementById(id);
-    if (!spreadsheetMatch) {
-      link.hidden = true;
-      return;
-    }
-    const parameters = new URLSearchParams({
-      format,
-      gid: String(report.report.sheetId),
-    });
-    if (format === "pdf") {
-      parameters.set("portrait", "true");
-      parameters.set("fitw", "true");
-      parameters.set("sheetnames", "false");
-      parameters.set("printtitle", "false");
-      parameters.set("pagenumbers", "false");
-      parameters.set("gridlines", "false");
-    }
-    link.href =
-      `https://docs.google.com/spreadsheets/d/${spreadsheetMatch[1]}/export?${parameters}`;
-    link.download = format === "xlsx"
-      ? `attendance-${report.date}.xlsx`
-      : `attendance-${report.date}.pdf`;
-    link.hidden = false;
-  });
+  currentAttendanceReportExport = {
+    date: report.date,
+    type: report.report.type || "both",
+  };
   if (!dialog.open) dialog.showModal();
+}
+
+async function downloadAttendanceExport(format) {
+  if (
+    attendanceExportInFlight ||
+    !currentAttendanceReportExport ||
+    !["pdf", "xlsx"].includes(format)
+  ) return;
+  const button = document.getElementById(
+    format === "pdf" ? "attendanceSheetPdfLink" : "attendanceSheetExcelLink",
+  );
+  const label = button.querySelector("span");
+  const previousLabel = label.textContent;
+  attendanceExportInFlight = true;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  label.textContent = translations[currentLang].downloadingAttendanceFile;
+  try {
+    const result = await apiCall("export_daily_attendance_report", {
+      ...currentAttendanceReportExport,
+      format,
+    });
+    if (!result || !result.success || !result.base64) {
+      throw new Error(result?.message || translations[currentLang].attendanceExportFailed);
+    }
+    const bytes = Uint8Array.from(atob(result.base64), (character) =>
+      character.charCodeAt(0),
+    );
+    const blob = new Blob([bytes], { type: result.contentType });
+    const objectUrl = URL.createObjectURL(blob);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = objectUrl;
+    downloadLink.download = result.filename;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    showToast(translations[currentLang].attendanceExportReady, "success");
+  } catch (error) {
+    showToast(error.message || translations[currentLang].attendanceExportFailed, "error");
+  } finally {
+    attendanceExportInFlight = false;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    label.textContent = previousLabel;
+  }
 }
 
 function closeAttendanceSheetResult() {

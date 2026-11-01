@@ -639,6 +639,9 @@
   padding: 8px 11px;
   font-size: 12px;
 }
+.offline-event-actions .row-action-menu-items {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
 
 .attendance-cancel-button {
   border-color: rgba(239, 68, 68, 0.55);

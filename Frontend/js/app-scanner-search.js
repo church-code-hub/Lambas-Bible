@@ -26,13 +26,111 @@ function loadQrLibrary() {
   return qrLibraryPromise;
 }
 
+function preparePaymentScanAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  try {
+    if (!paymentScanAudioContext) paymentScanAudioContext = new AudioContext();
+    if (paymentScanAudioContext.state === "suspended")
+      paymentScanAudioContext.resume().catch(() => {});
+    return paymentScanAudioContext;
+  } catch (error) {
+    return null;
+  }
+}
+
+function playPaymentScanTone(success) {
+  const audioContext = preparePaymentScanAudio();
+  if (!audioContext) return;
+  try {
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(success ? 740 : 220, now);
+    if (success) oscillator.frequency.setValueAtTime(980, now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.25);
+  } catch (error) {}
+}
+
+function showPaymentScanFeedback(result, pending = false) {
+  if (!isPaymentScanMode) return false;
+  window.clearTimeout(paymentFeedbackTimer);
+  paymentFeedbackTimer = 0;
+  const success = ["success", "late", "out"].includes(result?.kind);
+  const queued = result?.kind === "queued";
+  const message = [
+    result?.name || "",
+    result?.title ? translateText(result.title) : "",
+    result?.message ? translateText(result.message) : "",
+    pending ? translateText("paymentScanFeedbackChecking") : "",
+    queued ? translateText("paymentScanPending") : "",
+  ].filter(Boolean).join(" · ");
+  const type = pending
+    ? "info"
+    : success
+      ? "success"
+      : queued
+        ? "info"
+        : "error";
+  if (paymentFeedbackToast?.isConnected) {
+    paymentFeedbackToast.dataset.message = message;
+    paymentFeedbackToast.textContent = translateText(message);
+    paymentFeedbackToast.classList.remove("success", "info", "error");
+    paymentFeedbackToast.classList.add(type);
+    paymentFeedbackToast.style.setProperty("--toast-out-delay", "1750ms");
+  } else {
+    paymentFeedbackToast = showToast(message, type, pending ? 15000 : 2000);
+  }
+  if (!pending) {
+    playPaymentScanTone(success);
+    paymentFeedbackTimer = window.setTimeout(() => {
+      if (paymentFeedbackToast?.isConnected) paymentFeedbackToast.remove();
+      paymentFeedbackToast = null;
+      paymentFeedbackTimer = 0;
+      isProcessingScan = false;
+      if (currentActiveViewId === "scanView") startLiveScanner();
+    }, 2000);
+  }
+  return true;
+}
+
+function setPaymentScanMode(enabled) {
+  if (isProcessingScan) return;
+  isPaymentScanMode = Boolean(enabled);
+  const scanView = document.getElementById("scanView");
+  if (scanView) scanView.classList.toggle("payment-mode", isPaymentScanMode);
+  document.querySelectorAll("[data-scan-mode]").forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.scanMode === (isPaymentScanMode ? "payment" : "regular")),
+    );
+  });
+  if (isPaymentScanMode) preparePaymentScanAudio();
+  if (currentActiveViewId === "scanView") {
+    stopLiveScanner(false).finally(() => startLiveScanner());
+  }
+}
+
 async function startLiveScanner() {
   if (isScannerRunning || isScannerStarting) return;
   if (!currentAttendanceContext && currentUser) refreshAttendanceContext();
   const generation = ++scannerStartGeneration;
   isScannerStarting = true;
   setCameraStatus("cameraStarting");
-  const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+  const qrboxSize = isPaymentScanMode
+    ? Math.max(220, Math.min(460, window.innerWidth - 80))
+    : 220;
+  const config = {
+    fps: isPaymentScanMode ? 12 : 10,
+    qrbox: { width: qrboxSize, height: qrboxSize },
+  };
 
   try {
     await loadQrLibrary();
@@ -73,7 +171,7 @@ async function startLiveScanner() {
   }
 }
 
-function stopLiveScanner() {
+function stopLiveScanner(restart = true) {
   scannerStartGeneration++;
   if (html5QrCode && isScannerRunning) {
     return html5QrCode
@@ -85,7 +183,7 @@ function stopLiveScanner() {
         isScannerRunning = false;
       })
       .finally(() => {
-        if (currentActiveViewId === "scanView") {
+        if (restart && currentActiveViewId === "scanView") {
           window.setTimeout(startLiveScanner, 150);
         }
       });
@@ -107,9 +205,17 @@ function onScanSuccess(text) {
     eventId: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
   };
-  stopLiveScanner();
+  stopLiveScanner(!isPaymentScanMode);
   processScannedText(text, eventContext).finally(() => {
-    isProcessingScan = false;
+    if (!isPaymentScanMode) {
+      isProcessingScan = false;
+    } else if (!paymentFeedbackTimer) {
+      showPaymentScanFeedback({
+        kind: "error",
+        title: "paymentScanFailed",
+        message: "paymentScanFailed",
+      });
+    }
   });
 }
 function onScanError(err) {}
@@ -469,14 +575,12 @@ async function processAttendanceId(
   eventContext = {},
 ) {
   if (!currentUser || (navigator.onLine && !googleIdToken)) {
-    showAttendanceResult(
-      {
-        kind: "error",
-        title: "Sign-in required",
-        message: "offlineNeedsLogin",
-      },
-      fromNameSearch,
-    );
+    const result = {
+      kind: "error",
+      title: "Sign-in required",
+      message: "offlineNeedsLogin",
+    };
+    if (!showPaymentScanFeedback(result)) showAttendanceResult(result, fromNameSearch);
     return;
   }
   const id = String(rawId);
@@ -549,13 +653,37 @@ async function processAttendanceId(
     } catch (error) {
       console.warn("Could not read the saved attendee name.", error);
     }
+    if (isPaymentScanMode) {
+      const predictionContext = currentAttendanceContext
+        ? {
+            ...currentAttendanceContext,
+            settings: { ...currentAttendanceContext.settings },
+            attendance: currentAttendanceContext.attendance.map((person) => ({
+              ...person,
+            })),
+          }
+        : null;
+      const prediction = predictionContext
+        ? predictAttendanceResult(id, event, cachedPerson, predictionContext)
+        : null;
+      showPaymentScanFeedback(
+        prediction || {
+          kind: "queued",
+          title: "attendanceScanProcessing",
+          name: event.personName,
+        },
+        true,
+      );
+    }
     currentAttendanceEventId = event.eventId;
-    const toast = showToast(
-      [event.personName, translations[currentLang].attendanceScanProcessing]
-        .filter(Boolean)
-        .join(" · "),
-      "info",
-    );
+    const toast = isPaymentScanMode
+      ? null
+      : showToast(
+          [event.personName, translations[currentLang].attendanceScanProcessing]
+            .filter(Boolean)
+            .join(" · "),
+          "info",
+        );
     try {
       const result = await apiCall("scan", { id });
       if (!result || typeof result !== "object") {
@@ -572,20 +700,31 @@ async function processAttendanceId(
               attendanceResult.kind === "closed"
             ? "info"
             : "success";
-      updateAttendanceToast(
-        toast,
-        attendanceResult,
-        event,
-        translations[currentLang].offlineSyncFailed,
-        type,
-      );
+      if (isPaymentScanMode) showPaymentScanFeedback(attendanceResult);
+      else
+        updateAttendanceToast(
+          toast,
+          attendanceResult,
+          event,
+          translations[currentLang].offlineSyncFailed,
+          type,
+        );
       if (currentAttendanceEventId === event.eventId) {
         if (fromNameSearch) renderResult(attendanceResult, true);
         refreshAttendanceContext();
       }
     } catch (error) {
       console.error("Could not submit attendance scan.", error);
-      updateAttendanceToast(toast, null, event, "Connection error.", "error");
+      if (isPaymentScanMode) {
+        showPaymentScanFeedback({
+          kind: "error",
+          title: "Connection error.",
+          message: "Connection error.",
+          name: event.personName,
+        });
+      } else {
+        updateAttendanceToast(toast, null, event, "Connection error.", "error");
+      }
       if (fromNameSearch) {
         showAttendanceResult(
           {
@@ -599,16 +738,38 @@ async function processAttendanceId(
     }
     return;
   }
+  let offlinePersonName = personName || event.personName;
+  if (!offlinePersonName) {
+    try {
+      const roster = await getCachedRoster();
+      const cachedPerson = roster.find(
+        (person) =>
+          String(person.id).trim() === id ||
+          String(person.qrId || "").trim() === id,
+      );
+      if (cachedPerson) offlinePersonName = cachedPerson.name;
+    } catch (error) {
+      console.warn("Could not read the saved attendee name for offline scan.", error);
+    }
+  }
   try {
     const queuedEvent = await queueOfflineEvent({
       type: "scan",
       qrText: id,
-      personName,
+      personName: offlinePersonName,
       eventId: event.eventId,
       timestamp: event.timestamp,
     });
     currentAttendanceEventId = queuedEvent.eventId;
-    attendanceFeedback(queuedEvent, fromNameSearch, true);
+      if (isPaymentScanMode) {
+        showPaymentScanFeedback({
+          kind: "queued",
+          title: "attendanceScanProcessing",
+          name: queuedEvent.personName,
+        });
+      } else {
+        attendanceFeedback(queuedEvent, fromNameSearch, true);
+      }
   } catch (error) {
     showAttendanceResult(
       {
@@ -623,7 +784,9 @@ async function processAttendanceId(
 
 async function processScannedText(text, eventContext = {}) {
   var id = extractId(text);
-  if (!id) {
+  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
+    if (showPaymentScanFeedback({ kind: "error", title: "paymentScanFailed" }))
+      return;
     showToast(
       [
         translateText("Invalid Code"),
@@ -634,7 +797,11 @@ async function processScannedText(text, eventContext = {}) {
     return;
   }
   if (!currentUser || (navigator.onLine && !googleIdToken)) {
-    showToast(translateText("offlineNeedsLogin"), "error");
+    if (!showPaymentScanFeedback({
+      kind: "error",
+      title: "Sign-in required",
+      message: "offlineNeedsLogin",
+    })) showToast(translateText("offlineNeedsLogin"), "error");
     return;
   }
   await processAttendanceId(id, false, "", eventContext);

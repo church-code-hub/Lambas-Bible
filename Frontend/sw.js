@@ -1,8 +1,8 @@
-const CACHE_NAME = "lambas-bible-shell-v79";
+const CACHE_NAME = "lambas-bible-shell-v83";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=76",
+  "./css/styles.css?v=78",
   "./css/01-foundation.css",
   "./css/02-app-chrome.css",
   "./css/03-feedback.css",
@@ -12,13 +12,13 @@ const APP_SHELL = [
   "./css/07-dashboard.css",
   "./css/08-scanner-controls.css",
   "./css/09-sync-progress.css",
-  "./js/app-state.js?v=73",
-  "./js/app-i18n.js?v=73",
+  "./js/app-state.js?v=74",
+  "./js/app-i18n.js?v=77",
   "./js/app-core.js?v=73",
-  "./js/app-offline.js?v=73",
-  "./js/app-views.js?v=75",
+  "./js/app-offline.js?v=76",
+  "./js/app-views.js?v=79",
   "./js/app-auth.js?v=73",
-  "./js/app-scanner-search.js?v=73",
+  "./js/app-scanner-search.js?v=74",
   "./js/app-cards-admin.js?v=73",
   "./manifest.json",
   "./Assets/icons/icon-192.png",
@@ -107,6 +107,19 @@ function openOfflineDatabase() {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("Could not open offline database"));
+  });
+}
+
+async function showBackgroundSyncNotification(title, body, tag) {
+  if (
+    typeof self.Notification === "undefined" ||
+    self.Notification.permission !== "granted" ||
+    !self.registration.showNotification
+  ) return;
+  await self.registration.showNotification(title, {
+    body,
+    tag,
+    icon: "./Assets/icons/icon-192.png",
   });
 }
 
@@ -200,6 +213,11 @@ async function syncPendingEvents() {
         transaction.oncomplete = resolve;
         transaction.onerror = () => reject(transaction.error || new Error("Could not clear background credentials"));
       });
+      await showBackgroundSyncNotification(
+        "Attendance sync complete",
+        "Saved attendance actions were synchronized.",
+        "attendance-sync-complete",
+      );
     }
   } finally {
     database.close();
@@ -208,6 +226,13 @@ async function syncPendingEvents() {
 
 self.addEventListener("sync", (event) => {
   if (event.tag === "sync-pending-events") {
-    event.waitUntil(syncPendingEvents());
+    event.waitUntil(syncPendingEvents().catch(async (error) => {
+      await showBackgroundSyncNotification(
+        "Attendance sync needs attention",
+        error.message || "Some saved actions are still waiting to sync.",
+        "attendance-sync-failed",
+      );
+      throw error;
+    }));
   }
 });

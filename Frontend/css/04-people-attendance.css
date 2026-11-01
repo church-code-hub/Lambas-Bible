@@ -60,6 +60,22 @@
   overflow-wrap: anywhere;
   color: var(--text-main);
 }
+.roster-person-open {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 700;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.roster-person-open:hover {
+  color: var(--accent-gold);
+}
 
 .roster-person-details small {
   color: var(--text-sub);
@@ -138,6 +154,81 @@
 .roster-search::placeholder {
   color: var(--text-sub);
   opacity: 0.85;
+}
+
+.attendee-profile-form {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 620px);
+  margin: 14px auto 0;
+}
+.attendee-profile-form > label,
+.attendee-profile-birthday legend {
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 700;
+}
+.attendee-profile-form input,
+.attendee-profile-form select {
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+}
+.attendee-profile-phone-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  gap: 8px;
+}
+.attendee-profile-phone-row .icon-btn {
+  width: 46px;
+  height: 46px;
+}
+.attendee-profile-birthday {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
+.attendee-profile-birthday legend {
+  padding-inline: 6px;
+}
+.attendee-profile-birthday select {
+  width: 100%;
+}
+.profile-back-button {
+  width: fit-content;
+  margin: 0;
+}
+.birthdays-list {
+  overflow: hidden;
+}
+.birthday-person-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+}
+.birthday-person-row:last-child {
+  border-bottom: 0;
+}
+.birthday-person-row > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.birthday-person-row small {
+  grid-column: 1 / -1;
+  color: var(--text-sub);
 }
 
 .attendance-person-card:last-child {
@@ -263,6 +354,46 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 6px;
+}
+.row-action-menu {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  min-width: 40px;
+}
+.row-action-menu > summary {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--chip-border);
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--text-main);
+  list-style: none;
+  cursor: pointer;
+}
+.row-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.row-action-menu-items {
+  display: none;
+  width: min(100%, 300px);
+  gap: 7px;
+}
+.row-action-menu[open] > .row-action-menu-items {
+  display: grid;
+}
+.row-action-menu-items .btn,
+.row-action-menu-items .admin-del-btn {
+  width: 100%;
+  margin: 0;
+}
+.current-attendees-actions .row-action-menu {
+  width: 100%;
+}
+.current-attendees-actions .row-action-menu-items {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .current-attendees-actions .btn {

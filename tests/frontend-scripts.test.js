@@ -73,12 +73,62 @@ test("attendance report links open the generated tab and export it as Excel or P
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const exportFlow = views.match(/function showAttendanceSheetResult\(report\)[\s\S]*?\n\}/)?.[0] || "";
+  const downloadFlow = views.match(/async function downloadAttendanceExport\(format\)[\s\S]*?\n\}/)?.[0] || "";
 
   assert.match(html, /id="attendanceSheetOpenLink"/);
   assert.match(html, /id="attendanceSheetExcelLink"/);
   assert.match(html, /id="attendanceSheetPdfLink"/);
-  assert.match(exportFlow, /format[\s\S]*?gid/);
-  assert.match(exportFlow, /format === "pdf"[\s\S]*?fitw/);
+  assert.match(exportFlow, /currentAttendanceReportExport/);
+  assert.match(downloadFlow, /apiCall\("export_daily_attendance_report"/);
+  assert.match(downloadFlow, /Uint8Array\.from\(atob\(result\.base64\)/);
+});
+
+test("reception scan shows the attendee result in a toast and resumes scanning after two seconds", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const scanView = html.match(/<div id="scanView"[\s\S]*?<\/div>\s*<!-- 3\. Search View -->/)?.[0] || "";
+  const feedback = scanner.match(/function showPaymentScanFeedback\([\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(scanView, /data-scan-mode="payment"/);
+  assert.doesNotMatch(html, /id="paymentScanFeedback"/);
+  assert.match(feedback, /result\?\.name/);
+  assert.match(feedback, /showToast\(message, type, pending \? 15000 : 2000\)/);
+  assert.match(feedback, /playPaymentScanTone\(success\)/);
+  assert.match(feedback, /setTimeout\(\(\) => \{[\s\S]*?startLiveScanner\(\)/);
+});
+
+test("notifications use browser permission and support background sync results", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+
+  assert.match(views, /Notification\.requestPermission\(\)/);
+  assert.match(views, /registration\.showNotification\(title/);
+  assert.match(views, /recordAppOpeningNotification\(\)/);
+  assert.match(views, /notifyBirthdayRoster\(roster\)/);
+  assert.match(offline, /syncFailureNotificationTitle/);
+  assert.match(serviceWorker, /showBackgroundSyncNotification\(/);
+});
+
+test("roster refresh runs in the background without competing with an active scan", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const refresh = views.match(/function scheduleRosterRefresh\(\)[\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(refresh, /300000/);
+  assert.match(refresh, /currentActiveViewId !== "scanView"/);
+  assert.match(refresh, /await refreshRosterCache\(\)/);
+  assert.match(views, /scheduleRosterRefresh\(\);[\s\S]*?refreshCurrentAttendeesWindow\(\)/);
+});
+
+test("rows with multiple actions expose them in collapsible menus with busy states", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+
+  assert.match(views, /actionMenu\.className = "row-action-menu"/);
+  assert.match(offline, /actionMenu\.className = "row-action-menu"/);
+  assert.match(views, /button\.setAttribute\("aria-busy", "true"\)/);
+  assert.match(offline, /runButtonAction\(retryButton/);
+  assert.match(offline, /runButtonAction\(deleteButton/);
 });
 
 test("current attendees expose one contextual checkout action without narrow-screen overflow", () => {
@@ -184,7 +234,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?data-i18n="scanQr"/);
   assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?data-i18n="searchName"/);
   assert.match(dashboard, /class="grid dashboard-actions-grid"[\s\S]*?showView\('addView'\)/);
-  assert.equal((dashboard.match(/class="tile(?: primary)?"/g) || []).length, 10);
+  assert.equal((dashboard.match(/class="tile(?: primary)?"/g) || []).length, 11);
   assert.doesNotMatch(dashboard, /<details|<summary/);
   for (const action of [
     "showView('addView')",
@@ -193,14 +243,15 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     "openAttendanceReport()",
     "openSheet()",
     "openCurrentAttendeesView()",
+    "openBirthdaysView()",
     "openScheduleSettings()",
   ]) {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=76/);
-  assert.match(serviceWorker, /lambas-bible-shell-v79/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=76/);
+  assert.match(html, /css\/styles\.css\?v=78/);
+  assert.match(serviceWorker, /lambas-bible-shell-v83/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=78/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -248,7 +299,7 @@ test("people management styles search and uses edit plus confirmed archival acti
   assert.match(views, /window\.confirm\(confirmation\)/);
   assert.match(views, /active:\s*false/);
   assert.doesNotMatch(views, /rosterActiveLabel/);
-  assert.match(views, /editRosterPerson/);
+  assert.match(views, /openAttendeeProfile\(person\.id\)/);
   assert.match(translations, /confirmDeleteRosterPerson:/);
   assert.match(translations, /attend(?:ance)? history|سجل الحضور/);
 });
@@ -685,7 +736,8 @@ test("attendance sheet action remains separate from display filters and sync que
   assert.match(views, /attendanceSummaryAbsent\.replace\([\s\S]*?"\{count\}"[\s\S]*?absentCount[\s\S]*?\)/);
   assert.match(views, /attendanceSummaryAll[\s\S]*?\.replace\([\s\S]*?"\{attended\}"[\s\S]*?report\.count[\s\S]*?\)[\s\S]*?\.replace\([\s\S]*?"\{absent\}"[\s\S]*?absentCount[\s\S]*?\)/);
   assert.match(views, /function showAttendanceSheetResult\(report\)/);
-  assert.match(views, /link\.download = format === "xlsx"[\s\S]*?attendance-\$\{report\.date\}\.pdf/);
+  assert.match(views, /apiCall\("export_daily_attendance_report"/);
+  assert.match(backend, /function exportDailyAttendanceReportFile_\(/);
   assert.doesNotMatch(html, /id="attendanceSheet(?:Excel|Pdf)Link"[^>]*target="_blank"/);
   const toolbarSync = offline.match(/async function syncFromToolbar\(\)\s*\{([^}]*)\}/)?.[1] || "";
   assert.match(toolbarSync, /await openOfflineQueueView\(\)/);
@@ -908,6 +960,9 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
 });
 
 test("offline fuzzy name search mirrors backend matching and events can sync in any order", () => {
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+  assert.match(offline, /birthdate:\s*String\(person\.birthdate \|\| ""\)/);
+  assert.match(offline, /phone:\s*String\(person\.phone \|\| ""\)/);
   const browserContext = vm.createContext({
     window: {},
     navigator: {},

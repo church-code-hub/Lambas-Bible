@@ -195,6 +195,12 @@ function doPost(e) {
       );
     } else if (action === "create_daily_attendance_report") {
       result = getAttendanceDayReport_(data.date, "", true, data.type || "both");
+    } else if (action === "export_daily_attendance_report") {
+      result = exportDailyAttendanceReportFile_(
+        data.date,
+        data.type || "both",
+        data.format,
+      );
     } else if (action === "get_followups") {
       result = getFollowupCandidates_();
     } else if (action === "complete_followup") {
@@ -220,9 +226,10 @@ function doPost(e) {
     } else if (action === "get_roster_management") {
       result = getRosterManagement_();
     } else if (action === "update_roster_person") {
-      result = withScriptLock_(() =>
-        updateRosterPerson_(data.id, data.name, data.active, identity.email),
-      );
+      result = updateRosterPerson_(data.id, data.name, data.active, identity.email, {
+        birthdate: data.birthdate,
+        phone: data.phone,
+      });
     } else if (action === "search")
       result = verifyOrSuggestName(data.name || "");
     else if (action === "get_settings")
@@ -925,18 +932,19 @@ function searchCardForShare(name, sharingState) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const rosterSheet = ss.getSheetByName("Roster");
   if (!rosterSheet) return { status: "no_match" };
+  ensureRosterSchema_(rosterSheet);
 
   const lastRow = rosterSheet.getLastRow();
   const data =
-    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 6).getValues() : [];
   const cleanInput = normalizeName_(name);
   let matches = [];
 
   for (let i = 0; i < data.length && matches.length < 5; i++) {
-    if (!data[i][0] || !data[i][1] || String(data[i][3] || "").toLowerCase() === "inactive") continue;
+    if (!data[i][0] || !data[i][1] || String(data[i][5] || "").toLowerCase() === "inactive") continue;
     let rowId = data[i][0].toString().trim();
     let rowName = data[i][1].toString().trim();
-    let rowUrl = data[i][2] ? data[i][2].toString().trim() : "";
+    let rowUrl = data[i][3] ? data[i][3].toString().trim() : "";
 
     if (normalizeName_(rowName).includes(cleanInput)) {
       let isNew = false;
@@ -1704,6 +1712,98 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
   return response;
 }
 
+function exportDailyAttendanceReportFile_(date, type, format) {
+  if (!["pdf", "xlsx"].includes(String(format || "").toLowerCase())) {
+    return {
+      success: false,
+      code: "INVALID_EXPORT_FORMAT",
+      message: "صيغة التصدير غير مدعومة.",
+    };
+  }
+  const report = getAttendanceDayReport_(date, "", true, type);
+  if (!report.success || !report.report) return report;
+
+  const sourceSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = sourceSpreadsheet.getSheetByName(report.report.name);
+  if (!sourceSheet) {
+    return {
+      success: false,
+      code: "REPORT_SHEET_MISSING",
+      message: "تعذر العثور على ورقة التقرير للتصدير.",
+    };
+  }
+
+  let temporarySpreadsheet = null;
+  try {
+    temporarySpreadsheet = SpreadsheetApp.create(
+      `Attendance export ${report.date}`,
+    );
+    const temporarySheet = sourceSheet.copyTo(temporarySpreadsheet);
+    temporarySheet.setName("Attendance " + report.date);
+    temporarySpreadsheet.getSheets().forEach((sheet) => {
+      if (sheet.getSheetId() !== temporarySheet.getSheetId())
+        temporarySpreadsheet.deleteSheet(sheet);
+    });
+
+    const exportFormat = String(format).toLowerCase();
+    const parameters = {
+      format: exportFormat,
+      gid: temporarySheet.getSheetId(),
+    };
+    if (exportFormat === "pdf") {
+      Object.assign(parameters, {
+        portrait: "true",
+        fitw: "true",
+        sheetnames: "false",
+        printtitle: "false",
+        pagenumbers: "false",
+        gridlines: "false",
+      });
+    }
+    const query = Object.keys(parameters)
+      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(parameters[key])}`)
+      .join("&");
+    const url = `https://docs.google.com/spreadsheets/d/${temporarySpreadsheet.getId()}/export?${query}`;
+    const response = UrlFetchApp.fetch(url, {
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() !== 200) {
+      return {
+        success: false,
+        code: "REPORT_EXPORT_FAILED",
+        message: "تعذر إنشاء ملف التقرير. حاول مرة أخرى.",
+      };
+    }
+    const blob = response.getBlob();
+    return {
+      success: true,
+      date: report.date,
+      format: exportFormat,
+      filename: `attendance-${report.date}.${exportFormat}`,
+      contentType: exportFormat === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      base64: Utilities.base64Encode(blob.getBytes()),
+    };
+  } catch (error) {
+    console.error("Attendance report export failed.", error);
+    return {
+      success: false,
+      code: "REPORT_EXPORT_FAILED",
+      message: "تعذر إنشاء ملف التقرير. حاول مرة أخرى.",
+    };
+  } finally {
+    if (temporarySpreadsheet) {
+      try {
+        DriveApp.getFileById(temporarySpreadsheet.getId()).setTrashed(true);
+      } catch (error) {
+        console.error("Could not remove the temporary attendance export.", error);
+      }
+    }
+  }
+}
+
 function resolveAttendanceState_(mark, checkin) {
   const delayMinutes = parseDelayMinutes_(checkin[6]);
   const markDelayMinutes = parseDelayMinutes_(mark.replace(/^\+\s*/, ""));
@@ -1808,6 +1908,7 @@ function getFollowupCandidates_() {
   if (attendanceLastRow < 2 || attendanceLastColumn < 3) {
     return { success: true, followups: [] };
   }
+  ensureRosterSchema_(rosterSheet);
   const attendanceRows = attendanceSheet
     .getRange(1, 1, attendanceLastRow, attendanceLastColumn)
     .getValues();
@@ -1821,7 +1922,7 @@ function getFollowupCandidates_() {
 
   const rosterLastRow = rosterSheet.getLastRow();
   const rosterRows = rosterLastRow >= 2
-    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues()
+    ? rosterSheet.getRange(2, 1, rosterLastRow - 1, 6).getValues()
     : [];
   const scriptProperties = PropertiesService.getScriptProperties();
   const attendanceById = new Map();
@@ -1834,7 +1935,7 @@ function getFollowupCandidates_() {
     return Boolean(String(attendanceRow[column.index] || "").trim());
   };
   rosterRows.forEach((row) => {
-    if (!row[0] || !row[1] || String(row[3] || "").toLowerCase() === "inactive") return;
+    if (!row[0] || !row[1] || String(row[5] || "").toLowerCase() === "inactive") return;
     const id = String(row[0]).trim();
     const attendanceRow = attendanceById.get(id);
     if (!attendanceRow) return;
@@ -2189,20 +2290,137 @@ function getRosterSnapshot_() {
   const rosterSheet =
     SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Roster");
   if (!rosterSheet) return null;
+  ensureRosterSchema_(rosterSheet);
   const lastRow = rosterSheet.getLastRow();
   const data =
-    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+    lastRow >= 2 ? rosterSheet.getRange(2, 1, lastRow - 1, 6).getValues() : [];
   return data
     .filter((row) =>
       row[0] !== "" &&
       row[0] !== null &&
       row[1] &&
-      String(row[3] || "").toLowerCase() !== "inactive",
+      String(row[5] || "").toLowerCase() !== "inactive",
     )
     .map((row) => ({
       id: String(row[0]).trim(),
       name: String(row[1]).trim(),
+      birthdate: normalizeRosterBirthdate_(row[2]),
+      phone: String(row[4] || "").trim(),
     }));
+}
+
+function normalizeRosterBirthdate_(value) {
+  if (!value) return "";
+  let month;
+  let day;
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    const formatted = Utilities.formatDate(
+      value,
+      Session.getScriptTimeZone(),
+      "MM-dd",
+    );
+    [month, day] = formatted.split("-").map(Number);
+  } else {
+    const text = String(value).trim();
+    const fullDate = text.match(/^\d{4}[-/](\d{1,2})[-/](\d{1,2})$/);
+    const monthDay = text.match(/^(\d{1,2})[-/](\d{1,2})$/);
+    if (fullDate) [, month, day] = fullDate.map(Number);
+    else if (monthDay) [, month, day] = monthDay.map(Number);
+    else return "";
+  }
+  const validDate = new Date(Date.UTC(2000, month - 1, day));
+  if (
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    validDate.getUTCMonth() !== month - 1 ||
+    validDate.getUTCDate() !== day
+  ) return "";
+  return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizeRosterPhone_(value) {
+  const phone = String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (phone.length > 32 || (phone && !/^[+0-9().\- ]+$/.test(phone))) return null;
+  return phone;
+}
+
+function ensureRosterSchema_(rosterSheet) {
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    lock.waitLock(5000);
+    locked = true;
+    return ensureRosterSchemaUnlocked_(rosterSheet);
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+function ensureRosterSchemaUnlocked_(rosterSheet) {
+  const headers = ["ID", "Name", "Birthdate", "Drive Link", "Phone", "Status"];
+  const lastRow = rosterSheet.getLastRow();
+  const lastColumn = Math.max(
+    1,
+    typeof rosterSheet.getLastColumn === "function"
+      ? rosterSheet.getLastColumn()
+      : 6,
+  );
+  const currentHeaders = lastRow
+    ? rosterSheet.getRange(1, 1, 1, lastColumn).getValues()[0]
+    : [];
+  const normalizedHeaders = currentHeaders.map((header) =>
+    String(header || "").toLowerCase().replace(/[^a-z]/g, ""),
+  );
+  const expectedHeaders = headers.map((header) =>
+    header.toLowerCase().replace(/[^a-z]/g, ""),
+  );
+  if (expectedHeaders.every((header, index) => normalizedHeaders[index] === header))
+    return false;
+  const currentRows = lastRow
+    ? rosterSheet.getRange(1, 1, lastRow, lastColumn).getValues()
+    : [];
+
+  const findHeader = (patterns) => normalizedHeaders.findIndex((header) =>
+    patterns.some((pattern) => pattern.test(header)),
+  );
+  const hasNamedColumns = normalizedHeaders.includes("id") && normalizedHeaders.includes("name");
+  const indexes = {
+    id: findHeader([/^id$/]),
+    name: findHeader([/^name$/, /attendee/, /person/]),
+    birthdate: findHeader([/birth/, /birthday/, /dob/]),
+    drive: findHeader([/drive/, /cardurl/, /link/]),
+    phone: findHeader([/phone/, /mobile/, /telephone/]),
+    status: findHeader([/^status$/, /active/]),
+  };
+  if (!hasNamedColumns) {
+    indexes.id = 0;
+    indexes.name = 1;
+  }
+  if (indexes.drive < 0 && currentHeaders.length >= 3) indexes.drive = 2;
+  if (indexes.status < 0 && currentHeaders.length >= 4) indexes.status = 3;
+
+  const migratedRows = [headers];
+  currentRows.slice(1).forEach((row) => {
+    migratedRows.push([
+      indexes.id >= 0 ? row[indexes.id] || "" : "",
+      indexes.name >= 0 ? row[indexes.name] || "" : "",
+      indexes.birthdate >= 0 ? normalizeRosterBirthdate_(row[indexes.birthdate]) : "",
+      indexes.drive >= 0 ? row[indexes.drive] || "" : "",
+      indexes.phone >= 0 ? normalizeRosterPhone_(row[indexes.phone]) || "" : "",
+      indexes.status >= 0 ? row[indexes.status] || "" : "Active",
+    ]);
+  });
+
+  if (lastRow) {
+    const backupName = `Roster Backup ${new Date().getTime()}`;
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    if (typeof spreadsheet.insertSheet === "function") {
+      const backupSheet = spreadsheet.insertSheet(backupName);
+      backupSheet.getRange(1, 1, currentRows.length, lastColumn).setValues(currentRows);
+    }
+  }
+  rosterSheet.getRange(1, 1, migratedRows.length, headers.length).setValues(migratedRows);
+  return true;
 }
 
 function getRosterManagement_() {
@@ -2214,9 +2432,10 @@ function getRosterManagement_() {
       message: "شيت Roster غير موجود.",
     };
   }
+  ensureRosterSchema_(rosterSheet);
   const lastRow = rosterSheet.getLastRow();
   const rows = lastRow >= 2
-    ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues()
+    ? rosterSheet.getRange(2, 1, lastRow - 1, 6).getValues()
     : [];
   return {
     success: true,
@@ -2225,12 +2444,15 @@ function getRosterManagement_() {
       .map((row) => ({
         id: String(row[0]).trim(),
         name: String(row[1]).trim(),
-        active: String(row[3] || "").toLowerCase() !== "inactive",
+        birthdate: normalizeRosterBirthdate_(row[2]),
+        driveUrl: String(row[3] || "").trim(),
+        phone: String(row[4] || "").trim(),
+        active: String(row[5] || "").toLowerCase() !== "inactive",
       })),
   };
 }
 
-function updateRosterPerson_(id, name, active, adminEmail) {
+  function updateRosterPerson_(id, name, active, adminEmail, profile = {}) {
   const cleanId = String(id || "").trim();
   const cleanName = String(name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
   if (!cleanId || !cleanName || cleanName.startsWith("=") || cleanName.length > 120) {
@@ -2245,79 +2467,188 @@ function updateRosterPerson_(id, name, active, adminEmail) {
   if (!rosterSheet || rosterSheet.getLastRow() < 2) {
     return { success: false, code: "ROSTER_MISSING", message: "شيت Roster غير موجود." };
   }
-  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getValues();
-  const rowIndex = rows.findIndex((row) => String(row[0]).trim() === cleanId);
-  if (rowIndex === -1) {
-    return { success: false, code: "PERSON_NOT_FOUND", message: "لم يتم العثور على الشخص." };
-  }
+  ensureRosterSchema_(rosterSheet);
   const normalizedName = normalizeName_(cleanName);
   const isActive = active !== false;
-  const duplicate = isActive && rows.find((row, index) =>
-    index !== rowIndex &&
-    row[1] &&
-    String(row[3] || "").toLowerCase() !== "inactive" &&
-    normalizeName_(row[1]) === normalizedName,
-  );
-  if (duplicate) {
+  const birthdateInput = profile.birthdate === undefined
+    ? undefined
+    : normalizeRosterBirthdate_(profile.birthdate);
+  if (profile.birthdate && !birthdateInput)
+    return { success: false, code: "INVALID_BIRTHDATE", message: "يرجى إدخال شهر ويوم صالحين." };
+  const phone = profile.phone === undefined
+    ? undefined
+    : normalizeRosterPhone_(profile.phone);
+  if (phone === null) {
+    return { success: false, code: "INVALID_PHONE", message: "يرجى إدخال رقم هاتف صالح." };
+  }
+
+  const preflight = withScriptLock_(() => {
+    const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 6).getValues();
+    const rowIndex = rows.findIndex((row) => String(row[0]).trim() === cleanId);
+    if (rowIndex === -1)
+      return { success: false, code: "PERSON_NOT_FOUND", message: "لم يتم العثور على الشخص." };
+    const duplicate = isActive && rows.find((row, index) =>
+      index !== rowIndex && row[1] &&
+      String(row[5] || "").toLowerCase() !== "inactive" &&
+      normalizeName_(row[1]) === normalizedName,
+    );
+    if (duplicate) {
+      return {
+        success: false,
+        code: "DUPLICATE_NAME",
+        name: String(duplicate[1]),
+        id: String(duplicate[0]),
+        message: "يوجد شخص نشط مسجل بهذا الاسم بالفعل.",
+      };
+    }
+    const current = rows[rowIndex];
     return {
-      success: false,
-      code: "DUPLICATE_NAME",
-      name: String(duplicate[1]),
-      id: String(duplicate[0]),
-      message: "يوجد شخص نشط مسجل بهذا الاسم بالفعل.",
+      success: true,
+      current: current,
+      oldName: String(current[1]),
+      oldActive: String(current[5] || "").toLowerCase() !== "inactive",
+      oldDriveUrl: String(current[3] || "").trim(),
+      birthdate: birthdateInput === undefined
+        ? normalizeRosterBirthdate_(current[2])
+        : birthdateInput,
+      phone: phone === undefined ? String(current[4] || "").trim() : phone,
     };
-  }
+  });
+  if (!preflight.success) return preflight;
 
-  const current = rows[rowIndex];
-  const oldName = String(current[1]);
-  const oldActive = String(current[3] || "").toLowerCase() !== "inactive";
-  if (rosterSheet.getLastColumn() < 4) rosterSheet.getRange(1, 4).setValue("Status");
-  const rosterRowNumber = rowIndex + 2;
-  rosterSheet.getRange(rosterRowNumber, 2).setValue(cleanName);
-  rosterSheet.getRange(rosterRowNumber, 4).setValue(isActive ? "Active" : "Inactive");
-
+  const { current, oldName, oldActive, oldDriveUrl, birthdate } = preflight;
+  const savedPhone = preflight.phone;
+  let driveUrl = oldDriveUrl;
   if (oldName !== cleanName) {
-    [
-      ["Attendance", 2],
-      ["Check-in & Check-out", 2],
-      ["Follow-up", 2],
-    ].forEach(([sheetName, nameColumn]) => {
-      const sheet = spreadsheet.getSheetByName(sheetName);
-      if (!sheet || sheet.getLastRow() < 2) return;
-      const nameRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, nameColumn).getValues();
-      nameRows.forEach((row, index) => {
-        if (String(row[0]).trim() === cleanId) {
-          sheet.getRange(index + 2, nameColumn).setValue(cleanName);
-        }
-      });
+    const regenerated = generateAllCardsFromRoster(cleanId, {
+      force: true,
+      deferRosterUpdate: true,
+      nameOverride: cleanName,
     });
+    const newCard = regenerated && Array.isArray(regenerated.cards)
+      ? regenerated.cards.find((card) => String(card.id) === cleanId)
+      : null;
+    if (!regenerated || !regenerated.success || !newCard || !newCard.driveUrl) {
+      return {
+        success: false,
+        code: "CARD_GENERATION_FAILED",
+        message: "تعذر إنشاء البطاقة الجديدة؛ لم يتم حذف البطاقة السابقة أو تحديث الاسم.",
+      };
+    }
+    driveUrl = newCard.driveUrl;
+  }
+  const saveResult = withScriptLock_(() => {
+    const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 6).getValues();
+    const rowIndex = rows.findIndex((row) => String(row[0]).trim() === cleanId);
+    const latest = rows[rowIndex];
+    if (
+      rowIndex === -1 ||
+      String(latest[1]) !== oldName ||
+      String(latest[3] || "").trim() !== oldDriveUrl
+    ) {
+      return {
+        success: false,
+        code: "ROSTER_CHANGED",
+        message: "تغير سجل الشخص أثناء إنشاء البطاقة. أعد فتح الملف وحاول مرة أخرى.",
+      };
+    }
+    const duplicate = isActive && rows.find((row, index) =>
+      index !== rowIndex && row[1] &&
+      String(row[5] || "").toLowerCase() !== "inactive" &&
+      normalizeName_(row[1]) === normalizedName,
+    );
+    if (duplicate) {
+      return {
+        success: false,
+        code: "DUPLICATE_NAME",
+        name: String(duplicate[1]),
+        id: String(duplicate[0]),
+        message: "يوجد شخص نشط مسجل بهذا الاسم بالفعل.",
+      };
+    }
+    rosterSheet.getRange(rowIndex + 2, 1, 1, 6).setValues([[
+      latest[0],
+      cleanName,
+      birthdate,
+      driveUrl,
+      savedPhone,
+      isActive ? "Active" : "Inactive",
+    ]]);
+
+    if (oldName !== cleanName) {
+      [
+        ["Attendance", 2],
+        ["Check-in & Check-out", 2],
+        ["Follow-up", 2],
+      ].forEach(([sheetName, nameColumn]) => {
+        const sheet = spreadsheet.getSheetByName(sheetName);
+        if (!sheet || sheet.getLastRow() < 2) return;
+        const nameRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, nameColumn).getValues();
+        nameRows.forEach((row, index) => {
+          if (String(row[0]).trim() === cleanId)
+            sheet.getRange(index + 2, nameColumn).setValue(cleanName);
+        });
+      });
+    }
+
+    let auditSheet = spreadsheet.getSheetByName("Roster Audit");
+    if (!auditSheet) {
+      auditSheet = spreadsheet.insertSheet("Roster Audit");
+      auditSheet.getRange(1, 1, 1, 7).setValues([[
+        "ID", "Previous Name", "New Name", "Previous Status",
+        "New Status", "Updated At", "Updated By",
+      ]]);
+    }
+    auditSheet.appendRow([
+      cleanId,
+      oldName,
+      cleanName,
+      oldActive ? "Active" : "Inactive",
+      isActive ? "Active" : "Inactive",
+      new Date(),
+      getAdminNameByEmail(adminEmail),
+    ]);
+    return { success: true };
+  });
+  if (!saveResult.success) {
+    if (driveUrl !== oldDriveUrl) {
+      const newFileMatch = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+        driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (newFileMatch && newFileMatch[1]) {
+        try {
+          DriveApp.getFileById(newFileMatch[1]).setTrashed(true);
+        } catch (error) {
+          console.error("Could not remove an unused replacement roster card.", error);
+        }
+      }
+    }
+    return saveResult;
   }
 
-  let auditSheet = spreadsheet.getSheetByName("Roster Audit");
-  if (!auditSheet) {
-    auditSheet = spreadsheet.insertSheet("Roster Audit");
-    auditSheet.getRange(1, 1, 1, 7).setValues([[
-      "ID",
-      "Previous Name",
-      "New Name",
-      "Previous Status",
-      "New Status",
-      "Updated At",
-      "Updated By",
-    ]]);
+  let oldCardCleanupFailed = false;
+  if (oldName !== cleanName && oldDriveUrl && oldDriveUrl !== driveUrl) {
+    const oldFileMatch = oldDriveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+      oldDriveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (oldFileMatch && oldFileMatch[1]) {
+      try {
+        DriveApp.getFileById(oldFileMatch[1]).setTrashed(true);
+      } catch (error) {
+        oldCardCleanupFailed = true;
+        console.error("Could not remove the replaced roster card.", error);
+      }
+    }
   }
-  auditSheet.appendRow([
-    cleanId,
-    oldName,
-    cleanName,
-    oldActive ? "Active" : "Inactive",
-    isActive ? "Active" : "Inactive",
-    new Date(),
-    getAdminNameByEmail(adminEmail),
-  ]);
   return {
     success: true,
-    person: { id: cleanId, name: cleanName, active: isActive },
+    person: {
+      id: cleanId,
+      name: cleanName,
+      birthdate,
+      phone: savedPhone,
+      driveUrl,
+      active: isActive,
+      oldCardCleanupFailed,
+    },
   };
 }
 
@@ -2462,26 +2793,27 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
   const cleanEmail = String(adminEmail || "")
     .toLowerCase()
     .trim();
-  const reservation = withScriptLock_(() => {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const rosterSheet = ss.getSheetByName("Roster");
-    if (!rosterSheet)
-      return {
-        success: false,
-        code: "ROSTER_MISSING",
-        message: "شيت Roster غير موجود.",
-      };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rosterSheet = ss.getSheetByName("Roster");
+  if (!rosterSheet)
+    return {
+      success: false,
+      code: "ROSTER_MISSING",
+      message: "شيت Roster غير موجود.",
+    };
+  ensureRosterSchema_(rosterSheet);
 
+  const reservation = withScriptLock_(() => {
     const lastRow = rosterSheet.getLastRow();
     const rosterData =
       lastRow >= 2
-        ? rosterSheet.getRange(2, 1, lastRow - 1, 4).getValues()
+        ? rosterSheet.getRange(2, 1, lastRow - 1, 6).getValues()
         : [];
     const normalizedName = normalizeName_(cleanName);
     for (const row of rosterData) {
       if (
         row[1] &&
-        String(row[3] || "").toLowerCase() !== "inactive" &&
+        String(row[5] || "").toLowerCase() !== "inactive" &&
         normalizeName_(row[1]) === normalizedName
       ) {
         return {
@@ -2514,7 +2846,7 @@ function saveStudentAndGenerateCard_(name, adminEmail, options = {}) {
         cleanEmail,
         adminName,
       ]);
-    rosterSheet.appendRow([newId, cleanName]);
+    rosterSheet.appendRow([newId, cleanName, "", "", "", "Active"]);
     if (attendanceSheet) attendanceSheet.appendRow([newId, cleanName]);
 
     const shouldAttend = options.attendIfOpen !== false;
@@ -2578,18 +2910,19 @@ function generateStudentCard_(studentId) {
       message: "لم يتم العثور على المخدوم.",
     };
   }
+  ensureRosterSchema_(rosterSheet);
 
-  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 4).getValues();
+  const rows = rosterSheet.getRange(2, 1, rosterSheet.getLastRow() - 1, 6).getValues();
   const student = rows.find((row) => String(row[0]) === normalizedId);
-  if (!student || String(student[3] || "").toLowerCase() === "inactive") {
+  if (!student || String(student[5] || "").toLowerCase() === "inactive") {
     return {
       success: false,
       code: "STUDENT_NOT_FOUND",
       message: "لم يتم العثور على المخدوم.",
     };
   }
-  if (String(student[2] || "").includes("drive.google.com")) {
-    return { success: true, id: student[0], driveUrl: student[2] };
+  if (String(student[3] || "").includes("drive.google.com")) {
+    return { success: true, id: student[0], driveUrl: student[3] };
   }
 
   const cardResult = generateAllCardsFromRoster(student[0]);
@@ -2606,7 +2939,7 @@ function generateStudentCard_(studentId) {
   return { success: true, id: student[0], driveUrl: generatedCard.driveUrl };
 }
 
-function generateAllCardsFromRoster(targetStudentId) {
+function generateAllCardsFromRoster(targetStudentId, options = {}) {
   try {
     const folderId = getRequiredScriptProperty_("NEW_CARDS_FOLDER_ID");
     const squareTemplateImageId = getRequiredScriptProperty_(
@@ -2618,9 +2951,10 @@ function generateAllCardsFromRoster(targetStudentId) {
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const rosterSheet = ss.getSheetByName("Roster");
+    ensureRosterSchema_(rosterSheet);
     const rosterLastRow = rosterSheet.getLastRow();
     if (rosterLastRow < 2) return { success: true, cards: [] };
-    const data = rosterSheet.getRange(2, 1, rosterLastRow - 1, 4).getValues();
+    const data = rosterSheet.getRange(2, 1, rosterLastRow - 1, 6).getValues();
     const folder = DriveApp.getFolderById(folderId);
     const templateImageBlob = DriveApp.getFileById(
       squareTemplateImageId,
@@ -2629,11 +2963,18 @@ function generateAllCardsFromRoster(targetStudentId) {
     let generatedCards = [];
     for (let i = 0; i < data.length; i++) {
       const studentId = data[i][0];
-      const studentName = data[i][1];
+      const studentName =
+        options.nameOverride && String(options.nameOverrideId || targetStudentId) === String(studentId)
+          ? options.nameOverride
+          : data[i][1];
       if (targetStudentId && String(targetStudentId) !== String(studentId))
         continue;
-      if (String(data[i][3] || "").toLowerCase() === "inactive") continue;
-      if (data[i][2] && String(data[i][2]).includes("drive.google.com"))
+      if (String(data[i][5] || "").toLowerCase() === "inactive") continue;
+      if (
+        !options.force &&
+        data[i][3] &&
+        String(data[i][3]).includes("drive.google.com")
+      )
         continue;
 
       const encryptedToken = encryptId(studentId);
@@ -2708,7 +3049,8 @@ function generateAllCardsFromRoster(targetStudentId) {
           DriveApp.Permission.VIEW,
         );
         const driveUrl = finalFile.getUrl();
-        rosterSheet.getRange(i + 2, 3).setValue(driveUrl);
+        if (!options.deferRosterUpdate)
+          rosterSheet.getRange(i + 2, 4).setValue(driveUrl);
         generatedCards.push({
           id: studentId,
           name: studentName,
