@@ -1,8 +1,8 @@
-const CACHE_NAME = "lambas-bible-shell-v83";
+const CACHE_NAME = "lambas-bible-shell-v84";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=78",
+  "./css/styles.css?v=79",
   "./css/01-foundation.css",
   "./css/02-app-chrome.css",
   "./css/03-feedback.css",
@@ -12,13 +12,13 @@ const APP_SHELL = [
   "./css/07-dashboard.css",
   "./css/08-scanner-controls.css",
   "./css/09-sync-progress.css",
-  "./js/app-state.js?v=74",
-  "./js/app-i18n.js?v=77",
+  "./js/app-state.js?v=75",
+  "./js/app-i18n.js?v=78",
   "./js/app-core.js?v=73",
   "./js/app-offline.js?v=76",
-  "./js/app-views.js?v=79",
+  "./js/app-views.js?v=80",
   "./js/app-auth.js?v=73",
-  "./js/app-scanner-search.js?v=74",
+  "./js/app-scanner-search.js?v=75",
   "./js/app-cards-admin.js?v=73",
   "./manifest.json",
   "./Assets/icons/icon-192.png",

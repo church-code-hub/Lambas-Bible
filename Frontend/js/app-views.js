@@ -632,18 +632,7 @@ function renderRosterManagement() {
     const id = document.createElement("small");
     id.textContent = `#${person.id}`;
     details.append(title, id);
-    const actions = document.createElement("div");
-    actions.className = "roster-person-actions";
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "admin-del-btn roster-delete-btn";
-    deleteButton.dataset.onlineOnly = "";
-    deleteButton.textContent = translations[currentLang].deleteRosterPerson;
-    deleteButton.addEventListener("click", () =>
-      deactivateRosterPerson(person),
-    );
-    actions.append(deleteButton);
-    row.append(details, actions);
+    row.append(details);
     panel.appendChild(row);
   });
   container.replaceChildren(panel);
@@ -716,6 +705,7 @@ async function saveAttendeeProfile(event) {
   if (submitButton.disabled) return;
   submitButton.disabled = true;
   submitButton.setAttribute("aria-busy", "true");
+  showLoader(translations[currentLang].loadingAction);
   try {
     const result = await apiCall("update_roster_person", {
       id: person.id,
@@ -744,9 +734,17 @@ async function saveAttendeeProfile(event) {
       "error",
     );
   } finally {
+    hideLoader();
     submitButton.disabled = false;
     submitButton.removeAttribute("aria-busy");
   }
+}
+
+function deactivateProfilePerson() {
+  const person = rosterManagementPeople.find(
+    (entry) => String(entry.id) === currentProfilePersonId,
+  );
+  if (person) return deactivateRosterPerson(person);
 }
 
 async function loadBirthdays() {
@@ -827,6 +825,7 @@ async function deactivateRosterPerson(person) {
     currentLang
   ].confirmDeleteRosterPerson.replace("{name}", person.name);
   if (!window.confirm(confirmation)) return;
+  showLoader(translations[currentLang].loadingAction);
   try {
     const result = await apiCall("update_roster_person", {
       id: person.id,
@@ -844,6 +843,8 @@ async function deactivateRosterPerson(person) {
       (entry) => String(entry.id) !== String(person.id),
     );
     renderRosterManagement();
+    if (currentActiveViewId === "attendeeProfileView")
+      showView("rosterView");
     showToast(translations[currentLang].rosterPersonDeleted, "success");
     await refreshRosterCache();
   } catch (error) {
@@ -851,6 +852,8 @@ async function deactivateRosterPerson(person) {
       error.message || translations[currentLang].offlineSyncFailed,
       "error",
     );
+  } finally {
+    hideLoader();
   }
 }
 
@@ -1856,10 +1859,13 @@ async function downloadAttendanceExport(format) {
     !currentAttendanceReportExport ||
     !["pdf", "xlsx"].includes(format)
   ) return;
-  const button = document.getElementById(
-    format === "pdf" ? "attendanceSheetPdfLink" : "attendanceSheetExcelLink",
-  );
-  const label = button.querySelector("span");
+  const resultDialog = document.getElementById("attendanceSheetResultDialog");
+  const button = resultDialog.open
+    ? document.getElementById(
+        format === "pdf" ? "attendanceSheetPdfLink" : "attendanceSheetExcelLink",
+      )
+    : document.getElementById("attendanceExportButton");
+  const label = button.querySelector("span") || button;
   const previousLabel = label.textContent;
   attendanceExportInFlight = true;
   button.disabled = true;
@@ -1894,6 +1900,22 @@ async function downloadAttendanceExport(format) {
     button.removeAttribute("aria-busy");
     label.textContent = previousLabel;
   }
+}
+
+function runAttendanceExport() {
+  const date = document.getElementById("attendanceReportDate").value;
+  if (!date) {
+    showToast(translations[currentLang].attendancePersonPlaceholder, "info");
+    return;
+  }
+  const type = document.getElementById("attendanceSheetType").value;
+  const format = document.getElementById("attendanceExportFormat").value;
+  if (format === "sheets") {
+    createAttendanceReportSheet();
+    return;
+  }
+  currentAttendanceReportExport = { date, type };
+  downloadAttendanceExport(format);
 }
 
 function closeAttendanceSheetResult() {

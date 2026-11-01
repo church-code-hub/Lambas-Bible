@@ -944,7 +944,7 @@ function searchCardForShare(name, sharingState) {
     if (!data[i][0] || !data[i][1] || String(data[i][5] || "").toLowerCase() === "inactive") continue;
     let rowId = data[i][0].toString().trim();
     let rowName = data[i][1].toString().trim();
-    let rowUrl = data[i][3] ? data[i][3].toString().trim() : "";
+    let rowUrl = data[i][4] ? data[i][4].toString().trim() : "";
 
     if (normalizeName_(rowName).includes(cleanInput)) {
       let isNew = false;
@@ -1702,6 +1702,7 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
           ]));
       }
     }
+    formatAttendanceReportSheet_(reportSheet);
     response.report = {
       name: sheetName,
       sheetId: reportSheet.getSheetId(),
@@ -1710,6 +1711,34 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
     };
   }
   return response;
+}
+
+function formatAttendanceReportSheet_(sheet) {
+  if (
+    typeof sheet.getLastRow !== "function" ||
+    typeof sheet.getRange !== "function"
+  ) return;
+  const rowCount = Math.max(1, sheet.getLastRow());
+  const table = sheet.getRange(1, 1, rowCount, 3);
+  if (typeof table.setHorizontalAlignment === "function")
+    table.setHorizontalAlignment("center");
+  if (typeof table.setVerticalAlignment === "function")
+    table.setVerticalAlignment("middle");
+  if (typeof table.setWrap === "function") table.setWrap(true);
+  if (typeof table.setBorder === "function")
+    table.setBorder(true, true, true, true, true, true);
+  const header = sheet.getRange(1, 1, 1, 3);
+  if (typeof header.setBackground === "function")
+    header.setBackground("#f5bd55");
+  if (typeof header.setFontColor === "function")
+    header.setFontColor("#182333");
+  if (typeof header.setFontWeight === "function")
+    header.setFontWeight("bold");
+  if (typeof sheet.setColumnWidth === "function") {
+    sheet.setColumnWidth(1, 300);
+    sheet.setColumnWidth(2, 180);
+    sheet.setColumnWidth(3, 160);
+  }
 }
 
 function exportDailyAttendanceReportFile_(date, type, format) {
@@ -1740,6 +1769,7 @@ function exportDailyAttendanceReportFile_(date, type, format) {
     );
     const temporarySheet = sourceSheet.copyTo(temporarySpreadsheet);
     temporarySheet.setName("Attendance " + report.date);
+    formatAttendanceReportSheet_(temporarySheet);
     temporarySpreadsheet.getSheets().forEach((sheet) => {
       if (sheet.getSheetId() !== temporarySheet.getSheetId())
         temporarySpreadsheet.deleteSheet(sheet);
@@ -1752,7 +1782,7 @@ function exportDailyAttendanceReportFile_(date, type, format) {
     };
     if (exportFormat === "pdf") {
       Object.assign(parameters, {
-        portrait: "true",
+        portrait: "false",
         fitw: "true",
         sheetnames: "false",
         printtitle: "false",
@@ -2305,7 +2335,7 @@ function getRosterSnapshot_() {
       id: String(row[0]).trim(),
       name: String(row[1]).trim(),
       birthdate: normalizeRosterBirthdate_(row[2]),
-      phone: String(row[4] || "").trim(),
+      phone: String(row[3] || "").trim(),
     }));
 }
 
@@ -2357,7 +2387,7 @@ function ensureRosterSchema_(rosterSheet) {
 }
 
 function ensureRosterSchemaUnlocked_(rosterSheet) {
-  const headers = ["ID", "Name", "Birthdate", "Drive Link", "Phone", "Status"];
+  const headers = ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"];
   const lastRow = rosterSheet.getLastRow();
   const lastColumn = Math.max(
     1,
@@ -2374,8 +2404,10 @@ function ensureRosterSchemaUnlocked_(rosterSheet) {
   const expectedHeaders = headers.map((header) =>
     header.toLowerCase().replace(/[^a-z]/g, ""),
   );
-  if (expectedHeaders.every((header, index) => normalizedHeaders[index] === header))
+  if (expectedHeaders.every((header, index) => normalizedHeaders[index] === header)) {
+    formatRosterPhoneColumn_(rosterSheet);
     return false;
+  }
   const currentRows = lastRow
     ? rosterSheet.getRange(1, 1, lastRow, lastColumn).getValues()
     : [];
@@ -2405,8 +2437,8 @@ function ensureRosterSchemaUnlocked_(rosterSheet) {
       indexes.id >= 0 ? row[indexes.id] || "" : "",
       indexes.name >= 0 ? row[indexes.name] || "" : "",
       indexes.birthdate >= 0 ? normalizeRosterBirthdate_(row[indexes.birthdate]) : "",
-      indexes.drive >= 0 ? row[indexes.drive] || "" : "",
       indexes.phone >= 0 ? normalizeRosterPhone_(row[indexes.phone]) || "" : "",
+      indexes.drive >= 0 ? row[indexes.drive] || "" : "",
       indexes.status >= 0 ? row[indexes.status] || "" : "Active",
     ]);
   });
@@ -2419,8 +2451,16 @@ function ensureRosterSchemaUnlocked_(rosterSheet) {
       backupSheet.getRange(1, 1, currentRows.length, lastColumn).setValues(currentRows);
     }
   }
+  formatRosterPhoneColumn_(rosterSheet);
   rosterSheet.getRange(1, 1, migratedRows.length, headers.length).setValues(migratedRows);
   return true;
+}
+
+function formatRosterPhoneColumn_(rosterSheet) {
+  const rowCount = Math.max(1, rosterSheet.getLastRow());
+  const phoneRange = rosterSheet.getRange(1, 4, rowCount, 1);
+  if (typeof phoneRange.setNumberFormat === "function")
+    phoneRange.setNumberFormat("@");
 }
 
 function getRosterManagement_() {
@@ -2445,8 +2485,8 @@ function getRosterManagement_() {
         id: String(row[0]).trim(),
         name: String(row[1]).trim(),
         birthdate: normalizeRosterBirthdate_(row[2]),
-        driveUrl: String(row[3] || "").trim(),
-        phone: String(row[4] || "").trim(),
+        phone: String(row[3] || "").trim(),
+        driveUrl: String(row[4] || "").trim(),
         active: String(row[5] || "").toLowerCase() !== "inactive",
       })),
   };
@@ -2507,11 +2547,11 @@ function getRosterManagement_() {
       current: current,
       oldName: String(current[1]),
       oldActive: String(current[5] || "").toLowerCase() !== "inactive",
-      oldDriveUrl: String(current[3] || "").trim(),
+      oldDriveUrl: String(current[4] || "").trim(),
       birthdate: birthdateInput === undefined
         ? normalizeRosterBirthdate_(current[2])
         : birthdateInput,
-      phone: phone === undefined ? String(current[4] || "").trim() : phone,
+      phone: phone === undefined ? String(current[3] || "").trim() : phone,
     };
   });
   if (!preflight.success) return preflight;
@@ -2544,7 +2584,7 @@ function getRosterManagement_() {
     if (
       rowIndex === -1 ||
       String(latest[1]) !== oldName ||
-      String(latest[3] || "").trim() !== oldDriveUrl
+      String(latest[4] || "").trim() !== oldDriveUrl
     ) {
       return {
         success: false,
@@ -2570,8 +2610,8 @@ function getRosterManagement_() {
       latest[0],
       cleanName,
       birthdate,
-      driveUrl,
       savedPhone,
+      driveUrl,
       isActive ? "Active" : "Inactive",
     ]]);
 
@@ -2921,8 +2961,8 @@ function generateStudentCard_(studentId) {
       message: "لم يتم العثور على المخدوم.",
     };
   }
-  if (String(student[3] || "").includes("drive.google.com")) {
-    return { success: true, id: student[0], driveUrl: student[3] };
+  if (String(student[4] || "").includes("drive.google.com")) {
+    return { success: true, id: student[0], driveUrl: student[4] };
   }
 
   const cardResult = generateAllCardsFromRoster(student[0]);
@@ -2972,8 +3012,8 @@ function generateAllCardsFromRoster(targetStudentId, options = {}) {
       if (String(data[i][5] || "").toLowerCase() === "inactive") continue;
       if (
         !options.force &&
-        data[i][3] &&
-        String(data[i][3]).includes("drive.google.com")
+        data[i][4] &&
+        String(data[i][4]).includes("drive.google.com")
       )
         continue;
 
@@ -3050,7 +3090,7 @@ function generateAllCardsFromRoster(targetStudentId, options = {}) {
         );
         const driveUrl = finalFile.getUrl();
         if (!options.deferRosterUpdate)
-          rosterSheet.getRange(i + 2, 4).setValue(driveUrl);
+          rosterSheet.getRange(i + 2, 5).setValue(driveUrl);
         generatedCards.push({
           id: studentId,
           name: studentName,

@@ -495,7 +495,16 @@ body.tutorial-active #mainContainer {
 }
 
 #dashboardView[data-layout="three"] .dashboard-actions-grid {
-  --dashboard-columns: 3;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+#dashboardView[data-layout="three"] .dashboard-actions-grid > .tile {
+  grid-column: span 2;
+}
+
+#dashboardView[data-layout="two"] .dashboard-actions-grid
+  > .tile:last-child:nth-child(2n + 1) {
+  grid-column: 1 / -1;
 }
 
 #dashboardView[data-layout="three"]
@@ -506,6 +515,15 @@ body.tutorial-active #mainContainer {
   flex-direction: row;
   justify-content: center;
   gap: 14px;
+}
+
+#dashboardView[data-layout="three"]
+  .dashboard-actions-grid
+  > .tile:nth-last-child(2):nth-child(3n + 1),
+#dashboardView[data-layout="three"]
+  .dashboard-actions-grid
+  > .tile:last-child:nth-child(3n + 2) {
+  grid-column: span 3;
 }
 
 #dashboardView[data-layout="one"] .dashboard-actions-grid {

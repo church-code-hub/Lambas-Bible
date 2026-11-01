@@ -59,45 +59,61 @@ function playPaymentScanTone(success) {
   } catch (error) {}
 }
 
-function showPaymentScanFeedback(result, pending = false) {
+function showPaymentScanFeedback(result) {
   if (!isPaymentScanMode) return false;
   window.clearTimeout(paymentFeedbackTimer);
   paymentFeedbackTimer = 0;
   const success = ["success", "late", "out"].includes(result?.kind);
   const queued = result?.kind === "queued";
+  const warning = ["warn", "closed"].includes(result?.kind);
   const message = [
     result?.name || "",
-    result?.title ? translateText(result.title) : "",
+    result?.title && result.title !== "attendanceScanProcessing"
+      ? translateText(result.title)
+      : "",
     result?.message ? translateText(result.message) : "",
-    pending ? translateText("paymentScanFeedbackChecking") : "",
     queued ? translateText("paymentScanPending") : "",
   ].filter(Boolean).join(" · ");
-  const type = pending
-    ? "info"
-    : success
-      ? "success"
-      : queued
-        ? "info"
-        : "error";
-  if (paymentFeedbackToast?.isConnected) {
-    paymentFeedbackToast.dataset.message = message;
-    paymentFeedbackToast.textContent = translateText(message);
-    paymentFeedbackToast.classList.remove("success", "info", "error");
-    paymentFeedbackToast.classList.add(type);
-    paymentFeedbackToast.style.setProperty("--toast-out-delay", "1750ms");
-  } else {
-    paymentFeedbackToast = showToast(message, type, pending ? 15000 : 2000);
-  }
-  if (!pending) {
-    playPaymentScanTone(success);
-    paymentFeedbackTimer = window.setTimeout(() => {
-      if (paymentFeedbackToast?.isConnected) paymentFeedbackToast.remove();
-      paymentFeedbackToast = null;
-      paymentFeedbackTimer = 0;
-      isProcessingScan = false;
-      if (currentActiveViewId === "scanView") startLiveScanner();
-    }, 2000);
-  }
+  const resultPanel = document.getElementById("paymentScanResult");
+  if (!resultPanel) return false;
+  const icon = document.createElement("i");
+  icon.className = `fa-solid ${
+    success
+      ? "fa-circle-check"
+      : warning
+        ? "fa-triangle-exclamation"
+        : queued
+          ? "fa-cloud-arrow-up"
+          : "fa-circle-xmark"
+  }`;
+  resultPanel.classList.remove(
+    "is-success",
+    "is-warning",
+    "is-queued",
+    "is-error",
+  );
+  resultPanel.classList.add(
+    success ? "is-success" : warning ? "is-warning" : queued ? "is-queued" : "is-error",
+  );
+  resultPanel.querySelector(".payment-scan-result-icon").replaceChildren(icon);
+  resultPanel.querySelector(".payment-scan-result-message").textContent =
+    translateText(message || "paymentScanFailed");
+  resultPanel.closest(".camera-wrapper")?.classList.add("has-scan-result");
+  resultPanel.hidden = false;
+  playPaymentScanTone(success);
+  paymentFeedbackTimer = window.setTimeout(() => {
+    resultPanel.hidden = true;
+    resultPanel.classList.remove(
+      "is-success",
+      "is-warning",
+      "is-queued",
+      "is-error",
+    );
+    resultPanel.closest(".camera-wrapper")?.classList.remove("has-scan-result");
+    paymentFeedbackTimer = 0;
+    isProcessingScan = false;
+    if (currentActiveViewId === "scanView") startLiveScanner();
+  }, 2000);
   return true;
 }
 
@@ -106,6 +122,11 @@ function setPaymentScanMode(enabled) {
   isPaymentScanMode = Boolean(enabled);
   const scanView = document.getElementById("scanView");
   if (scanView) scanView.classList.toggle("payment-mode", isPaymentScanMode);
+  const resultPanel = document.getElementById("paymentScanResult");
+  if (resultPanel) {
+    resultPanel.hidden = true;
+    resultPanel.closest(".camera-wrapper")?.classList.remove("has-scan-result");
+  }
   document.querySelectorAll("[data-scan-mode]").forEach((button) => {
     button.setAttribute(
       "aria-pressed",
@@ -349,9 +370,10 @@ function persistAttendanceContextCache(context) {
   });
 }
 
-async function refreshAttendanceContext() {
+async function refreshAttendanceContext(force = false) {
   if (!currentUser) return null;
   if (
+    !force &&
     currentAttendanceContext &&
     currentAttendanceContext.email ===
       String(currentUser.email).toLowerCase().trim() &&
@@ -653,28 +675,6 @@ async function processAttendanceId(
     } catch (error) {
       console.warn("Could not read the saved attendee name.", error);
     }
-    if (isPaymentScanMode) {
-      const predictionContext = currentAttendanceContext
-        ? {
-            ...currentAttendanceContext,
-            settings: { ...currentAttendanceContext.settings },
-            attendance: currentAttendanceContext.attendance.map((person) => ({
-              ...person,
-            })),
-          }
-        : null;
-      const prediction = predictionContext
-        ? predictAttendanceResult(id, event, cachedPerson, predictionContext)
-        : null;
-      showPaymentScanFeedback(
-        prediction || {
-          kind: "queued",
-          title: "attendanceScanProcessing",
-          name: event.personName,
-        },
-        true,
-      );
-    }
     currentAttendanceEventId = event.eventId;
     const toast = isPaymentScanMode
       ? null
@@ -711,10 +711,12 @@ async function processAttendanceId(
         );
       if (currentAttendanceEventId === event.eventId) {
         if (fromNameSearch) renderResult(attendanceResult, true);
-        refreshAttendanceContext();
+        refreshAttendanceContext(true);
       }
     } catch (error) {
       console.error("Could not submit attendance scan.", error);
+      if (currentAttendanceEventId === event.eventId)
+        refreshAttendanceContext(true);
       if (isPaymentScanMode) {
         showPaymentScanFeedback({
           kind: "error",

@@ -83,18 +83,20 @@ test("attendance report links open the generated tab and export it as Excel or P
   assert.match(downloadFlow, /Uint8Array\.from\(atob\(result\.base64\)/);
 });
 
-test("reception scan shows the attendee result in a toast and resumes scanning after two seconds", () => {
+test("reception scan replaces the camera with a result and resumes after two seconds", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
   const scanView = html.match(/<div id="scanView"[\s\S]*?<\/div>\s*<!-- 3\. Search View -->/)?.[0] || "";
   const feedback = scanner.match(/function showPaymentScanFeedback\([\s\S]*?\n\}/)?.[0] || "";
 
   assert.match(scanView, /data-scan-mode="payment"/);
-  assert.doesNotMatch(html, /id="paymentScanFeedback"/);
+  assert.match(scanView, /id="paymentScanResult"/);
   assert.match(feedback, /result\?\.name/);
-  assert.match(feedback, /showToast\(message, type, pending \? 15000 : 2000\)/);
+  assert.match(feedback, /paymentScanResult/);
+  assert.doesNotMatch(feedback, /paymentScanFeedbackChecking|pending/);
   assert.match(feedback, /playPaymentScanTone\(success\)/);
-  assert.match(feedback, /setTimeout\(\(\) => \{[\s\S]*?startLiveScanner\(\)/);
+  assert.match(feedback, /setTimeout\(\(\) => \{[\s\S]*?startLiveScanner\(\)[\s\S]*?\}, 2000\);/);
+  assert.match(scanner, /refreshAttendanceContext\(true\)/);
 });
 
 test("notifications use browser permission and support background sync results", () => {
@@ -249,9 +251,13 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
   assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /css\/styles\.css\?v=78/);
-  assert.match(serviceWorker, /lambas-bible-shell-v83/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=78/);
+  assert.match(html, /id="attendanceExportFormat"[\s\S]*?value="sheets"[\s\S]*?value="xlsx"[\s\S]*?value="pdf"/);
+  assert.match(html, /onclick="runAttendanceExport\(\)"/);
+  assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
+  assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
+  assert.match(html, /css\/styles\.css\?v=79/);
+  assert.match(serviceWorker, /lambas-bible-shell-v84/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=79/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -296,6 +302,12 @@ test("people management styles search and uses edit plus confirmed archival acti
   assert.match(styles, /\.roster-search-wrap\s*\{[\s\S]*?backdrop-filter:/);
   assert.match(views, /function beginRosterPersonEdit\(/);
   assert.match(views, /function deactivateRosterPerson\(person\)/);
+  assert.match(html, /id="attendeeProfileView"[\s\S]*?id="deleteAttendeeProfileButton"[\s\S]*?deactivateProfilePerson\(\)/);
+  assert.doesNotMatch(
+    html.match(/<div id="rosterView"[\s\S]*?<\/div>/)?.[0] || "",
+    /deleteRosterPerson|deactivateRosterPerson/,
+  );
+  assert.match(views, /showLoader\(translations\[currentLang\]\.loadingAction\);[\s\S]*?async function loadBirthdays/);
   assert.match(views, /window\.confirm\(confirmation\)/);
   assert.match(views, /active:\s*false/);
   assert.doesNotMatch(views, /rosterActiveLabel/);

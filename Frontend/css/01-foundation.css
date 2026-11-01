@@ -60,7 +60,11 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  margin-top: 12px;
+  margin: 12px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: var(--glass-surface);
   color: var(--text-sub);
   font-size: 13px;
   font-weight: 700;
@@ -68,6 +72,35 @@
 
 .attendance-sheet-options select {
   width: 100%;
+}
+
+.attendance-export-action {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+}
+
+.attendance-export-action .btn {
+  display: inline-flex;
+  width: auto;
+  min-height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  padding: 7px 12px;
+}
+
+.attendance-export-action .compact-control-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .attendance-sheet-options {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

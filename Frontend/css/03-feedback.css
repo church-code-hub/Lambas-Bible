@@ -66,15 +66,36 @@
 }
 .notification-list {
   overflow: hidden;
+  border-color: color-mix(in srgb, var(--accent-gold) 22%, var(--glass-edge));
 }
 .notification-item {
+  position: relative;
   display: grid;
-  gap: 5px;
-  padding: 14px 16px;
+  gap: 7px;
+  padding: 17px 18px 17px 22px;
   border-bottom: 1px solid var(--card-border);
+  background:
+    linear-gradient(110deg, color-mix(in srgb, var(--accent-gold) 7%, transparent), transparent 48%),
+    var(--glass-surface);
+  text-align: start;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+.notification-item::before {
+  position: absolute;
+  inset-block: 15px;
+  inset-inline-start: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent-gold);
+  content: "";
 }
 .notification-item:last-child {
   border-bottom: 0;
+}
+.notification-item strong {
+  color: var(--text-main);
+  font-size: 15px;
+  line-height: 1.4;
 }
 .notification-item p,
 .notification-item small {
@@ -82,8 +103,19 @@
   color: var(--text-sub);
   overflow-wrap: anywhere;
 }
+.notification-item p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notification-item small {
+  font-size: 11px;
+}
 .notification-item.is-read {
-  opacity: 0.68;
+  opacity: 0.72;
+  background: var(--glass-surface);
+}
+.notification-item.is-read::before {
+  background: var(--chip-border);
 }
 
 @keyframes toastIn {

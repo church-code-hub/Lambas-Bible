@@ -151,6 +151,7 @@ function createBackendContext(
 function createMutableSheet(rows) {
   return {
     rows,
+    numberFormats: [],
     getLastRow() {
       return this.rows.length;
     },
@@ -179,6 +180,10 @@ function createMutableSheet(rows) {
           sheet.rows[row - 1][column - 1] = value;
         },
         setBackground() {},
+        setNumberFormat(format) {
+          sheet.numberFormats.push({ row, column, rowCount, columnCount, format });
+          return this;
+        },
       };
     },
     appendRow(values) {
@@ -235,8 +240,8 @@ test("manages roster names and archives people without removing historical rows"
     1,
     "Alice Smith",
     "",
-    "https://drive.google.com/file/d/card-1",
     "",
+    "https://drive.google.com/file/d/card-1",
     "Inactive",
   ]);
   assert.deepEqual(
@@ -267,41 +272,44 @@ test("migrates roster columns with a backup and saves month-day birthdays and ph
   assert.equal(context.normalizeRosterBirthdate_("2000-02-29"), "02-29");
   assert.equal(context.normalizeRosterBirthdate_("2025-02-29"), "02-29");
   assert.deepEqual(rosterSheet.rows[0], [
-    "ID", "Name", "Birthdate", "Drive Link", "Phone", "Status",
+    "ID", "Name", "Birthdate", "Phone", "Drive Link", "Status",
   ]);
   assert.deepEqual(rosterSheet.rows[1], [
     1,
     "Alice",
     "",
-    "https://drive.google.com/file/d/old-card/view",
     "",
+    "https://drive.google.com/file/d/old-card/view",
     "Active",
   ]);
   assert.equal(Array.from(sheets.keys()).some((name) => name.startsWith("Roster Backup ")), true);
 
   const saved = context.updateRosterPerson_("1", "Alice", true, "admin@example.com", {
     birthdate: "07-04",
-    phone: "+1 555 123 4567",
+    phone: "01234567890",
   });
   assert.equal(saved.success, true);
   assert.deepEqual(rosterSheet.rows[1], [
     1,
     "Alice",
     "07-04",
+    "01234567890",
     "https://drive.google.com/file/d/old-card/view",
-    "+1 555 123 4567",
     "Active",
   ]);
   assert.deepEqual(
     Array.from(context.getRosterSnapshot_(), (person) => [person.birthdate, person.phone]),
-    [["07-04", "+1 555 123 4567"]],
+    [["07-04", "01234567890"]],
   );
+  assert.ok(rosterSheet.numberFormats.some((range) =>
+    range.column === 4 && range.format === "@",
+  ));
 });
 
 test("keeps the existing name and QR link when replacement card generation fails", () => {
   const rosterSheet = createMutableSheet([
-    ["ID", "Name", "Birthdate", "Drive Link", "Phone", "Status"],
-    [1, "Alice", "", "https://drive.google.com/file/d/old-card/view", "", "Active"],
+    ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
+    [1, "Alice", "", "", "https://drive.google.com/file/d/old-card/view", "Active"],
   ]);
   const { context } = createBackendContext();
   context.SpreadsheetApp.getActiveSpreadsheet = () => ({
@@ -317,13 +325,13 @@ test("keeps the existing name and QR link when replacement card generation fails
   assert.equal(result.success, false);
   assert.equal(result.code, "CARD_GENERATION_FAILED");
   assert.equal(rosterSheet.rows[1][1], "Alice");
-  assert.equal(rosterSheet.rows[1][3], "https://drive.google.com/file/d/old-card/view");
+  assert.equal(rosterSheet.rows[1][4], "https://drive.google.com/file/d/old-card/view");
 });
 
 test("trashes an unused replacement card when a concurrent roster edit wins", () => {
   const rosterSheet = createMutableSheet([
-    ["ID", "Name", "Birthdate", "Drive Link", "Phone", "Status"],
-    [1, "Alice", "", "https://drive.google.com/file/d/old-card/view", "", "Active"],
+    ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
+    [1, "Alice", "", "", "https://drive.google.com/file/d/old-card/view", "Active"],
   ]);
   const { context } = createBackendContext();
   const trashedIds = [];
@@ -346,7 +354,7 @@ test("trashes an unused replacement card when a concurrent roster edit wins", ()
   assert.equal(result.success, false);
   assert.equal(result.code, "ROSTER_CHANGED");
   assert.deepEqual(trashedIds, ["new-card"]);
-  assert.equal(rosterSheet.rows[1][3], "https://drive.google.com/file/d/old-card/view");
+  assert.equal(rosterSheet.rows[1][4], "https://drive.google.com/file/d/old-card/view");
 });
 
 test("attendance trends summarize recent meeting attendance rates", () => {
@@ -498,7 +506,7 @@ test("generates a card with one QR image and no QR frame", () => {
   );
   const rosterSheet = {
     rows: [
-      ["ID", "Name", "Birthdate", "Drive Link", "Phone", "Status"],
+      ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
       [7, "Alice", "", "", "", "Active"],
     ],
     getLastRow() { return this.rows.length; },
@@ -753,12 +761,24 @@ test("builds a daily attendance report and can find an absent person by name", (
             sheet.formatting.headerFontColor = value;
             return range;
           },
-          setFontWeight: (value) => {
+        setFontWeight: (value) => {
             sheet.formatting.headerFontWeight = value;
             return range;
-          },
+        },
+        setWrap: (value) => {
+            sheet.formatting.wrap = value;
+            return range;
+        },
+        setBorder: (...values) => {
+            sheet.formatting.borders = values;
+            return range;
+        },
         };
         return range;
+    },
+    setColumnWidth(column, width) {
+        sheet.formatting.columnWidths ||= {};
+        sheet.formatting.columnWidths[column] = width;
       },
     };
     return sheet;
@@ -809,6 +829,15 @@ test("builds a daily attendance report and can find an absent person by name", (
     Array.from(sheets.get("Attendance 2026-10-18").rows[1]),
     ["Alice", "++", ""],
   );
+  assert.equal(sheets.get("Attendance 2026-10-18").formatting.wrap, true);
+  assert.deepEqual(
+    sheets.get("Attendance 2026-10-18").formatting.borders,
+    [true, true, true, true, true, true],
+  );
+  assert.deepEqual(
+    sheets.get("Attendance 2026-10-18").formatting.columnWidths,
+    { 1: 300, 2: 180, 3: 160 },
+  );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[2]),
     ["Bob", "", ""],
@@ -827,6 +856,9 @@ test("builds a daily attendance report and can find an absent person by name", (
     headerBackground: "#f5bd55",
     headerFontColor: "#182333",
     headerFontWeight: "bold",
+    wrap: true,
+    borders: [true, true, true, true, true, true],
+    columnWidths: { 1: 300, 2: 180, 3: 160 },
   });
   const preservedRows = JSON.stringify(sheets.get("Attendance 2026-10-18").rows);
   const existingReport = context.getAttendanceDayReport_("2026-10-18", "", true);
@@ -882,6 +914,17 @@ test("exports daily reports as real PDF and XLSX files and removes temporary spr
       name: "Copy of report",
       setName(value) { this.name = value; },
       getSheetId: () => 55,
+      getLastRow: () => 1,
+      getRange: () => ({
+        setHorizontalAlignment() {},
+        setVerticalAlignment() {},
+        setWrap() {},
+        setBorder() {},
+        setBackground() {},
+        setFontColor() {},
+        setFontWeight() {},
+      }),
+      setColumnWidth() {},
     };
     const defaultSheet = { getSheetId: () => 0 };
     return {
@@ -917,6 +960,7 @@ test("exports daily reports as real PDF and XLSX files and removes temporary spr
   assert.equal(exportUrls.length, 2);
   assert.equal(exportUrls[0].url.includes("format=pdf"), true);
   assert.equal(exportUrls[0].url.includes("fitw=true"), true);
+  assert.equal(exportUrls[0].url.includes("portrait=false"), true);
   assert.equal(exportUrls[1].url.includes("format=xlsx"), true);
   assert.deepEqual(trashedIds, [
     ["temp-Attendance export 2026-10-18", true],

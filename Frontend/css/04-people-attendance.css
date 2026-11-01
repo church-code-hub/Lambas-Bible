@@ -40,10 +40,17 @@
 .roster-person-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--card-border);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--accent-gold) 6%, transparent), transparent 58%);
+  transition: background 160ms ease, padding 160ms ease;
+}
+
+.roster-person-row:hover {
+  padding-inline: 22px 18px;
+  background: color-mix(in srgb, var(--accent-gold) 10%, var(--glass-surface));
 }
 
 .roster-person-row:last-child {
@@ -53,7 +60,7 @@
 .roster-person-details {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 6px;
 }
 
 .roster-person-details strong {
@@ -61,17 +68,31 @@
   color: var(--text-main);
 }
 .roster-person-open {
+  display: flex;
   width: fit-content;
+  align-items: center;
+  gap: 8px;
   max-width: 100%;
-  padding: 0;
+  padding: 3px 0;
   border: 0;
   background: transparent;
   color: var(--text-main);
   font: inherit;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+.roster-person-open::before {
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-gold) 48%, transparent);
+  content: "";
 }
 .roster-person-open:hover {
   color: var(--accent-gold);
@@ -79,7 +100,11 @@
 
 .roster-person-details small {
   color: var(--text-sub);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  direction: ltr;
+  text-align: start;
 }
 
 .roster-person-actions,
@@ -160,7 +185,16 @@
   display: grid;
   gap: 10px;
   width: min(100%, 620px);
-  margin: 14px auto 0;
+  margin: 16px auto 0;
+  padding: clamp(18px, 4vw, 28px);
+  border: 1px solid var(--glass-edge);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 100% 0, color-mix(in srgb, var(--accent-gold) 11%, transparent), transparent 44%),
+    var(--panel-gradient), var(--glass-surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
 }
 .attendee-profile-form > label,
 .attendee-profile-birthday legend {
@@ -174,10 +208,17 @@
   min-height: 46px;
   padding: 10px 12px;
   border: 1px solid var(--card-border);
-  border-radius: 10px;
+  border-radius: 13px;
   background: var(--input-bg);
   color: var(--text-main);
   font: inherit;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.attendee-profile-form input:focus,
+.attendee-profile-form select:focus {
+  border-color: var(--accent-gold);
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-gold) 18%, transparent);
 }
 .attendee-profile-phone-row {
   display: grid;
@@ -195,7 +236,8 @@
   margin: 4px 0;
   padding: 12px;
   border: 1px solid var(--card-border);
-  border-radius: 10px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--glass-surface) 86%, transparent);
 }
 .attendee-profile-birthday legend {
   padding-inline: 6px;
@@ -206,6 +248,16 @@
 .profile-back-button {
   width: fit-content;
   margin: 0;
+}
+.profile-delete-button {
+  border-color: color-mix(in srgb, #ef4444 68%, var(--glass-edge));
+  background: color-mix(in srgb, #ef4444 13%, var(--glass-surface));
+  color: color-mix(in srgb, #ef7777 82%, var(--text-main));
+}
+.profile-delete-button:hover {
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 22%, var(--glass-surface));
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.16);
 }
 .birthdays-list {
   overflow: hidden;

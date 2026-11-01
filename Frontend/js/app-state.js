@@ -14,7 +14,6 @@ var isScannerRunning = false;
 var isScannerStarting = false;
 var isPaymentScanMode = false;
 var paymentFeedbackTimer = 0;
-var paymentFeedbackToast = null;
 var paymentScanAudioContext = null;
 var scannerStartGeneration = 0;
 var qrLibraryPromise = null;

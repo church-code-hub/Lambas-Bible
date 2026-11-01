@@ -128,37 +128,144 @@ h2 > i {
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
 .scan-mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  margin: 0 auto 14px;
-  padding: 4px;
-  width: min(100%, 440px);
-  border: 1px solid var(--chip-border);
-  border-radius: 12px;
-  background: var(--chip-bg);
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 18px;
+  padding: 5px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 15px;
+  background: var(--glass-surface);
+  box-shadow: var(--icon-glass-shadow);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+}
+#scanView > .scan-mode-switch {
+  width: fit-content;
+  margin-right: auto;
+  margin-left: 0;
 }
 .scan-mode-button {
   min-height: 42px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 11px;
   background: transparent;
   color: var(--text-sub);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 .scan-mode-button[aria-pressed="true"] {
-  background: var(--app-bar-bg);
-  color: var(--text-main);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  border-color: color-mix(in srgb, var(--accent-gold) 55%, var(--glass-edge));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-gold) 28%, var(--glass-surface)), var(--glass-surface));
+  color: var(--accent-gold);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--accent-gold) 16%, transparent);
+}
+.scan-mode-button:hover {
+  color: var(--accent-gold);
+  transform: translateY(-1px);
+}
+.scan-mode-button:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
 }
 #scanView.payment-mode .camera-wrapper {
-  min-height: min(62vh, 560px);
+  width: 100%;
+  max-width: none;
+  min-height: min(68dvh, 680px);
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 #scanView.payment-mode #qr-reader {
-  max-width: 760px;
+  width: 100%;
+  max-width: none;
+}
+#scanView.payment-mode .camera-wrapper.has-scan-result #qr-reader {
+  display: none;
+}
+#scanView.payment-mode .camera-wrapper.has-scan-result {
+  border: 1px solid var(--glass-edge);
+  background: var(--panel-gradient), var(--glass-surface);
+  box-shadow: var(--shadow);
+}
+#scanView.payment-mode #qr-reader video {
+  width: 100% !important;
+  min-height: min(68dvh, 680px);
+  object-fit: cover;
+}
+.payment-scan-result,
+.payment-scan-result[hidden] {
+  display: none;
+}
+#scanView.payment-mode .payment-scan-result:not([hidden]) {
+  display: grid;
+  width: 100%;
+  min-height: inherit;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+  padding: clamp(24px, 6vw, 56px);
+  text-align: center;
+  animation: scanResultIn 180ms ease-out both;
+}
+.payment-scan-result-icon {
+  display: grid;
+  width: clamp(74px, 14vw, 112px);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: clamp(34px, 7vw, 54px);
+}
+.payment-scan-result-icon i {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: currentColor;
+  font-size: inherit;
+}
+.payment-scan-result-message {
+  max-width: 36ch;
+  color: var(--text-main);
+  font-size: clamp(20px, 4vw, 30px);
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.payment-scan-result.is-success {
+  color: #35a879;
+}
+.payment-scan-result.is-warning,
+.payment-scan-result.is-queued {
+  color: #d97706;
+}
+.payment-scan-result.is-error {
+  color: #ef6464;
+}
+#scanView.payment-mode .camera-status {
+  display: none;
+}
+@keyframes scanResultIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 #qr-reader {
   width: 100%;
