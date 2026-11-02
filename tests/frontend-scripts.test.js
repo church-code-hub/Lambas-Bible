@@ -131,6 +131,12 @@ test("global push is opt-in, owner-only, and handled by the service worker", () 
   assert.match(serviceWorker, /onBackgroundMessage/);
   assert.match(serviceWorker, /notificationclick/);
   assert.match(workflow, /LAMBAS_FIREBASE_VAPID_KEY/);
+  assert.match(workflow, /vars\.LAMBAS_FIREBASE_API_KEY \|\| secrets\.LAMBAS_FIREBASE_API_KEY/);
+  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/configure-pages@v6/);
+  assert.match(workflow, /actions\/deploy-pages@v5/);
+  assert.match(workflow, /actions\/upload-pages-artifact@v5/);
+  assert.match(views, /Push configuration is missing from this deployed app/);
 });
 
 test("birthdays default to a week and WhatsApp sharing uses a saved phone when available", () => {
@@ -143,11 +149,27 @@ test("birthdays default to a week and WhatsApp sharing uses a saved phone when a
   assert.match(html, /id="birthdayDateFrom"/);
   assert.match(html, /onclick="resetBirthdayDateFilter\(\)"/);
   assert.match(views, /today\.getDate\(\) - today\.getDay\(\)/);
+  assert.match(views, /birthdayDaysAgo/);
+  assert.match(views, /birthdayDayNumber\(occurrence\) - birthdayDayNumber\(today\)/);
   assert.match(views, /function resetBirthdayDateFilter\(\)/);
   assert.match(scanner, /openCardPreview\(item\.fileId, item\.driveUrl, item\.name, item\.phone\)/);
   assert.match(cards, /function openCardWhatsApp\(phone = ""\)/);
+  assert.match(cards, /const firstName = String\(activePreviewCard\.name \|\| ""\)\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);
   assert.match(cards, /https:\/\/wa\.me\//);
+  assert.match(html, /class="notification-app-icon" src="\.\/Assets\/icons\/icon-192\.png"/);
   assert.match(backend, /phone: String\(data\[i\]\[3\] \|\| ""\)/);
+
+  const dayNumberSource =
+    views.match(/function birthdayDayNumber\(date\) \{[\s\S]*?\n\}/)?.[0] || "";
+  const browserContext = vm.createContext({ Date });
+  vm.runInContext(dayNumberSource, browserContext);
+  assert.equal(
+    vm.runInContext(
+      "birthdayDayNumber(new Date(2026, 10, 2)) - birthdayDayNumber(new Date(2026, 10, 1))",
+      browserContext,
+    ),
+    1,
+  );
 });
 
 test("roster refresh runs in the background without competing with an active scan", () => {
@@ -293,9 +315,9 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(html, /onsubmit="runAttendanceExport\(event\)"/);
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
-  assert.match(html, /css\/styles\.css\?v=80/);
-  assert.match(serviceWorker, /lambas-bible-shell-v85/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=80/);
+  assert.match(html, /css\/styles\.css\?v=81/);
+  assert.match(serviceWorker, /lambas-bible-shell-v86/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);

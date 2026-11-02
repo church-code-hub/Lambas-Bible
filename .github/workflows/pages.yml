@@ -21,21 +21,21 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v6
       - name: Create runtime configuration
         working-directory: Frontend/js
         env:
           APP_API_URL: ${{ vars.LAMBAS_API_URL }}
           APP_GOOGLE_CLIENT_ID: ${{ vars.LAMBAS_GOOGLE_CLIENT_ID }}
           APP_GOOGLE_SHEET_URL: ${{ vars.LAMBAS_GOOGLE_SHEET_URL }}
-          APP_FIREBASE_API_KEY: ${{ vars.LAMBAS_FIREBASE_API_KEY }}
-          APP_FIREBASE_AUTH_DOMAIN: ${{ vars.LAMBAS_FIREBASE_AUTH_DOMAIN }}
-          APP_FIREBASE_PROJECT_ID: ${{ vars.LAMBAS_FIREBASE_PROJECT_ID }}
-          APP_FIREBASE_STORAGE_BUCKET: ${{ vars.LAMBAS_FIREBASE_STORAGE_BUCKET }}
-          APP_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.LAMBAS_FIREBASE_MESSAGING_SENDER_ID }}
-          APP_FIREBASE_APP_ID: ${{ vars.LAMBAS_FIREBASE_APP_ID }}
-          APP_FIREBASE_VAPID_KEY: ${{ vars.LAMBAS_FIREBASE_VAPID_KEY }}
+          APP_FIREBASE_API_KEY: ${{ vars.LAMBAS_FIREBASE_API_KEY || secrets.LAMBAS_FIREBASE_API_KEY }}
+          APP_FIREBASE_AUTH_DOMAIN: ${{ vars.LAMBAS_FIREBASE_AUTH_DOMAIN || secrets.LAMBAS_FIREBASE_AUTH_DOMAIN }}
+          APP_FIREBASE_PROJECT_ID: ${{ vars.LAMBAS_FIREBASE_PROJECT_ID || secrets.LAMBAS_FIREBASE_PROJECT_ID }}
+          APP_FIREBASE_STORAGE_BUCKET: ${{ vars.LAMBAS_FIREBASE_STORAGE_BUCKET || secrets.LAMBAS_FIREBASE_STORAGE_BUCKET }}
+          APP_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.LAMBAS_FIREBASE_MESSAGING_SENDER_ID || secrets.LAMBAS_FIREBASE_MESSAGING_SENDER_ID }}
+          APP_FIREBASE_APP_ID: ${{ vars.LAMBAS_FIREBASE_APP_ID || secrets.LAMBAS_FIREBASE_APP_ID }}
+          APP_FIREBASE_VAPID_KEY: ${{ vars.LAMBAS_FIREBASE_VAPID_KEY || secrets.LAMBAS_FIREBASE_VAPID_KEY }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
@@ -66,7 +66,7 @@ jobs:
           ];
           const configuredFirebaseFields = firebaseFields.filter((name) => process.env[name]);
           if (configuredFirebaseFields.length && configuredFirebaseFields.length !== firebaseFields.length) {
-            throw new Error('Configure all LAMBAS_FIREBASE_* repository variables to enable push notifications.');
+            throw new Error('Configure all LAMBAS_FIREBASE_* variables or secrets to enable push notifications.');
           }
           if (configuredFirebaseFields.length) {
             config.firebaseConfig = {
@@ -81,8 +81,8 @@ jobs:
           }
           fs.writeFileSync('config.js', `globalThis.LAMBAS_CONFIG = Object.freeze(${JSON.stringify(config)});\n`);
           NODE
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: Frontend
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

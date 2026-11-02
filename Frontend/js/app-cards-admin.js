@@ -64,7 +64,8 @@ function openCardWhatsApp(phone = "") {
   }
   const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
   const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
-  const message = [prefix + activePreviewCard.name + suffix, activePreviewCard.driveUrl]
+  const firstName = String(activePreviewCard.name || "").trim().split(/\s+/)[0] || "";
+  const message = [prefix + firstName + suffix, activePreviewCard.driveUrl]
     .filter(Boolean)
     .join("\n");
   const digits = String(phone).replace(/\D/g, "");

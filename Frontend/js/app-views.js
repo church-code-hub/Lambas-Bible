@@ -549,9 +549,26 @@ function loadFirebaseMessagingSdk() {
   );
 }
 
+function birthdayDayNumber(date) {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+}
+
 async function enablePushNotifications() {
   const config = APP_CONFIG.firebaseConfig;
-  if (!config || !APP_CONFIG.firebaseVapidKey) {
+  const missingFirebaseFields = [
+    "apiKey",
+    "authDomain",
+    "projectId",
+    "messagingSenderId",
+    "appId",
+  ].filter((field) => !String(config?.[field] || "").trim());
+  const missingVapidKey = !String(APP_CONFIG.firebaseVapidKey || "").trim();
+  if (missingFirebaseFields.length || missingVapidKey) {
+    console.warn(
+      "Push configuration is missing from this deployed app.",
+      missingFirebaseFields,
+      missingVapidKey ? ["firebaseVapidKey"] : [],
+    );
     showToast(translations[currentLang].pushSetupRequired, "error");
     return;
   }
@@ -941,12 +958,21 @@ function renderBirthdays(now = new Date()) {
     today.getMonth(),
     today.getDate() - today.getDay(),
   );
-  const start = fromValue
-    ? new Date(`${fromValue}T00:00:00`)
-    : weekStart;
+  const parseDateInput = (value) => {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return parsed.getFullYear() === Number(match[1]) &&
+      parsed.getMonth() === Number(match[2]) - 1 &&
+      parsed.getDate() === Number(match[3])
+      ? parsed
+      : null;
+  };
+  const start = fromValue ? parseDateInput(fromValue) : weekStart;
   const end = toValue
-    ? new Date(`${toValue}T00:00:00`)
+    ? parseDateInput(toValue)
     : new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
+  if (!start || !end) return;
   const upcoming = [];
   birthdayPeople.forEach((person) => {
     const match = String(person.birthdate || "").match(/^(\d{2})-(\d{2})$/);
@@ -964,7 +990,7 @@ function renderBirthdays(now = new Date()) {
       upcoming.push({
         ...person,
         occurrence,
-        daysUntil: Math.round((occurrence - today) / 86400000),
+        daysUntil: birthdayDayNumber(occurrence) - birthdayDayNumber(today),
       });
     }
   });
@@ -998,10 +1024,15 @@ function renderBirthdays(now = new Date()) {
     if (!fromValue && !toValue) {
       timing.textContent = person.daysUntil === 0
         ? translations[currentLang].birthdayToday
-        : translations[currentLang].birthdayInDays.replace(
-            "{days}",
-            String(person.daysUntil),
-          );
+        : person.daysUntil < 0
+          ? translations[currentLang].birthdayDaysAgo.replace(
+              "{days}",
+              String(Math.abs(person.daysUntil)),
+            )
+          : translations[currentLang].birthdayInDays.replace(
+              "{days}",
+              String(person.daysUntil),
+            );
       row.append(name, date, timing);
     } else {
       row.append(name, date);

@@ -91,7 +91,7 @@ The `Deploy GitHub Pages` workflow publishes the app whenever a commit reaches `
 | `LAMBAS_FIREBASE_APP_ID` | Firebase web-app ID |
 | `LAMBAS_FIREBASE_VAPID_KEY` | Web Push certificate's public VAPID key |
 
-Configure all Firebase variables together to enable push; leave them all unset to disable push. These values are embedded in the public browser app at deployment time; they are configuration, not secrets. Never put private credentials or Script Property values in these variables.
+Configure all Firebase values together to enable push; the Pages workflow accepts them as repository/environment Actions variables or secrets (variables are preferred). Leave them all unset to disable push. These values are embedded in the public browser app at deployment time; they are configuration, not secrets. Never put private credentials or Script Property values in these values. The ignored local `Frontend/js/config.js` is not uploaded by GitHub Actions and does not configure the hosted site. After changing Actions values, rerun the Pages deployment workflow.
 
 To enable global push messages, create a Firebase project, enable the Firebase Cloud Messaging API, register a web app, and configure its Web Push certificate. Add the public web-app values and VAPID key above, matching the same Firebase project used by the backend service account. Users must opt in on each device from Notifications. Only the spreadsheet owner can send a global message; it is queued by FCM for up to seven days while a device is offline. Devices without an active push subscription are not recipients.
 

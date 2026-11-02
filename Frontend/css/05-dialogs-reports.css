@@ -137,6 +137,93 @@
 
 .global-notification-composer {
   grid-template-columns: 1fr;
+  gap: 12px;
+  padding: clamp(16px, 3vw, 22px);
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(54, 201, 151, 0.1), transparent 52%),
+    var(--glass-surface);
+  box-shadow: var(--icon-glass-shadow);
+}
+
+.global-notification-composer h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.global-notification-composer label,
+#appSettingsView .app-preference-group label {
+  display: block;
+  margin-block: 4px 2px;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.global-notification-composer textarea,
+#appSettingsView .app-preference-group textarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 14px 15px;
+  line-height: 1.65;
+  text-align: start;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.global-notification-composer textarea:focus-visible,
+#appSettingsView .app-preference-group textarea:focus-visible {
+  border-color: var(--accent-gold);
+  outline: none;
+  background: color-mix(in srgb, var(--input-bg) 88%, var(--accent-gold) 12%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-gold) 24%, transparent);
+}
+
+.global-notification-composer .btn {
+  justify-self: stretch;
+  min-height: 48px;
+}
+
+.birthday-date-filter label {
+  align-self: end;
+}
+
+.birthday-person-row {
+  transition: background-color 160ms ease;
+}
+
+.birthday-person-row:hover {
+  background: color-mix(in srgb, var(--accent-gold) 7%, transparent);
+}
+
+.birthday-person-row strong {
+  color: var(--text-main);
+  font-size: 15px;
+}
+
+.birthday-person-row > span {
+  color: var(--text-sub);
+  font-size: 13px;
+  text-align: end;
+}
+
+.birthday-person-row small {
+  width: fit-content;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent-gold) 24%, var(--glass-edge));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-gold) 10%, transparent);
+  color: var(--accent-gold);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.notification-app-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 1px solid var(--icon-glass-edge);
+  border-radius: 9px;
+  object-fit: cover;
+  box-shadow: var(--icon-glass-shadow);
 }
 
 .notification-item[role="button"] {
