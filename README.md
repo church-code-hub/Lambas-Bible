@@ -62,11 +62,13 @@ The **People & Cards** section includes roster management and attendee profiles.
 
 The edge-to-edge dashboard presents every action together and offers one-, two-, and three-column layouts; the selected layout is saved on the device. The top-bar account menu contains settings, notifications, logout, and pending-sync actions. Notifications are stored locally; browser/system notifications require the user's permission. Birthday and app-open notifications are generated while the app is active. Background sync can show system success/failure notifications where Background Sync is supported. Roster deletion asks for confirmation and marks the person inactive, retaining historical attendance and the roster audit record.
 
-The QR scan view offers a regular mode and a larger reception mode for laptop cameras. Reception feedback includes the attendee name in a toast, plays a success/failure sound, and resumes scanning after two seconds. Online feedback is confirmed by the backend; local checks do not replace backend validation.
+The QR scan view offers regular and laptop modes selected in App Settings. Both modes use the same backend check-in flow and show a processing state until the server responds; laptop mode presents the result in the camera area for two seconds before scanning resumes. Scan results play quiet success/failure sounds. Online feedback is confirmed by the backend; local checks do not replace backend validation.
 
 The saved-actions view groups queued events by action type and shows attendee names from the device's saved roster when available. Review the new-attendee check-in choice, then sync an individual event or all queued events of a selected type. Events can be selected regardless of queue position; their stored timestamps are passed unchanged to the backend. Sync progress is animated and failed events remain available for retry or deletion.
 
-Attendance Reports can generate a formatted Google Sheets tab for the selected meeting and open it directly. The result dialog can also download actual Excel (`.xlsx`) and PDF files. The backend copies the report tab to a temporary spreadsheet for export and trashes that temporary spreadsheet afterward. Follow-up lists people with at least three consecutive missed meeting dates, ordered by missed meetings descending. Marking a follow-up done removes the row from the list; it can return after the person attends again and then misses three more meetings.
+Attendance Reports provide one export action for Google Sheets, Excel (`.xlsx`), PDF, and PNG. Absentee-only exports contain names without attendance marks or delay columns. PDF and PNG tables use centered text, wider columns, and visible borders. Follow-up lists people with at least three consecutive missed meeting dates, ordered by missed meetings descending. Marking a follow-up done removes the row from the list; it can return after the person attends again and then misses three more meetings.
+
+Birthdays show the current Sunday-to-Saturday week by default; a date range replaces that view until reset. Card sharing opens WhatsApp with a prefilled attendee name, configurable text, and card link. The roster's Active status is an archive control: deactivating a person removes them from active lists while retaining attendance history.
 
 Attendance matrix cells use `++` for on-time attendance and `+` for delayed attendance; delay minutes are not appended to the matrix mark. A generated daily attendance sheet can include attendees, absentees, or both (both by default). It uses `++` with a green fill for on-time attendance, `+` with the delay in the next column for delayed attendance, and leaves absentees blank. Delay details are retained in `Delay Details` and aggregate totals in `Delays`.
 
@@ -81,8 +83,17 @@ The `Deploy GitHub Pages` workflow publishes the app whenever a commit reaches `
 | `LAMBAS_API_URL`          | Deployed Apps Script `/exec` URL  |
 | `LAMBAS_GOOGLE_CLIENT_ID` | Google OAuth web client ID        |
 | `LAMBAS_GOOGLE_SHEET_URL` | Spreadsheet URL opened by the app |
+| `LAMBAS_FIREBASE_API_KEY` | Firebase web-app API key (public configuration) |
+| `LAMBAS_FIREBASE_AUTH_DOMAIN` | Firebase web-app auth domain |
+| `LAMBAS_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `LAMBAS_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket (optional) |
+| `LAMBAS_FIREBASE_MESSAGING_SENDER_ID` | Firebase sender ID |
+| `LAMBAS_FIREBASE_APP_ID` | Firebase web-app ID |
+| `LAMBAS_FIREBASE_VAPID_KEY` | Web Push certificate's public VAPID key |
 
-After the first successful workflow run, GitHub Pages provides the app URL, normally `https://<owner>.github.io/<repository>/`. Add that exact origin to the OAuth client's Authorized JavaScript origins. These values are embedded in the public browser app at deployment time; they are configuration, not secrets. Never put private credentials or Script Property values in these variables.
+Configure all Firebase variables together to enable push; leave them all unset to disable push. These values are embedded in the public browser app at deployment time; they are configuration, not secrets. Never put private credentials or Script Property values in these variables.
+
+To enable global push messages, create a Firebase project, enable the Firebase Cloud Messaging API, register a web app, and configure its Web Push certificate. Add the public web-app values and VAPID key above, matching the same Firebase project used by the backend service account. Users must opt in on each device from Notifications. Only the spreadsheet owner can send a global message; it is queued by FCM for up to seven days while a device is offline. Devices without an active push subscription are not recipients.
 
 ## Apps Script Setup
 
@@ -97,8 +108,9 @@ Deploy `Backend/Code.js` as a Google Apps Script web app. In the Apps Script pro
 | `NEW_CARDS_FOLDER_ID`       | Drive folder for new/unshared cards                                                                          |
 | `CARD_TEMPLATE_IMAGE_ID`    | Drive image used as the card background                                                                      |
 | `CARD_SLIDES_TEMPLATE_ID`   | Google Slides template used to generate cards                                                                |
+| `FCM_SERVICE_ACCOUNT_JSON`  | Private JSON for a Firebase service account permitted to send FCM messages; store only in Script Properties |
 
-The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, and `Delays` are created by the backend when needed.
+The bound spreadsheet also requires the expected `Roster`, `Check-in & Check-out`, and `Attendance` sheets. `Settings`, `Admins`, `New`, `Delays`, and (after a device registers for push) `Push Subscriptions` are created by the backend when needed. Protect the subscription sheet with the same access restrictions as other attendee data. Deploy and authorize the updated Apps Script before enabling push or using new API actions.
 
 ## GitHub Safety
 

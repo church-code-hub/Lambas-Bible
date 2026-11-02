@@ -1,8 +1,9 @@
-function openCardPreview(fileId, driveUrl, studentName) {
+function openCardPreview(fileId, driveUrl, studentName, phone = "") {
   activePreviewCard = {
     fileId: fileId,
     driveUrl: driveUrl,
     name: studentName,
+    phone: phone || "",
   };
   document.getElementById("previewStudentName").innerText = studentName;
 
@@ -29,56 +30,61 @@ function resolveHighQualityDriveImageUrl(driveUrl) {
   return driveUrl;
 }
 
-async function shareCurrentCardImage() {
-  showLoader("Preparing image for sharing...");
-  try {
-    let fetchUrl = resolveHighQualityDriveImageUrl(activePreviewCard.driveUrl);
+function shareCurrentCardImage() {
+  if (activePreviewCard.phone) {
+    openCardWhatsApp(activePreviewCard.phone);
+    return;
+  }
+  const dialog = document.getElementById("whatsAppPhoneDialog");
+  document.getElementById("whatsAppPhoneInput").value = "";
+  dialog.showModal();
+  document.getElementById("whatsAppPhoneInput").focus();
+}
 
-    const response = await fetch(fetchUrl, { mode: "cors" });
-    if (!response.ok) throw new Error("Card image could not be loaded");
-    const blob = await response.blob();
-    const file = new File([blob], activePreviewCard.name + "_card.png", {
-      type: "image/png",
-    });
+function closeWhatsAppPhoneDialog() {
+  const dialog = document.getElementById("whatsAppPhoneDialog");
+  if (dialog.open) dialog.close();
+}
 
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        title: "QR Card: " + activePreviewCard.name,
-        text: "Church attendance card for " + activePreviewCard.name,
-        files: [file],
-      });
-    } else {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = activePreviewCard.name + "_card.png";
-      a.click();
-      showToast("💾 Image downloaded successfully", "success");
-    }
+function submitWhatsAppPhone(event) {
+  event.preventDefault();
+  const phone = document.getElementById("whatsAppPhoneInput").value.trim();
+  if (phone && !/^[+0-9().\-\s]+$/.test(phone)) {
+    showToast(translations[currentLang].phoneNumberInvalid, "error");
+    return;
+  }
+  closeWhatsAppPhoneDialog();
+  openCardWhatsApp(phone);
+}
 
-    if (activePreviewCard.fileId) {
-      const moveResult = await apiCall("share_move_card", {
-        fileId: activePreviewCard.fileId,
-      });
-      if (!moveResult || !moveResult.success) {
-        throw new Error(
-          moveResult && moveResult.message
-            ? moveResult.message
-            : "Card migration failed",
-        );
-      }
-    }
-    hideLoader();
-    showToast("✅ Shared successfully", "success");
-  } catch (e) {
-    hideLoader();
-    if (e.name === "AbortError") return;
-    if (e.message && e.message.includes("البطاقة"))
-      showToast(e.message, "error");
-    else
-      window.open(
-        resolveHighQualityDriveImageUrl(activePreviewCard.driveUrl),
-        "_blank",
-        "noopener",
+function openCardWhatsApp(phone = "") {
+  if (!activePreviewCard.driveUrl) {
+    showToast(translations[currentLang].cardLinkUnavailable, "error");
+    return;
+  }
+  const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
+  const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
+  const message = [prefix + activePreviewCard.name + suffix, activePreviewCard.driveUrl]
+    .filter(Boolean)
+    .join("\n");
+  const digits = String(phone).replace(/\D/g, "");
+  const target = digits
+    ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const popup = window.open(target, "_blank");
+  if (!popup) {
+    showToast(translations[currentLang].whatsAppPopupBlocked, "error");
+    return;
+  }
+  popup.opener = null;
+  if (activePreviewCard.fileId) {
+    apiCall("share_move_card", { fileId: activePreviewCard.fileId })
+      .then((result) => {
+        if (!result || !result.success)
+          throw new Error(result?.message || translations[currentLang].offlineSyncFailed);
+      })
+      .catch((error) =>
+        showToast(error.message || translations[currentLang].offlineSyncFailed, "error"),
       );
   }
 }

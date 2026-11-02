@@ -12,8 +12,9 @@ if (googleIdToken) localStorage.setItem("google_id_token", googleIdToken);
 var html5QrCode = null;
 var isScannerRunning = false;
 var isScannerStarting = false;
-var isPaymentScanMode = false;
+var isLaptopScanMode = false;
 var paymentFeedbackTimer = 0;
+var scanRequestGeneration = 0;
 var paymentScanAudioContext = null;
 var scannerStartGeneration = 0;
 var qrLibraryPromise = null;
@@ -23,6 +24,7 @@ var currentAttendanceContext = null;
 var attendanceContextRefreshPromise = null;
 var isNameSearchRunning = false;
 var isCardSearchRunning = false;
+var pushMessageHandlerRegistered = false;
 var isSyncingOfflineQueue = false;
 var userActionRequestCount = 0;
 var activeApiRequestCount = 0;
@@ -83,4 +85,4 @@ function beginUserActionRequest() {
   };
 }
 
-var activePreviewCard = { fileId: "", driveUrl: "", name: "" };
+var activePreviewCard = { fileId: "", driveUrl: "", name: "", phone: "" };

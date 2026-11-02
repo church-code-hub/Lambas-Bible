@@ -83,13 +83,15 @@ test("attendance report links open the generated tab and export it as Excel or P
   assert.match(downloadFlow, /Uint8Array\.from\(atob\(result\.base64\)/);
 });
 
-test("reception scan replaces the camera with a result and resumes after two seconds", () => {
+test("laptop scan replaces the camera with processing and result states", () => {
   const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
   const scanView = html.match(/<div id="scanView"[\s\S]*?<\/div>\s*<!-- 3\. Search View -->/)?.[0] || "";
   const feedback = scanner.match(/function showPaymentScanFeedback\([\s\S]*?\n\}/)?.[0] || "";
 
-  assert.match(scanView, /data-scan-mode="payment"/);
+  assert.doesNotMatch(scanView, /data-scan-mode=/);
+  assert.match(html, /setScanModePreference\('laptop'\)/);
+  assert.match(scanView, /id="scanProcessingOverlay"/);
   assert.match(scanView, /id="paymentScanResult"/);
   assert.match(feedback, /result\?\.name/);
   assert.match(feedback, /paymentScanResult/);
@@ -97,6 +99,7 @@ test("reception scan replaces the camera with a result and resumes after two sec
   assert.match(feedback, /playPaymentScanTone\(success\)/);
   assert.match(feedback, /setTimeout\(\(\) => \{[\s\S]*?startLiveScanner\(\)[\s\S]*?\}, 2000\);/);
   assert.match(scanner, /refreshAttendanceContext\(true\)/);
+  assert.match(scanner, /function setScanModePreference\(mode\)/);
 });
 
 test("notifications use browser permission and support background sync results", () => {
@@ -110,6 +113,41 @@ test("notifications use browser permission and support background sync results",
   assert.match(views, /notifyBirthdayRoster\(roster\)/);
   assert.match(offline, /syncFailureNotificationTitle/);
   assert.match(serviceWorker, /showBackgroundSyncNotification\(/);
+});
+
+test("global push is opt-in, owner-only, and handled by the service worker", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+  const backend = fs.readFileSync(path.join(__dirname, "..", "Backend", "Code.js"), "utf8");
+  const workflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "pages.yml"), "utf8");
+
+  assert.match(views, /async function enablePushNotifications\(\)/);
+  assert.match(views, /messaging\.getToken/);
+  assert.match(views, /apiCall\("register_push_token"/);
+  assert.match(views, /async function sendGlobalNotification\(\)/);
+  assert.match(backend, /isSpreadsheetOwner_\(identity\.email\)[\s\S]*?sendGlobalNotification_/);
+  assert.match(backend, /FCM_SERVICE_ACCOUNT_JSON/);
+  assert.match(backend, /PUSH_NOTIFICATION_MAX_AGE_SECONDS_/);
+  assert.match(serviceWorker, /onBackgroundMessage/);
+  assert.match(serviceWorker, /notificationclick/);
+  assert.match(workflow, /LAMBAS_FIREBASE_VAPID_KEY/);
+});
+
+test("birthdays default to a week and WhatsApp sharing uses a saved phone when available", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const cards = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
+  const backend = fs.readFileSync(path.join(__dirname, "..", "Backend", "Code.js"), "utf8");
+
+  assert.match(html, /id="birthdayDateFrom"/);
+  assert.match(html, /onclick="resetBirthdayDateFilter\(\)"/);
+  assert.match(views, /today\.getDate\(\) - today\.getDay\(\)/);
+  assert.match(views, /function resetBirthdayDateFilter\(\)/);
+  assert.match(scanner, /openCardPreview\(item\.fileId, item\.driveUrl, item\.name, item\.phone\)/);
+  assert.match(cards, /function openCardWhatsApp\(phone = ""\)/);
+  assert.match(cards, /https:\/\/wa\.me\//);
+  assert.match(backend, /phone: String\(data\[i\]\[3\] \|\| ""\)/);
 });
 
 test("roster refresh runs in the background without competing with an active scan", () => {
@@ -250,14 +288,14 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   ]) {
     assert.ok(dashboard.includes(action), `dashboard should retain ${action}`);
   }
-  assert.match(html, /id="attendanceSheetType"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
-  assert.match(html, /id="attendanceExportFormat"[\s\S]*?value="sheets"[\s\S]*?value="xlsx"[\s\S]*?value="pdf"/);
-  assert.match(html, /onclick="runAttendanceExport\(\)"/);
+  assert.match(html, /id="attendanceExportPeople"[\s\S]*?value="both"[\s\S]*?value="attendees"[\s\S]*?value="absents"/);
+  assert.match(html, /id="attendanceExportFormat"[\s\S]*?value="sheets"[\s\S]*?value="xlsx"[\s\S]*?value="pdf"[\s\S]*?value="png"/);
+  assert.match(html, /onsubmit="runAttendanceExport\(event\)"/);
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
-  assert.match(html, /css\/styles\.css\?v=79/);
-  assert.match(serviceWorker, /lambas-bible-shell-v84/);
-  assert.match(serviceWorker, /css\/styles\.css\?v=79/);
+  assert.match(html, /css\/styles\.css\?v=80/);
+  assert.match(serviceWorker, /lambas-bible-shell-v85/);
+  assert.match(serviceWorker, /css\/styles\.css\?v=80/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
   assert.match(dashboard, /onclick="setDashboardLayout\('two'\)"/);
@@ -755,8 +793,12 @@ test("attendance sheet action remains separate from display filters and sync que
   assert.match(toolbarSync, /await openOfflineQueueView\(\)/);
   assert.doesNotMatch(toolbarSync, /syncOfflineQueue/);
   assert.match(offline, /toolbarButton\.disabled = isSyncingOfflineQueue;/);
-  assert.match(backend, /exportedPeople\.forEach\(\(person\) => reportRows\.push\(\[/);
+  assert.match(backend, /exportedPeople\.forEach\(\(person\) => \{/);
   assert.doesNotMatch(backend, /attendees\.forEach\(\(person\) => reportRows\.push\(\[/);
+  assert.match(html, /id="attendanceExportDialog"/);
+  assert.match(html, /value="png"/);
+  assert.match(views, /async function downloadAttendancePng/);
+  assert.match(backend, /const namesOnly = sheetType === "absents"/);
 });
 
 test("split classic scripts retain shared state and inline-handler functions", () => {
@@ -934,7 +976,8 @@ test("first-run tutorial pins its guide, locks unrelated actions, and advances e
   assert.doesNotMatch(scanner, /function onScanSuccess\(text\) \{\s*if \(typeof isFirstRunTutorialActive/);
   assert.match(scanner, /const simulatedContext = currentAttendanceContext/);
   assert.match(scanner, /translateText\("tutorialNotSaved"\)/);
-  assert.match(scanner, /function showAttendanceResult\(result, fromNameSearch\)[\s\S]*?if \(fromNameSearch\) \{\s*renderResult\(result, true\)/);
+  assert.match(scanner, /function showAttendanceResult\(result, fromNameSearch\)[\s\S]*?showToast\(/);
+  assert.doesNotMatch(scanner.match(/function showAttendanceResult\(result, fromNameSearch\)[\s\S]*?\n\}/)?.[0] || "", /renderResult/);
   assert.match(scanner, /async function processScannedText[\s\S]*?showToast\([\s\S]*?"error"\)/);
   const addStudent = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
   assert.match(addStudent, /isFirstRunTutorialActive\(\)[\s\S]*?tutorialNotSaved/);
@@ -1099,9 +1142,7 @@ test("online attendance displays the direct backend response in a toast", async 
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
     { action: "scan", payload: { id: "qr-token" } },
   ]);
-  assert.equal(feedback.length, 1);
-  assert.equal(feedback[0].kind, "late");
-  assert.equal(feedback[0].name, "Attendee Name");
+  assert.equal(feedback.length, 0);
   assert.equal(toast.dataset.message, "Attendee Name · Late arrival · Delay: 5 minutes");
   assert.equal(toast.textContent, toast.dataset.message);
   assert.equal(toast.type, "success");

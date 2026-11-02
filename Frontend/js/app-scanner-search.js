@@ -47,20 +47,28 @@ function playPaymentScanTone(success) {
     const gain = audioContext.createGain();
     const now = audioContext.currentTime;
     oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(success ? 740 : 220, now);
-    if (success) oscillator.frequency.setValueAtTime(980, now + 0.12);
+    oscillator.frequency.setValueAtTime(success ? 660 : 190, now);
+    if (success) oscillator.frequency.setValueAtTime(880, now + 0.12);
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.065, now + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
     oscillator.connect(gain);
     gain.connect(audioContext.destination);
     oscillator.start(now);
     oscillator.stop(now + 0.25);
-  } catch (error) {}
+  } catch (error) {
+    console.warn("Could not play the scan result tone.", error);
+  }
 }
 
-function showPaymentScanFeedback(result) {
-  if (!isPaymentScanMode) return false;
+function showPaymentScanFeedback(result, expectedGeneration) {
+  if (
+    !isLaptopScanMode ||
+    currentActiveViewId !== "scanView" ||
+    (expectedGeneration && expectedGeneration !== scanRequestGeneration)
+  ) {
+    return false;
+  }
   window.clearTimeout(paymentFeedbackTimer);
   paymentFeedbackTimer = 0;
   const success = ["success", "late", "out"].includes(result?.kind);
@@ -76,6 +84,7 @@ function showPaymentScanFeedback(result) {
   ].filter(Boolean).join(" · ");
   const resultPanel = document.getElementById("paymentScanResult");
   if (!resultPanel) return false;
+  hideScanProcessing();
   const icon = document.createElement("i");
   icon.className = `fa-solid ${
     success
@@ -102,6 +111,7 @@ function showPaymentScanFeedback(result) {
   resultPanel.hidden = false;
   playPaymentScanTone(success);
   paymentFeedbackTimer = window.setTimeout(() => {
+    if (expectedGeneration && expectedGeneration !== scanRequestGeneration) return;
     resultPanel.hidden = true;
     resultPanel.classList.remove(
       "is-success",
@@ -117,26 +127,80 @@ function showPaymentScanFeedback(result) {
   return true;
 }
 
-function setPaymentScanMode(enabled) {
+function clearScanFeedback() {
+  scanRequestGeneration++;
+  window.clearTimeout(paymentFeedbackTimer);
+  paymentFeedbackTimer = 0;
+  hideScanProcessing();
+  const resultPanel = document.getElementById("paymentScanResult");
+  if (resultPanel) {
+    resultPanel.hidden = true;
+    resultPanel.classList.remove(
+      "is-success",
+      "is-warning",
+      "is-queued",
+      "is-error",
+    );
+    resultPanel.closest(".camera-wrapper")?.classList.remove("has-scan-result");
+  }
+  isProcessingScan = false;
+}
+
+function showScanProcessing(name = "") {
+  const overlay = document.getElementById("scanProcessingOverlay");
+  if (!overlay) return;
+  const nameElement = document.getElementById("scanProcessingName");
+  nameElement.textContent = name;
+  overlay.hidden = false;
+}
+
+function hideScanProcessing() {
+  const overlay = document.getElementById("scanProcessingOverlay");
+  if (overlay) overlay.hidden = true;
+}
+
+function setScanModePreference(mode) {
   if (isProcessingScan) return;
-  isPaymentScanMode = Boolean(enabled);
+  isLaptopScanMode = mode === "laptop";
+  localStorage.setItem("app_scan_mode", isLaptopScanMode ? "laptop" : "regular");
   const scanView = document.getElementById("scanView");
-  if (scanView) scanView.classList.toggle("payment-mode", isPaymentScanMode);
+  if (scanView) scanView.classList.toggle("laptop-mode", isLaptopScanMode);
   const resultPanel = document.getElementById("paymentScanResult");
   if (resultPanel) {
     resultPanel.hidden = true;
     resultPanel.closest(".camera-wrapper")?.classList.remove("has-scan-result");
   }
-  document.querySelectorAll("[data-scan-mode]").forEach((button) => {
-    button.setAttribute(
-      "aria-pressed",
-      String(button.dataset.scanMode === (isPaymentScanMode ? "payment" : "regular")),
-    );
-  });
-  if (isPaymentScanMode) preparePaymentScanAudio();
+  document.getElementById("regularScanModeOption")?.setAttribute(
+    "aria-pressed",
+    String(!isLaptopScanMode),
+  );
+  document.getElementById("laptopScanModeOption")?.setAttribute(
+    "aria-pressed",
+    String(isLaptopScanMode),
+  );
+  if (isLaptopScanMode) preparePaymentScanAudio();
   if (currentActiveViewId === "scanView") {
     stopLiveScanner(false).finally(() => startLiveScanner());
   }
+}
+
+function loadWhatsAppMessageTemplate() {
+  document.getElementById("whatsAppMessagePrefix").value =
+    localStorage.getItem("whatsapp_message_prefix") || "";
+  document.getElementById("whatsAppMessageSuffix").value =
+    localStorage.getItem("whatsapp_message_suffix") || "";
+}
+
+function saveWhatsAppMessageTemplate() {
+  localStorage.setItem(
+    "whatsapp_message_prefix",
+    document.getElementById("whatsAppMessagePrefix").value,
+  );
+  localStorage.setItem(
+    "whatsapp_message_suffix",
+    document.getElementById("whatsAppMessageSuffix").value,
+  );
+  showToast(translations[currentLang].whatsAppTemplateSaved, "success");
 }
 
 async function startLiveScanner() {
@@ -145,11 +209,11 @@ async function startLiveScanner() {
   const generation = ++scannerStartGeneration;
   isScannerStarting = true;
   setCameraStatus("cameraStarting");
-  const qrboxSize = isPaymentScanMode
+  const qrboxSize = isLaptopScanMode
     ? Math.max(220, Math.min(460, window.innerWidth - 80))
     : 220;
   const config = {
-    fps: isPaymentScanMode ? 12 : 10,
+    fps: isLaptopScanMode ? 12 : 10,
     qrbox: { width: qrboxSize, height: qrboxSize },
   };
 
@@ -222,22 +286,50 @@ function restartScanner() {
 function onScanSuccess(text) {
   if (isProcessingScan) return;
   isProcessingScan = true;
+  const requestGeneration = ++scanRequestGeneration;
+  preparePaymentScanAudio();
+  document.getElementById("paymentScanResult").hidden = true;
+  document.getElementById("paymentScanResult").closest(".camera-wrapper")
+    ?.classList.remove("has-scan-result");
+  showScanProcessing();
   const eventContext = {
     eventId: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
+    scanGeneration: requestGeneration,
   };
-  stopLiveScanner(!isPaymentScanMode);
-  processScannedText(text, eventContext).finally(() => {
-    if (!isPaymentScanMode) {
-      isProcessingScan = false;
-    } else if (!paymentFeedbackTimer) {
-      showPaymentScanFeedback({
+  stopLiveScanner(false)
+    .then(() => processScannedText(text, eventContext))
+    .catch((error) => {
+      console.error("Could not process the scanned QR code.", error);
+      if (requestGeneration !== scanRequestGeneration) return;
+      if (!showPaymentScanFeedback({
         kind: "error",
         title: "paymentScanFailed",
         message: "paymentScanFailed",
-      });
-    }
-  });
+      }, requestGeneration)) {
+        hideScanProcessing();
+        showToast(translations[currentLang].paymentScanFailed, "error");
+      }
+    })
+    .finally(() => {
+      if (requestGeneration !== scanRequestGeneration) return;
+      if (!isLaptopScanMode) {
+        hideScanProcessing();
+        isProcessingScan = false;
+        if (currentActiveViewId === "scanView") startLiveScanner();
+      } else if (
+        !paymentFeedbackTimer &&
+        !showPaymentScanFeedback({
+          kind: "error",
+          title: "paymentScanFailed",
+          message: "paymentScanFailed",
+        }, requestGeneration)
+      ) {
+        hideScanProcessing();
+        isProcessingScan = false;
+        if (currentActiveViewId === "scanView") startLiveScanner();
+      }
+    });
 }
 function onScanError(err) {}
 
@@ -275,7 +367,6 @@ function attendanceFeedback(
         title: "attendanceScanProcessing",
         name: event.personName || "",
       };
-  if (fromNameSearch) renderResult(result, true);
   const toast = showToast(
     offline
       ? translations[currentLang].offlineScanQueued
@@ -299,10 +390,6 @@ function attendanceFeedback(
 }
 
 function showAttendanceResult(result, fromNameSearch) {
-  if (fromNameSearch) {
-    renderResult(result, true);
-    return;
-  }
   const message = [
     result?.name,
     result?.title ? translateText(result.title) : "",
@@ -394,6 +481,11 @@ async function refreshAttendanceContext(force = false) {
       return currentAttendanceContext;
     } catch (error) {
       console.warn("Could not refresh local attendance context.", error);
+      if (currentActiveViewId === "scanView" && navigator.onLine)
+        showToast(
+          translations[currentLang].attendanceContextRefreshFailed,
+          "info",
+        );
       return currentAttendanceContext;
     } finally {
       attendanceContextRefreshPromise = null;
@@ -602,7 +694,8 @@ async function processAttendanceId(
       title: "Sign-in required",
       message: "offlineNeedsLogin",
     };
-    if (!showPaymentScanFeedback(result)) showAttendanceResult(result, fromNameSearch);
+    if (!showPaymentScanFeedback(result, eventContext.scanGeneration))
+      showAttendanceResult(result, fromNameSearch);
     return;
   }
   const id = String(rawId);
@@ -610,6 +703,7 @@ async function processAttendanceId(
     eventId: eventContext.eventId || crypto.randomUUID(),
     timestamp: eventContext.timestamp || new Date().toISOString(),
     personName,
+    scanGeneration: eventContext.scanGeneration,
   };
   if (
     typeof isFirstRunTutorialActive === "function" &&
@@ -672,11 +766,15 @@ async function processAttendanceId(
         ) || null;
       if (cachedPerson && !event.personName)
         event.personName = cachedPerson.name;
+      if (!fromNameSearch && currentActiveViewId === "scanView")
+        showScanProcessing(event.personName);
     } catch (error) {
       console.warn("Could not read the saved attendee name.", error);
     }
     currentAttendanceEventId = event.eventId;
-    const toast = isPaymentScanMode
+    const toast = isLaptopScanMode &&
+        !fromNameSearch &&
+        currentActiveViewId === "scanView"
       ? null
       : showToast(
           [event.personName, translations[currentLang].attendanceScanProcessing]
@@ -700,8 +798,16 @@ async function processAttendanceId(
               attendanceResult.kind === "closed"
             ? "info"
             : "success";
-      if (isPaymentScanMode) showPaymentScanFeedback(attendanceResult);
-      else
+      if (!isLaptopScanMode)
+        playPaymentScanTone(["success", "late", "out"].includes(attendanceResult.kind));
+      const laptopFeedbackShown = showPaymentScanFeedback(
+        attendanceResult,
+        event.scanGeneration,
+      );
+      if (!laptopFeedbackShown) {
+        if (isLaptopScanMode) {
+          playPaymentScanTone(["success", "late", "out"].includes(attendanceResult.kind));
+        }
         updateAttendanceToast(
           toast,
           attendanceResult,
@@ -709,33 +815,22 @@ async function processAttendanceId(
           translations[currentLang].offlineSyncFailed,
           type,
         );
+      }
       if (currentAttendanceEventId === event.eventId) {
-        if (fromNameSearch) renderResult(attendanceResult, true);
         refreshAttendanceContext(true);
       }
     } catch (error) {
       console.error("Could not submit attendance scan.", error);
       if (currentAttendanceEventId === event.eventId)
         refreshAttendanceContext(true);
-      if (isPaymentScanMode) {
-        showPaymentScanFeedback({
+      if (!showPaymentScanFeedback({
           kind: "error",
           title: "Connection error.",
           message: "Connection error.",
           name: event.personName,
-        });
-      } else {
+        }, event.scanGeneration)) {
+        playPaymentScanTone(false);
         updateAttendanceToast(toast, null, event, "Connection error.", "error");
-      }
-      if (fromNameSearch) {
-        showAttendanceResult(
-          {
-            kind: "error",
-            title: "Connection error.",
-            message: "Connection error.",
-          },
-          true,
-        );
       }
     }
     return;
@@ -750,6 +845,8 @@ async function processAttendanceId(
           String(person.qrId || "").trim() === id,
       );
       if (cachedPerson) offlinePersonName = cachedPerson.name;
+      if (!fromNameSearch && currentActiveViewId === "scanView")
+        showScanProcessing(offlinePersonName);
     } catch (error) {
       console.warn("Could not read the saved attendee name for offline scan.", error);
     }
@@ -763,32 +860,33 @@ async function processAttendanceId(
       timestamp: event.timestamp,
     });
     currentAttendanceEventId = queuedEvent.eventId;
-      if (isPaymentScanMode) {
-        showPaymentScanFeedback({
+      if (!showPaymentScanFeedback({
           kind: "queued",
           title: "attendanceScanProcessing",
           name: queuedEvent.personName,
-        });
-      } else {
+        }, event.scanGeneration)) {
         attendanceFeedback(queuedEvent, fromNameSearch, true);
       }
   } catch (error) {
-    showAttendanceResult(
-      {
-        kind: "error",
-        title: "Error",
-        message: "offlineStorageError",
-      },
-      fromNameSearch,
-    );
+    const result = {
+      kind: "error",
+      title: "Error",
+      message: "offlineStorageError",
+    };
+    if (!showPaymentScanFeedback(result, event.scanGeneration))
+      showAttendanceResult(result, fromNameSearch);
   }
 }
 
 async function processScannedText(text, eventContext = {}) {
   var id = extractId(text);
   if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
-    if (showPaymentScanFeedback({ kind: "error", title: "paymentScanFailed" }))
+    if (showPaymentScanFeedback(
+      { kind: "error", title: "paymentScanFailed" },
+      eventContext.scanGeneration,
+    ))
       return;
+    playPaymentScanTone(false);
     showToast(
       [
         translateText("Invalid Code"),
@@ -803,7 +901,7 @@ async function processScannedText(text, eventContext = {}) {
       kind: "error",
       title: "Sign-in required",
       message: "offlineNeedsLogin",
-    })) showToast(translateText("offlineNeedsLogin"), "error");
+    }, eventContext.scanGeneration)) showToast(translateText("offlineNeedsLogin"), "error");
     return;
   }
   await processAttendanceId(id, false, "", eventContext);
@@ -989,7 +1087,7 @@ function renderCardShareResults(res, resDiv) {
       statusLabel.textContent = statusText;
       cardBox.append(nameLabel, statusLabel);
       cardBox.onclick = () =>
-        openCardPreview(item.fileId, item.driveUrl, item.name);
+        openCardPreview(item.fileId, item.driveUrl, item.name, item.phone);
       resDiv.appendChild(cardBox);
     });
     updateOnlineOnlyControls();

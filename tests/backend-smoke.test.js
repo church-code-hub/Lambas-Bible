@@ -836,7 +836,7 @@ test("builds a daily attendance report and can find an absent person by name", (
   );
   assert.deepEqual(
     sheets.get("Attendance 2026-10-18").formatting.columnWidths,
-    { 1: 300, 2: 180, 3: 160 },
+    { 1: 420, 2: 220, 3: 180 },
   );
   assert.deepEqual(
     Array.from(sheets.get("Attendance 2026-10-18").rows[2]),
@@ -850,6 +850,23 @@ test("builds a daily attendance report and can find an absent person by name", (
     Array.from(sheets.get("Attendance 2026-10-18").backgrounds, (row) => Array.from(row)),
     [["#93c47d"], ["#ffffff"], ["#f6b26b"]],
   );
+  const absents = context.getAttendanceDayReport_(
+    "2026-10-18",
+    "",
+    true,
+    "absents",
+  );
+  assert.equal(absents.report.type, "absents");
+  assert.deepEqual(
+    Array.from(sheets.get("Attendance 2026-10-18 - Absentees").rows, (row) =>
+      Array.from(row),
+    ),
+    [["Name"], ["Bob"]],
+  );
+  assert.deepEqual(
+    sheets.get("Attendance 2026-10-18 - Absentees").formatting.columnWidths,
+    { 1: 420 },
+  );
   assert.deepEqual(sheets.get("Attendance 2026-10-18").formatting, {
     horizontalAlignment: "center",
     verticalAlignment: "middle",
@@ -858,7 +875,7 @@ test("builds a daily attendance report and can find an absent person by name", (
     headerFontWeight: "bold",
     wrap: true,
     borders: [true, true, true, true, true, true],
-    columnWidths: { 1: 300, 2: 180, 3: 160 },
+    columnWidths: { 1: 420, 2: 220, 3: 180 },
   });
   const preservedRows = JSON.stringify(sheets.get("Attendance 2026-10-18").rows);
   const existingReport = context.getAttendanceDayReport_("2026-10-18", "", true);
@@ -889,7 +906,7 @@ test("builds a daily attendance report and can find an absent person by name", (
   assert.equal(absentSheet.exportedCount, 1);
   assert.deepEqual(
     Array.from(sheets.get(absentSheet.report.name).rows[1]),
-    ["Bob", "", ""],
+    ["Bob"],
   );
 });
 
@@ -1145,10 +1162,10 @@ test("requires a numeric password of at least eight digits when changing setting
 
 test("filters card searches by sharing state and sorts matches by most recent update", () => {
   const { context } = createBackendContext([
-    ["ID", "Name", "Card URL"],
-    ["1", "Ada One", "https://drive.google.com/file/d/card-old/view"],
-    ["2", "Ada Two", "https://drive.google.com/file/d/card-new/view"],
-    ["3", "Ada Three", "https://drive.google.com/file/d/card-unshared/view"],
+    ["ID", "Name", "Birthdate", "Phone", "Card URL", "Status"],
+    ["1", "Ada One", "", "0123456789", "https://drive.google.com/file/d/card-old/view", "Active"],
+    ["2", "Ada Two", "", "0109876543", "https://drive.google.com/file/d/card-new/view", "Active"],
+    ["3", "Ada Three", "", "0111111111", "https://drive.google.com/file/d/card-unshared/view", "Active"],
   ]);
   const cards = {
     "card-old": { folder: "active", updatedAt: "2025-01-01T00:00:00Z" },
@@ -1175,7 +1192,111 @@ test("filters card searches by sharing state and sorts matches by most recent up
   const unshared = context.searchCardForShare("Ada", "unshared");
 
   assert.deepEqual(Array.from(shared.matches, (match) => match.fileId), ["card-new", "card-old"]);
+  assert.equal(shared.matches[0].phone, "0109876543");
   assert.deepEqual(Array.from(unshared.matches, (match) => match.fileId), ["card-unshared"]);
+});
+
+test("moves a shared card using the Drive Link column after phone number", () => {
+  const { context, rosterSheet } = createBackendContext([
+    ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
+    ["1", "Ada", "", "0123456789", "https://drive.google.com/file/d/card-one/view", "Active"],
+  ]);
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Roster" ? rosterSheet : null,
+  });
+  let removed = false;
+  let added = false;
+  context.DriveApp = {
+    getFileById: () => ({
+      getParents: () => {
+        let read = false;
+        return {
+          hasNext: () => !read,
+          next: () => {
+            read = true;
+            return {
+              getId: () => "test-new-folder",
+              removeFile: () => { removed = true; },
+            };
+          },
+        };
+      },
+    }),
+    getFolderById: () => ({ addFile: () => { added = true; } }),
+  };
+
+  assert.equal(context.shareAndMoveCard("card-one").success, true);
+  assert.equal(removed, true);
+  assert.equal(added, true);
+});
+
+test("registers device push tokens and sends global FCM data messages", () => {
+  const { context, scriptPropertiesStore } = createBackendContext();
+  const sentRequests = [];
+  const pushSheet = {
+    rows: [["Token", "Email", "Updated At"]],
+    getLastRow() {
+      return this.rows.length;
+    },
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues: () =>
+          pushSheet.rows
+            .slice(row - 1, row - 1 + rowCount)
+            .map((values) => values.slice(column - 1, column - 1 + columnCount)),
+        setValues: (values) => {
+          values.forEach((value, rowOffset) => {
+            pushSheet.rows[row - 1 + rowOffset] = value.slice();
+          });
+        },
+      };
+    },
+    appendRow(row) {
+      this.rows.push(row);
+    },
+  };
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: (name) => name === "Push Subscriptions" ? pushSheet : null,
+    insertSheet: () => pushSheet,
+  });
+  context.console = { info() {}, warn() {}, error() {} };
+  context.Utilities.getUuid = () => "notification-id";
+  context.Utilities.computeRsaSha256Signature = () => [1, 2, 3];
+  context.UrlFetchApp.fetch = (url) => {
+    assert.match(url, /oauth2\.googleapis\.com\/token/);
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => JSON.stringify({ access_token: "mock-fcm-token" }),
+    };
+  };
+  context.UrlFetchApp.fetchAll = (requests) => {
+    sentRequests.push(...requests);
+    return requests.map(() => ({
+      getResponseCode: () => 200,
+      getContentText: () => "{}",
+    }));
+  };
+  scriptPropertiesStore.setProperty("FCM_SERVICE_ACCOUNT_JSON", JSON.stringify({
+    project_id: "test-project",
+    client_email: "push@test-project.iam.gserviceaccount.com",
+    private_key: "test-private-key",
+  }));
+  const firstToken = "fcm-device-token-0123456789012345";
+  const secondToken = "fcm-device-token-9876543210987654";
+
+  assert.equal(context.registerPushToken_(firstToken, "Admin@Example.com").success, true);
+  assert.equal(context.registerPushToken_(firstToken, "admin@example.com").success, true);
+  assert.equal(context.registerPushToken_(secondToken, "another@example.com").success, true);
+  assert.equal(pushSheet.rows.length, 3);
+  const result = context.sendGlobalNotification_("Meeting starts soon", "owner@example.com");
+
+  assert.equal(result.success, true);
+  assert.equal(result.sentCount, 2);
+  assert.equal(sentRequests.length, 2);
+  const message = JSON.parse(sentRequests[0].payload).message;
+  assert.equal(message.data.body, "Meeting starts soon");
+  assert.equal(message.data.viewId, "notificationsView");
+  assert.equal(message.webpush.headers.TTL, "604800");
 });
 
 test("verifies token audience and caches successful Google token checks", () => {

@@ -173,6 +173,18 @@ function doPost(e) {
       result = authorizationDenied_();
     } else if (action === "sync_offline_events") {
       result = syncOfflineEvents_(data.events, identity.email);
+    } else if (action === "register_push_token") {
+      result = withScriptLock_(() =>
+        registerPushToken_(data.token, identity.email),
+      );
+    } else if (action === "send_global_notification") {
+      result = isSpreadsheetOwner_(identity.email)
+        ? sendGlobalNotification_(data.message, identity.email)
+        : {
+            success: false,
+            code: "OWNER_REQUIRED",
+            message: "إرسال الرسائل العامة متاح لمالك التطبيق فقط.",
+          };
     } else if (action === "get_attendance_day") {
       result = getAttendanceDayReport_(data.date, data.name || "");
     } else if (action === "get_attendance_dates") {
@@ -274,8 +286,12 @@ function doPost(e) {
     console.error("POST API action failed: " + String(action || "unknown"), err);
     result = {
       success: false,
-      code: "SERVER_ERROR",
-      message: "تعذر إتمام الطلب. حاول مرة أخرى.",
+      code: action === "send_global_notification"
+        ? "PUSH_SEND_FAILED"
+        : "SERVER_ERROR",
+      message: action === "send_global_notification"
+        ? "تعذر إرسال الرسالة. تحقق من إعدادات Firebase وسجل التنفيذ."
+        : "تعذر إتمام الطلب. حاول مرة أخرى.",
     };
   }
 
@@ -286,6 +302,218 @@ function responseJSON_(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(
     ContentService.MimeType.JSON,
   );
+}
+
+const PUSH_SUBSCRIPTIONS_SHEET_NAME_ = "Push Subscriptions";
+const PUSH_NOTIFICATION_MAX_AGE_SECONDS_ = 604800;
+
+function getPushSubscriptionsSheet_() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(PUSH_SUBSCRIPTIONS_SHEET_NAME_);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(PUSH_SUBSCRIPTIONS_SHEET_NAME_);
+    sheet.getRange(1, 1, 1, 3).setValues([["Token", "Email", "Updated At"]]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function registerPushToken_(token, email) {
+  const cleanToken = String(token || "").trim();
+  const cleanEmail = String(email || "").toLowerCase().trim();
+  if (
+    !/^[A-Za-z0-9:_-]{20,4096}$/.test(cleanToken) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
+  ) {
+    return {
+      success: false,
+      code: "INVALID_PUSH_TOKEN",
+      message: "رمز إشعارات الجهاز غير صالح.",
+    };
+  }
+  const sheet = getPushSubscriptionsSheet_();
+  const lastRow = sheet.getLastRow();
+  const rows = lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, 3).getValues()
+    : [];
+  const existingIndex = rows.findIndex((row) => String(row[0]) === cleanToken);
+  const record = [cleanToken, cleanEmail, new Date()];
+  if (existingIndex === -1) sheet.appendRow(record);
+  else sheet.getRange(existingIndex + 2, 1, 1, 3).setValues([record]);
+  return { success: true };
+}
+
+function base64UrlEncode_(value) {
+  return Utilities.base64EncodeWebSafe(value).replace(/=+$/, "");
+}
+
+function getFirebaseAccessToken_(serviceAccount) {
+  const cache = CacheService.getScriptCache();
+  const cachedToken = cache.get("FCM_ACCESS_TOKEN");
+  if (cachedToken) return cachedToken;
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncode_(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claims = base64UrlEncode_(JSON.stringify({
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: issuedAt,
+    exp: issuedAt + 3600,
+  }));
+  const unsignedAssertion = header + "." + claims;
+  const signature = base64UrlEncode_(
+    Utilities.computeRsaSha256Signature(
+      unsignedAssertion,
+      serviceAccount.private_key,
+    ),
+  );
+  const response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    payload: {
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: unsignedAssertion + "." + signature,
+    },
+    muteHttpExceptions: true,
+  });
+  if (response.getResponseCode() !== 200) {
+    console.error("Firebase OAuth token request failed.", response.getContentText());
+    throw new Error("تعذر تهيئة خدمة Firebase للإشعارات.");
+  }
+  const tokenResult = JSON.parse(response.getContentText());
+  if (!tokenResult.access_token) {
+    throw new Error("لم تُرجع خدمة Firebase رمز وصول صالحاً.");
+  }
+  cache.put("FCM_ACCESS_TOKEN", tokenResult.access_token, 3300);
+  return tokenResult.access_token;
+}
+
+function sendGlobalNotification_(message, adminEmail) {
+  const body = String(message || "").replace(/\s+/g, " ").trim();
+  if (!body || body.length > 300) {
+    return {
+      success: false,
+      code: "INVALID_NOTIFICATION_MESSAGE",
+      message: "اكتب رسالة من 1 إلى 300 حرف.",
+    };
+  }
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    PUSH_SUBSCRIPTIONS_SHEET_NAME_,
+  );
+  const lastRow = sheet ? sheet.getLastRow() : 0;
+  const rows = sheet && lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, 3).getValues()
+    : [];
+  if (!rows.length) return { success: true, sentCount: 0, failedCount: 0 };
+
+  const serviceAccountValue = PropertiesService.getScriptProperties().getProperty(
+    "FCM_SERVICE_ACCOUNT_JSON",
+  );
+  if (!serviceAccountValue) {
+    return {
+      success: false,
+      code: "PUSH_NOT_CONFIGURED",
+      message: "أضف FCM_SERVICE_ACCOUNT_JSON إلى خصائص المشروع أولاً.",
+    };
+  }
+  let serviceAccount;
+  try {
+    serviceAccount = JSON.parse(serviceAccountValue);
+  } catch (error) {
+    return {
+      success: false,
+      code: "PUSH_CONFIGURATION_INVALID",
+      message: "قيمة FCM_SERVICE_ACCOUNT_JSON ليست JSON صالحاً.",
+    };
+  }
+  if (
+    !serviceAccount.project_id ||
+    !serviceAccount.client_email ||
+    !serviceAccount.private_key
+  ) {
+    return {
+      success: false,
+      code: "PUSH_CONFIGURATION_INVALID",
+      message: "ملف خدمة Firebase لا يحتوي على بيانات المشروع المطلوبة.",
+    };
+  }
+  const accessToken = getFirebaseAccessToken_(serviceAccount);
+  const notificationId = Utilities.getUuid();
+  const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(serviceAccount.project_id)}/messages:send`;
+  const requests = rows.map((row) => ({
+    url: endpoint,
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + accessToken },
+    payload: JSON.stringify({
+      message: {
+        token: String(row[0] || ""),
+        data: {
+          title: "Lambas Bible",
+          body: body,
+          notificationId: notificationId,
+          viewId: "notificationsView",
+        },
+        webpush: {
+          headers: { TTL: String(PUSH_NOTIFICATION_MAX_AGE_SECONDS_) },
+        },
+      },
+    }),
+    muteHttpExceptions: true,
+  }));
+  let sentCount = 0;
+  let failedCount = 0;
+  const expiredRowIndexes = new Set();
+  for (let offset = 0; offset < requests.length; offset += 100) {
+    const batch = UrlFetchApp.fetchAll(requests.slice(offset, offset + 100));
+    batch.forEach((response, index) => {
+      if (response.getResponseCode() === 200) {
+        sentCount++;
+        return;
+      }
+      failedCount++;
+      const requestIndex = offset + index;
+      try {
+        const errorBody = JSON.parse(response.getContentText());
+        const status = errorBody.error && errorBody.error.status;
+        if (status === "UNREGISTERED" || status === "NOT_FOUND")
+          expiredRowIndexes.add(requestIndex + 2);
+      } catch (error) {
+        console.warn("Could not parse a Firebase send error.", error);
+      }
+    });
+  }
+  if (expiredRowIndexes.size) {
+    const expiredTokens = new Set(
+      Array.from(expiredRowIndexes).map((rowIndex) =>
+        String(rows[rowIndex - 2][0]),
+      ),
+    );
+    withScriptLock_(() => {
+      const currentLastRow = sheet.getLastRow();
+      const currentRows = currentLastRow >= 2
+        ? sheet.getRange(2, 1, currentLastRow - 1, 1).getValues()
+        : [];
+      const currentIndexes = currentRows
+        .map((row, index) =>
+          expiredTokens.has(String(row[0])) ? index + 2 : 0,
+        )
+        .filter(Boolean)
+        .sort((left, right) => right - left);
+      currentIndexes.forEach((rowIndex) => sheet.deleteRow(rowIndex));
+    });
+  }
+  console.info(
+    "Global notification sent by " + String(adminEmail || "") +
+      ": " + sentCount + " delivered, " + failedCount + " failed.",
+  );
+  return {
+    success: sentCount > 0 || failedCount === 0,
+    sentCount: sentCount,
+    failedCount: failedCount,
+    message: failedCount && sentCount === 0
+      ? "تعذر تسليم الرسالة إلى أي جهاز."
+      : "",
+  };
 }
 
 const OFFLINE_EVENT_PROPERTY_PREFIX_ = "OFFLINE_EVENT_";
@@ -973,6 +1201,7 @@ function searchCardForShare(name, sharingState) {
       matches.push({
         id: rowId,
         name: rowName,
+        phone: String(data[i][3] || ""),
         driveUrl: rowUrl,
         fileId: fileId,
         isNew: isNew,
@@ -1012,7 +1241,7 @@ function shareAndMoveCard(fileId) {
       };
     }
     const rosterCards = rosterSheet
-      .getRange(2, 3, rosterSheet.getLastRow() - 1, 1)
+      .getRange(2, 5, rosterSheet.getLastRow() - 1, 1)
       .getValues();
     const isRegisteredCard = rosterCards.some((row) => {
       const match = String(row[0] || "").match(/\/d\/([A-Za-z0-9_-]+)/);
@@ -1674,33 +1903,38 @@ function getAttendanceDayReport_(dateValue, nameQuery, createSheet, requestedShe
       (sheetType === "absents" && !person.attended),
     );
     response.exportedCount = exportedPeople.length;
-    if (!reportSheet) {
-      reportSheet = spreadsheet.insertSheet(sheetName);
-      const reportRows = [["Name", "Attendance Mark", "Delay"]];
-      exportedPeople.forEach((person) => reportRows.push([
-        person.name,
-        person.attended ? person.state === "delayed" ? "+" : "++" : "",
-        person.state === "delayed" ? person.delay : "",
-      ]));
-      reportSheet.getRange(1, 1, reportRows.length, 3).setValues(reportRows);
-      const reportRange = reportSheet.getRange(1, 1, reportRows.length, 3);
-      reportRange
-        .setHorizontalAlignment("center")
-        .setVerticalAlignment("middle");
+    if (!reportSheet) reportSheet = spreadsheet.insertSheet(sheetName);
+    if (typeof reportSheet.clearContents === "function") reportSheet.clearContents();
+    const namesOnly = sheetType === "absents";
+    const reportRows = [namesOnly ? ["Name"] : ["Name", "Attendance Mark", "Delay"]];
+    exportedPeople.forEach((person) => {
+      reportRows.push(namesOnly
+        ? [person.name]
+        : [
+            person.name,
+            person.attended ? person.state === "delayed" ? "+" : "++" : "",
+            person.state === "delayed" ? person.delay : "",
+          ]);
+    });
+    const columnCount = namesOnly ? 1 : 3;
+    reportSheet.getRange(1, 1, reportRows.length, columnCount).setValues(reportRows);
+    const reportRange = reportSheet.getRange(1, 1, reportRows.length, columnCount);
+    reportRange
+      .setHorizontalAlignment("center")
+      .setVerticalAlignment("middle");
+    reportSheet
+      .getRange(1, 1, 1, columnCount)
+      .setBackground("#f5bd55")
+      .setFontColor("#182333")
+      .setFontWeight("bold");
+    if (!namesOnly && exportedPeople.length) {
       reportSheet
-        .getRange(1, 1, 1, 3)
-        .setBackground("#f5bd55")
-        .setFontColor("#182333")
-        .setFontWeight("bold");
-      if (exportedPeople.length) {
-        reportSheet
-          .getRange(2, 2, exportedPeople.length, 1)
-          .setBackgrounds(exportedPeople.map((person) => [
-            attendanceMarkColor_(
-              person.attended ? person.state === "delayed" ? "+" : "++" : "",
-            ),
-          ]));
-      }
+        .getRange(2, 2, exportedPeople.length, 1)
+        .setBackgrounds(exportedPeople.map((person) => [
+          attendanceMarkColor_(
+            person.attended ? person.state === "delayed" ? "+" : "++" : "",
+          ),
+        ]));
     }
     formatAttendanceReportSheet_(reportSheet);
     response.report = {
@@ -1719,7 +1953,11 @@ function formatAttendanceReportSheet_(sheet) {
     typeof sheet.getRange !== "function"
   ) return;
   const rowCount = Math.max(1, sheet.getLastRow());
-  const table = sheet.getRange(1, 1, rowCount, 3);
+  const columnCount = Math.max(
+    1,
+    typeof sheet.getLastColumn === "function" ? sheet.getLastColumn() : 3,
+  );
+  const table = sheet.getRange(1, 1, rowCount, columnCount);
   if (typeof table.setHorizontalAlignment === "function")
     table.setHorizontalAlignment("center");
   if (typeof table.setVerticalAlignment === "function")
@@ -1727,17 +1965,19 @@ function formatAttendanceReportSheet_(sheet) {
   if (typeof table.setWrap === "function") table.setWrap(true);
   if (typeof table.setBorder === "function")
     table.setBorder(true, true, true, true, true, true);
-  const header = sheet.getRange(1, 1, 1, 3);
+  if (typeof table.setFontSize === "function") table.setFontSize(14);
+  const header = sheet.getRange(1, 1, 1, columnCount);
   if (typeof header.setBackground === "function")
     header.setBackground("#f5bd55");
   if (typeof header.setFontColor === "function")
     header.setFontColor("#182333");
   if (typeof header.setFontWeight === "function")
     header.setFontWeight("bold");
+  if (typeof header.setFontSize === "function") header.setFontSize(16);
   if (typeof sheet.setColumnWidth === "function") {
-    sheet.setColumnWidth(1, 300);
-    sheet.setColumnWidth(2, 180);
-    sheet.setColumnWidth(3, 160);
+    sheet.setColumnWidth(1, 420);
+    if (columnCount > 1) sheet.setColumnWidth(2, 220);
+    if (columnCount > 2) sheet.setColumnWidth(3, 180);
   }
 }
 

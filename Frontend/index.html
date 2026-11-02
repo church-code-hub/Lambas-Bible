@@ -27,7 +27,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=79" />
+    <link rel="stylesheet" href="./css/styles.css?v=80" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -97,7 +97,7 @@
             <button type="button" class="toolbar-menu-item" onclick="openNotificationsView()"
               title="الإشعارات" data-i18n-title="notificationsTitle" aria-label="الإشعارات" data-i18n-aria-label="notificationsTitle">
               <span class="toolbar-menu-icon-wrap">
-                <i class="fa-solid fa-bell" aria-hidden="true"></i>
+                <img src="./Assets/icons/icon-192.png" alt="" aria-hidden="true" />
                 <span id="notificationsMenuBadge" class="sync-now-count" aria-hidden="true" hidden></span>
               </span>
               <span data-i18n="notificationsTitle">الإشعارات</span>
@@ -305,6 +305,25 @@
             </button>
           </div>
         </section>
+        <section class="app-preference-group" aria-labelledby="scanModeSettingTitle">
+          <h3 id="scanModeSettingTitle" data-i18n="scanModeSettingTitle">Scan mode</h3>
+          <div class="preference-options" role="group" aria-labelledby="scanModeSettingTitle">
+            <button id="regularScanModeOption" type="button" class="preference-option" onclick="setScanModePreference('regular')">
+              <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i><span data-i18n="regularScanMode">Regular mode</span>
+            </button>
+            <button id="laptopScanModeOption" type="button" class="preference-option" onclick="setScanModePreference('laptop')">
+              <i class="fa-solid fa-laptop" aria-hidden="true"></i><span data-i18n="laptopScanMode">Laptop mode</span>
+            </button>
+          </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="whatsAppTemplateTitle">
+          <h3 id="whatsAppTemplateTitle" data-i18n="whatsAppTemplateTitle">WhatsApp message</h3>
+          <label for="whatsAppMessagePrefix" data-i18n="whatsAppPrefix">Text before the name</label>
+          <textarea id="whatsAppMessagePrefix" rows="3" maxlength="500"></textarea>
+          <label for="whatsAppMessageSuffix" data-i18n="whatsAppSuffix">Text after the name</label>
+          <textarea id="whatsAppMessageSuffix" rows="3" maxlength="500"></textarea>
+          <button class="btn secondary" type="button" onclick="saveWhatsAppMessageTemplate()" data-i18n="saveWhatsAppTemplate">Save WhatsApp message</button>
+        </section>
         <section class="app-preference-group" aria-labelledby="tutorialPreferenceTitle">
           <h3 id="tutorialPreferenceTitle" data-i18n="tutorialReopen">الشرح</h3>
           <button id="tutorialReplayButton" class="btn secondary" type="button" onclick="replayFirstRunTutorial()">
@@ -404,6 +423,14 @@
           <i class="fa-solid fa-cake-candles"></i>
           <span data-i18n="birthdaysTitle">أعياد الميلاد</span>
         </h2>
+        <div class="birthday-date-filter">
+          <label for="birthdayDateFrom" data-i18n="birthdayDateFrom">From</label>
+          <input id="birthdayDateFrom" type="date" />
+          <label for="birthdayDateTo" data-i18n="birthdayDateTo">To</label>
+          <input id="birthdayDateTo" type="date" />
+          <button class="btn secondary" type="button" onclick="applyBirthdayDateFilter()" data-i18n="birthdayApplyFilter">Show dates</button>
+          <button class="btn tertiary" type="button" onclick="resetBirthdayDateFilter()" data-i18n="birthdayResetFilter">This week</button>
+        </div>
         <div id="birthdayResults" class="report-list" aria-live="polite"></div>
       </div>
 
@@ -413,9 +440,15 @@
           <span data-i18n="notificationsTitle">الإشعارات</span>
         </h2>
         <div class="notification-controls">
-          <button class="btn secondary" type="button" onclick="requestBrowserNotifications()" data-i18n="enableBrowserNotifications">تفعيل إشعارات الجهاز</button>
+          <button class="btn secondary" type="button" onclick="enablePushNotifications()" data-i18n="enableBrowserNotifications">تفعيل إشعارات الجهاز</button>
           <button class="btn tertiary" type="button" onclick="markAppNotificationsRead()" data-i18n="markNotificationsRead">تحديد الكل كمقروء</button>
         </div>
+        <section id="globalNotificationComposer" class="global-notification-composer" hidden>
+          <h3 data-i18n="globalNotificationTitle">Send a global message</h3>
+          <label for="globalNotificationMessage" data-i18n="globalNotificationMessage">Message</label>
+          <textarea id="globalNotificationMessage" maxlength="300" rows="3" required></textarea>
+          <button class="btn" type="button" onclick="sendGlobalNotification()" data-i18n="sendGlobalNotification">Send to everyone</button>
+        </section>
         <div id="notificationResults" class="report-list" aria-live="polite"></div>
       </div>
 
@@ -468,26 +501,12 @@
               <option value="absent" data-i18n="attendanceFilterAbsent">Not attended</option>
             </select>
           </div>
-          <div class="attendance-sheet-options">
-            <label for="attendanceSheetType" data-i18n="attendanceSheetTypeLabel">Include in export</label>
-            <select id="attendanceSheetType" class="attendance-filter-select" data-online-only>
-              <option value="both" data-i18n="attendanceSheetBoth">Attendees and absentees</option>
-              <option value="attendees" data-i18n="attendanceSheetAttendees">Attendees only</option>
-              <option value="absents" data-i18n="attendanceSheetAbsents">Absentees only</option>
-            </select>
-            <label for="attendanceExportFormat" data-i18n="attendanceExportFormatLabel">Export format</label>
-            <div class="attendance-export-action">
-              <select id="attendanceExportFormat" class="attendance-filter-select" data-online-only>
-                <option value="sheets" data-i18n="attendanceExportSheets">Google Sheets tab</option>
-                <option value="xlsx" data-i18n="attendanceExportExcelOption">Excel workbook</option>
-                <option value="pdf" data-i18n="attendanceExportPdfOption">PDF document</option>
-              </select>
-              <button id="attendanceExportButton" class="btn attendance-sheet-button" data-online-only type="button"
-                onclick="runAttendanceExport()" data-i18n-title="attendanceExportAction" data-i18n-aria-label="attendanceExportAction">
-                <i class="fa-solid fa-file-export" aria-hidden="true"></i>
-                <span class="compact-control-label" data-i18n="attendanceExportAction">Export</span>
-              </button>
-            </div>
+          <div class="attendance-export-entry">
+            <button id="attendanceExportButton" class="attendance-export-icon-button" data-online-only type="button"
+              onclick="openAttendanceExportDialog()" data-i18n-title="attendanceExportAction" data-i18n-aria-label="attendanceExportAction">
+              <i class="fa-solid fa-file-export" aria-hidden="true"></i>
+            </button>
+            <span data-i18n="attendanceExportAction">Export</span>
           </div>
           <div class="attendance-report-controls">
             <input
@@ -572,6 +591,41 @@
           </div>
           <button class="btn secondary attendance-sheet-done-button" type="button" onclick="closeAttendanceSheetResult()" data-i18n="done">Done</button>
         </div>
+      </dialog>
+
+      <dialog id="attendanceExportDialog" class="attendance-action-dialog" aria-labelledby="attendanceExportDialogTitle">
+        <form class="attendance-action-dialog-content" onsubmit="runAttendanceExport(event)">
+          <h2 id="attendanceExportDialogTitle" data-i18n="attendanceExportAction">Export</h2>
+          <label for="attendanceExportPeople" data-i18n="attendanceSheetTypeLabel">People</label>
+          <select id="attendanceExportPeople" class="attendance-filter-select">
+            <option value="both" data-i18n="attendanceSheetBoth">Attendees and absentees</option>
+            <option value="attendees" data-i18n="attendanceSheetAttendees">Attendees only</option>
+            <option value="absents" data-i18n="attendanceSheetAbsents">Absentees only</option>
+          </select>
+          <label for="attendanceExportFormat" data-i18n="attendanceExportFormatLabel">Format</label>
+          <select id="attendanceExportFormat" class="attendance-filter-select">
+            <option value="sheets" data-i18n="attendanceExportSheets">Google Sheets tab</option>
+            <option value="xlsx" data-i18n="attendanceExportExcelOption">Excel workbook</option>
+            <option value="pdf" data-i18n="attendanceExportPdfOption">PDF document</option>
+            <option value="png" data-i18n="attendanceExportPngOption">PNG image</option>
+          </select>
+          <div class="attendance-action-dialog-buttons">
+            <button id="attendanceExportSubmit" class="btn" type="submit" data-i18n="attendanceExportAction">Export</button>
+            <button class="btn secondary" type="button" onclick="document.getElementById('attendanceExportDialog').close()" data-i18n="cancelEmergencyCheckout">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="whatsAppPhoneDialog" class="attendance-action-dialog" aria-labelledby="whatsAppPhoneDialogTitle">
+        <form class="attendance-action-dialog-content" onsubmit="submitWhatsAppPhone(event)">
+          <h2 id="whatsAppPhoneDialogTitle" data-i18n="whatsAppPhoneTitle">WhatsApp number</h2>
+          <label for="whatsAppPhoneInput" data-i18n="whatsAppPhoneLabel">Phone number (optional)</label>
+          <input id="whatsAppPhoneInput" type="tel" inputmode="tel" autocomplete="tel" />
+          <div class="attendance-action-dialog-buttons">
+            <button class="btn" type="submit" data-i18n="whatsAppContinue">Continue to WhatsApp</button>
+            <button class="btn secondary" type="button" onclick="closeWhatsAppPhoneDialog()" data-i18n="cancelEmergencyCheckout">Cancel</button>
+          </div>
+        </form>
       </dialog>
 
       <dialog id="settingsExitDialog" class="settings-exit-dialog" aria-labelledby="settingsExitTitle" aria-describedby="settingsExitMessage">
@@ -663,16 +717,17 @@
 
       <!-- 2. Live QR Scan View -->
       <div id="scanView" style="display: none">
-        <div class="scan-mode-switch" role="group" data-i18n-aria-label="scanModeGroup" aria-label="وضع المسح">
-          <button type="button" class="scan-mode-button" data-scan-mode="regular" aria-pressed="true" onclick="setPaymentScanMode(false)" data-i18n="regularScanMode">المسح العادي</button>
-          <button type="button" class="scan-mode-button" data-scan-mode="payment" aria-pressed="false" onclick="setPaymentScanMode(true)" data-i18n="paymentScanMode">وضع الاستقبال</button>
-        </div>
         <h2>
           <i class="fa-solid fa-qrcode"></i>
           <span data-i18n="scanQrTitle">مسح QR</span>
         </h2>
         <div class="camera-wrapper">
           <div id="qr-reader"></div>
+          <div id="scanProcessingOverlay" class="scan-processing-overlay" role="status" aria-live="polite" hidden>
+            <div class="scan-processing-spinner" aria-hidden="true"></div>
+            <strong data-i18n="attendanceScanProcessing">Checking...</strong>
+            <span id="scanProcessingName"></span>
+          </div>
           <div id="paymentScanResult" class="payment-scan-result" role="status" aria-live="assertive" hidden>
             <span class="payment-scan-result-icon" aria-hidden="true"></span>
             <span class="payment-scan-result-message"></span>
@@ -795,8 +850,8 @@
           />
         </div>
         <button class="btn" data-online-only onclick="shareCurrentCardImage()">
-          <i class="fa-solid fa-share-nodes"></i>
-          <span data-i18n="sendCopyBtn">📤 مشاركة الصورة (Send a Copy)</span>
+          <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+          <span data-i18n="sendWhatsAppBtn">Send with WhatsApp</span>
         </button>
         <button class="btn secondary" data-online-only onclick="openCurrentCardDrive()">
           <i class="fa-solid fa-folder-open"></i>
@@ -1158,13 +1213,13 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=75"></script>
-  <script src="./js/app-i18n.js?v=78"></script>
+  <script src="./js/app-state.js?v=76"></script>
+  <script src="./js/app-i18n.js?v=79"></script>
   <script src="./js/app-core.js?v=73"></script>
   <script src="./js/app-offline.js?v=76"></script>
-  <script src="./js/app-views.js?v=80"></script>
-  <script src="./js/app-auth.js?v=73"></script>
-  <script src="./js/app-scanner-search.js?v=75"></script>
-  <script src="./js/app-cards-admin.js?v=73"></script>
+  <script src="./js/app-views.js?v=81"></script>
+  <script src="./js/app-auth.js?v=74"></script>
+  <script src="./js/app-scanner-search.js?v=76"></script>
+  <script src="./js/app-cards-admin.js?v=74"></script>
   </body>
 </html>

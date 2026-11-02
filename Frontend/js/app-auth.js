@@ -2,6 +2,8 @@ window.addEventListener("DOMContentLoaded", async function () {
   setLanguage(currentLang);
   applyTheme(currentThemeMode);
   setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "two");
+  setScanModePreference(localStorage.getItem("app_scan_mode") || "regular");
+  loadWhatsAppMessageTemplate();
   let savedUser = null;
   try {
     savedUser = JSON.parse(localStorage.getItem("app_user") || "null");
@@ -277,6 +279,9 @@ function setupUserProfileUI() {
   avatar.src = currentUser.picture || "";
   if (!currentUser.picture) showAvatarFallback();
   showView("dashboardView");
+  const deepLinkView = new URLSearchParams(window.location.search).get("open");
+  if (["birthdaysView", "notificationsView"].includes(deepLinkView))
+    showView(deepLinkView, false);
   startFirstRunTutorial();
   dismissStartupScreen();
 }

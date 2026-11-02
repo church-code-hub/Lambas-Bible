@@ -275,6 +275,7 @@ function showView(viewId, pushHistory = true) {
   ) {
     loadBirthdays();
   }
+  if (viewId === "notificationsView" && viewChanged) renderAppNotifications();
   if (
     viewId === "currentAttendeesView" &&
     viewChanged &&
@@ -303,7 +304,6 @@ function showView(viewId, pushHistory = true) {
     }
   }
   if (viewId === "scanView") {
-    isProcessingScan = false;
     if (
       typeof isFirstRunTutorialActive !== "function" ||
       !isFirstRunTutorialActive()
@@ -392,6 +392,7 @@ function openBirthdaysView() {
 
 function openNotificationsView() {
   showView("notificationsView");
+  renderAppNotifications();
   markAppNotificationsRead();
 }
 
@@ -412,33 +413,47 @@ function updateAppNotificationBadge() {
   badge.hidden = count === 0;
 }
 
-function sendSystemNotification(title, body, tag) {
+function sendSystemNotification(title, body, tag, viewId = "") {
   if (typeof Notification === "undefined" || Notification.permission !== "granted")
     return;
+  const options = {
+    body,
+    tag,
+    icon: "./Assets/icons/icon-192.png",
+    data: { viewId },
+  };
   if (navigator.serviceWorker) {
     navigator.serviceWorker.ready
       .then((registration) => {
         if (registration.showNotification)
-          return registration.showNotification(title, {
-            body,
-            tag,
-            icon: "./Assets/icons/icon-192.png",
-          });
-        return new Notification(title, { body, tag });
+          return registration.showNotification(title, options);
+        const notification = new Notification(title, options);
+        notification.onclick = () => {
+          window.focus();
+          if (viewId) showView(viewId);
+        };
+        return notification;
       })
-      .catch(() => {});
+      .catch((error) =>
+        console.warn("Could not display the device notification.", error),
+      );
   } else {
-    new Notification(title, { body, tag });
+    const notification = new Notification(title, options);
+    notification.onclick = () => {
+      window.focus();
+      if (viewId) showView(viewId);
+    };
   }
 }
 
-function recordAppNotification(key, title, body) {
+function recordAppNotification(key, title, body, viewId = "") {
   const notifications = getAppNotifications();
   if (notifications.some((item) => item.key === key)) return;
   notifications.unshift({
     key,
     title,
     body,
+    viewId,
     createdAt: new Date().toISOString(),
     read: false,
   });
@@ -447,13 +462,15 @@ function recordAppNotification(key, title, body) {
   } catch (error) {}
   updateAppNotificationBadge();
   showToast(`${translateText(title)} · ${translateText(body)}`, "info", 8000);
-  sendSystemNotification(translateText(title), translateText(body), key);
+  sendSystemNotification(translateText(title), translateText(body), key, viewId);
   if (currentActiveViewId === "notificationsView") renderAppNotifications();
 }
 
 function renderAppNotifications() {
   const container = document.getElementById("notificationResults");
   if (!container) return;
+  const composer = document.getElementById("globalNotificationComposer");
+  if (composer) composer.hidden = currentUser?.isOwner !== true;
   const notifications = getAppNotifications();
   if (!notifications.length) {
     const empty = document.createElement("p");
@@ -467,6 +484,27 @@ function renderAppNotifications() {
   notifications.forEach((item) => {
     const row = document.createElement("article");
     row.className = `notification-item${item.read ? " is-read" : ""}`;
+    if (item.viewId) {
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      const openTarget = () => {
+        item.read = true;
+        try {
+          localStorage.setItem("app_notifications_v1", JSON.stringify(notifications));
+        } catch (error) {
+          console.warn("Could not update the notification read state.", error);
+        }
+        updateAppNotificationBadge();
+        showView(item.viewId);
+      };
+      row.addEventListener("click", openTarget);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openTarget();
+        }
+      });
+    }
     const heading = document.createElement("strong");
     heading.textContent = translateText(item.title);
     const message = document.createElement("p");
@@ -490,41 +528,156 @@ function markAppNotificationsRead() {
   renderAppNotifications();
 }
 
-async function requestBrowserNotifications() {
-  if (typeof Notification === "undefined") {
-    showToast(translations[currentLang].browserNotificationsUnsupported, "info");
+function loadFirebaseMessagingSdk() {
+  if (window.firebase?.messaging) return Promise.resolve();
+  const loadScript = (src) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () =>
+        reject(new Error("Firebase messaging could not be loaded."));
+      document.head.appendChild(script);
+    });
+  return loadScript(
+    "https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js",
+  ).then(() =>
+    loadScript(
+      "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js",
+    ),
+  );
+}
+
+async function enablePushNotifications() {
+  const config = APP_CONFIG.firebaseConfig;
+  if (!config || !APP_CONFIG.firebaseVapidKey) {
+    showToast(translations[currentLang].pushSetupRequired, "error");
+    return;
+  }
+  if (typeof Notification === "undefined" || !navigator.serviceWorker) {
+    showToast(
+      translations[currentLang].browserNotificationsUnsupported,
+      "error",
+    );
     return;
   }
   try {
     const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      showToast(translations[currentLang].browserNotificationsDenied, "info");
+      return;
+    }
+    await loadFirebaseMessagingSdk();
+    if (!firebase.apps.length) firebase.initializeApp(config);
+    const registration = await navigator.serviceWorker.register("./sw.js");
+    await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    if (!pushMessageHandlerRegistered && typeof messaging.onMessage === "function") {
+      messaging.onMessage((payload) => {
+        const data = payload.data || {};
+        recordAppNotification(
+          `push:${data.notificationId || Date.now()}`,
+          data.title || "Lambas Bible",
+          data.body || "",
+          data.viewId || "notificationsView",
+        );
+      });
+      pushMessageHandlerRegistered = true;
+    }
+    const token = await messaging.getToken({
+      vapidKey: APP_CONFIG.firebaseVapidKey,
+      serviceWorkerRegistration: registration,
+    });
+    if (!token) throw new Error(translations[currentLang].pushTokenUnavailable);
+    const result = await apiCall("register_push_token", { token });
+    if (!result || !result.success)
+      throw new Error(
+        result?.message || translations[currentLang].pushRegistrationFailed,
+      );
+    showToast(translations[currentLang].browserNotificationsEnabled, "success");
+  } catch (error) {
+    console.error("Could not enable push notifications.", error);
     showToast(
-      permission === "granted"
-        ? translations[currentLang].browserNotificationsEnabled
-        : translations[currentLang].browserNotificationsDenied,
-      permission === "granted" ? "success" : "info",
+      error.message || translations[currentLang].pushRegistrationFailed,
+      "error",
+    );
+  }
+}
+
+async function sendGlobalNotification() {
+  if (currentUser?.isOwner !== true) {
+    showToast(translations[currentLang].globalNotificationOwnerOnly, "error");
+    return;
+  }
+  const input = document.getElementById("globalNotificationMessage");
+  const message = input.value.trim();
+  if (!message) {
+    showToast(translations[currentLang].globalNotificationRequired, "error");
+    return;
+  }
+  const button = document.querySelector(
+    "#globalNotificationComposer .btn",
+  );
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const result = await apiCall("send_global_notification", { message });
+    if (!result || !result.success)
+      throw new Error(
+        result?.message || translations[currentLang].globalNotificationFailed,
+      );
+    input.value = "";
+    showToast(
+      translations[currentLang].globalNotificationSent.replace(
+        "{count}",
+        String(result.sentCount),
+      ),
+      "success",
     );
   } catch (error) {
-    showToast(translations[currentLang].browserNotificationsDenied, "error");
+    showToast(
+      error.message || translations[currentLang].globalNotificationFailed,
+      "error",
+    );
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
   }
+}
+
+function requestBrowserNotifications() {
+  return enablePushNotifications();
 }
 
 function notifyBirthdayRoster(roster) {
   if (!Array.isArray(roster)) return;
   const today = new Date();
-  const todayKey = `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const yearKey = `${today.getFullYear()}-${todayKey}`;
-  roster.forEach((person) => {
-    if (String(person.birthdate || "") !== todayKey) return;
-    const body = translations[currentLang].birthdayNotificationBody.replace(
-      "{name}",
-      person.name,
+  const start = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - today.getDay(),
+  );
+  const birthdayKeys = new Set(
+    roster.map((person) => String(person.birthdate || "")),
+  );
+  const hasBirthdayThisWeek = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate() + index,
     );
-    recordAppNotification(
-      `birthday:${yearKey}:${person.id}`,
-      "birthdayNotificationTitle",
-      body,
+    return birthdayKeys.has(
+      `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
     );
-  });
+  }).some(Boolean);
+  if (!hasBirthdayThisWeek) return;
+  recordAppNotification(
+    `birthdays-week:${localDateInputValue(start)}`,
+    "birthdayNotificationTitle",
+    "birthdayNotificationBody",
+    "birthdaysView",
+  );
 }
 
 function checkCachedBirthdayNotifications() {
@@ -780,24 +933,52 @@ async function loadBirthdays() {
 
 function renderBirthdays(now = new Date()) {
   const container = document.getElementById("birthdayResults");
+  const fromValue = document.getElementById("birthdayDateFrom").value;
+  const toValue = document.getElementById("birthdayDateTo").value;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const upcoming = birthdayPeople
-    .map((person) => {
-      const match = String(person.birthdate || "").match(/^(\d{2})-(\d{2})$/);
-      if (!match) return null;
-      const month = Number(match[1]);
-      const day = Number(match[2]);
-      let next = new Date(now.getFullYear(), month - 1, day);
-      if (next < today) next = new Date(now.getFullYear() + 1, month - 1, day);
-      const daysUntil = Math.round((next - today) / 86400000);
-      return { ...person, daysUntil };
-    })
-    .filter(Boolean)
-    .sort((left, right) => left.daysUntil - right.daysUntil || left.name.localeCompare(right.name));
+  const weekStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - today.getDay(),
+  );
+  const start = fromValue
+    ? new Date(`${fromValue}T00:00:00`)
+    : weekStart;
+  const end = toValue
+    ? new Date(`${toValue}T00:00:00`)
+    : new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
+  const upcoming = [];
+  birthdayPeople.forEach((person) => {
+    const match = String(person.birthdate || "").match(/^(\d{2})-(\d{2})$/);
+    if (!match) return;
+    const month = Number(match[1]) - 1;
+    const day = Number(match[2]);
+    for (let year = start.getFullYear(); year <= end.getFullYear(); year++) {
+      const occurrence = new Date(year, month, day);
+      if (
+        occurrence.getMonth() !== month ||
+        occurrence.getDate() !== day ||
+        occurrence < start ||
+        occurrence > end
+      ) continue;
+      upcoming.push({
+        ...person,
+        occurrence,
+        daysUntil: Math.round((occurrence - today) / 86400000),
+      });
+    }
+  });
+  upcoming.sort(
+    (left, right) =>
+      left.occurrence - right.occurrence ||
+      left.name.localeCompare(right.name),
+  );
   if (!upcoming.length) {
     const empty = document.createElement("p");
     empty.className = "report-note";
-    empty.textContent = translations[currentLang].noBirthdays;
+    empty.textContent = birthdayPeople.length
+      ? translations[currentLang].noBirthdaysInRange
+      : translations[currentLang].noBirthdays;
     container.replaceChildren(empty);
     return;
   }
@@ -809,15 +990,41 @@ function renderBirthdays(now = new Date()) {
     const name = document.createElement("strong");
     name.textContent = person.name;
     const date = document.createElement("span");
-    date.textContent = person.birthdate;
+    date.textContent = person.occurrence.toLocaleDateString(
+      currentLang === "ar" ? "ar" : "en",
+      { year: "numeric", month: "long", day: "numeric" },
+    );
     const timing = document.createElement("small");
-    timing.textContent = person.daysUntil === 0
-      ? translations[currentLang].birthdayToday
-      : translations[currentLang].birthdayInDays.replace("{days}", String(person.daysUntil));
-    row.append(name, date, timing);
+    if (!fromValue && !toValue) {
+      timing.textContent = person.daysUntil === 0
+        ? translations[currentLang].birthdayToday
+        : translations[currentLang].birthdayInDays.replace(
+            "{days}",
+            String(person.daysUntil),
+          );
+      row.append(name, date, timing);
+    } else {
+      row.append(name, date);
+    }
     panel.appendChild(row);
   });
   container.replaceChildren(panel);
+}
+
+function applyBirthdayDateFilter() {
+  const fromValue = document.getElementById("birthdayDateFrom").value;
+  const toValue = document.getElementById("birthdayDateTo").value;
+  if (!fromValue || !toValue || fromValue > toValue) {
+    showToast(translations[currentLang].birthdayRangeInvalid, "error");
+    return;
+  }
+  renderBirthdays();
+}
+
+function resetBirthdayDateFilter() {
+  document.getElementById("birthdayDateFrom").value = "";
+  document.getElementById("birthdayDateTo").value = "";
+  renderBirthdays();
 }
 
 async function deactivateRosterPerson(person) {
@@ -1860,7 +2067,10 @@ async function downloadAttendanceExport(format) {
     !["pdf", "xlsx"].includes(format)
   ) return;
   const resultDialog = document.getElementById("attendanceSheetResultDialog");
-  const button = resultDialog.open
+  const optionsDialog = document.getElementById("attendanceExportDialog");
+  const button = optionsDialog.open
+    ? document.getElementById("attendanceExportSubmit")
+    : resultDialog.open
     ? document.getElementById(
         format === "pdf" ? "attendanceSheetPdfLink" : "attendanceSheetExcelLink",
       )
@@ -1892,6 +2102,7 @@ async function downloadAttendanceExport(format) {
     downloadLink.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     showToast(translations[currentLang].attendanceExportReady, "success");
+    if (optionsDialog.open) optionsDialog.close();
   } catch (error) {
     showToast(error.message || translations[currentLang].attendanceExportFailed, "error");
   } finally {
@@ -1902,20 +2113,143 @@ async function downloadAttendanceExport(format) {
   }
 }
 
-function runAttendanceExport() {
+function openAttendanceExportDialog() {
   const date = document.getElementById("attendanceReportDate").value;
   if (!date) {
     showToast(translations[currentLang].attendancePersonPlaceholder, "info");
     return;
   }
-  const type = document.getElementById("attendanceSheetType").value;
-  const format = document.getElementById("attendanceExportFormat").value;
-  if (format === "sheets") {
-    createAttendanceReportSheet();
+  document.getElementById("attendanceExportDialog").showModal();
+}
+
+async function runAttendanceExport(event) {
+  event.preventDefault();
+  const date = document.getElementById("attendanceReportDate").value;
+  if (!date) {
+    showToast(translations[currentLang].attendancePersonPlaceholder, "info");
     return;
   }
+  const type = document.getElementById("attendanceExportPeople").value;
+  const format = document.getElementById("attendanceExportFormat").value;
   currentAttendanceReportExport = { date, type };
-  downloadAttendanceExport(format);
+  if (format === "sheets") {
+    document.getElementById("attendanceExportDialog").close();
+    createAttendanceReportSheet(type);
+    return;
+  }
+  if (format === "png") {
+    await downloadAttendancePng(date, type);
+    return;
+  }
+  await downloadAttendanceExport(format);
+}
+
+async function downloadAttendancePng(date, type) {
+  if (attendanceExportInFlight) return;
+  const button = document.getElementById("attendanceExportSubmit");
+  attendanceExportInFlight = true;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const result = await apiCall("get_attendance_day", { date });
+    if (!result || !result.success || !Array.isArray(result.people))
+      throw new Error(result?.message || translations[currentLang].attendanceExportFailed);
+    const people = result.people.filter((person) =>
+      type === "attendees"
+        ? person.attended
+        : type === "absents"
+          ? !person.attended
+          : true,
+    );
+    const namesOnly = type === "absents";
+    const columns = namesOnly
+      ? [translations[currentLang].studentNameLabel]
+      : [
+          translations[currentLang].studentNameLabel,
+          translations[currentLang].attendanceStateLabel,
+          translations[currentLang].delayLabel,
+        ];
+    const canvas = document.createElement("canvas");
+    const width = 1400;
+    const margin = 52;
+    const titleHeight = 100;
+    const headerHeight = 76;
+    const rowHeight = 66;
+    canvas.width = width;
+    canvas.height = titleHeight + headerHeight + Math.max(1, people.length) * rowHeight + margin;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error(translations[currentLang].attendanceExportFailed);
+    context.direction = currentLang === "ar" ? "rtl" : "ltr";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#182333";
+    context.font = "700 30px Arial, sans-serif";
+    context.fillText(
+      `${translations[currentLang].attendanceReports} · ${date}`,
+      width / 2,
+      titleHeight / 2,
+    );
+    const widths = namesOnly
+      ? [width - margin * 2]
+      : [
+          (width - margin * 2) * 0.54,
+          (width - margin * 2) * 0.24,
+          (width - margin * 2) * 0.22,
+        ];
+    const rows = [columns, ...people.map((person) =>
+      namesOnly
+        ? [person.name]
+        : [
+            person.name,
+            person.state === "delayed"
+              ? translations[currentLang].attendanceDelayed
+              : person.attended
+                ? translations[currentLang].attendanceOnTime
+                : translations[currentLang].absent,
+            person.delay || "",
+          ],
+    )];
+    let y = titleHeight;
+    rows.forEach((row, rowIndex) => {
+      let x = margin;
+      row.forEach((value, columnIndex) => {
+        const cellWidth = widths[columnIndex];
+        context.fillStyle = rowIndex === 0 ? "#f5bd55" : "#ffffff";
+        context.fillRect(x, y, cellWidth, rowHeight);
+        context.strokeStyle = "#6b7280";
+        context.lineWidth = 2;
+        context.strokeRect(x, y, cellWidth, rowHeight);
+        context.fillStyle = "#182333";
+        context.font = rowIndex === 0
+          ? "700 25px Arial, sans-serif"
+          : "500 23px Arial, sans-serif";
+        context.fillText(String(value || ""), x + cellWidth / 2, y + rowHeight / 2, cellWidth - 24);
+        x += cellWidth;
+      });
+      y += rowHeight;
+    });
+    const blob = await new Promise((resolve, reject) =>
+      canvas.toBlob((image) =>
+        image ? resolve(image) : reject(new Error(translations[currentLang].attendanceExportFailed)),
+      "image/png"),
+    );
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `attendance-${date}.png`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    showToast(translations[currentLang].attendanceExportReady, "success");
+    document.getElementById("attendanceExportDialog").close();
+  } catch (error) {
+    showToast(error.message || translations[currentLang].attendanceExportFailed, "error");
+  } finally {
+    attendanceExportInFlight = false;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
 }
 
 function closeAttendanceSheetResult() {
@@ -1946,7 +2280,7 @@ async function loadAttendanceReport(createSheet = false, sheetType = "both") {
       ? translations[currentLang].creatingAttendanceSheet
       : translations[currentLang].loadingReport,
   );
-  const sheetButton = document.querySelector(".attendance-sheet-button");
+  const sheetButton = document.getElementById("attendanceExportSubmit");
   if (createSheet) {
     sheetButton.disabled = true;
     sheetButton.setAttribute("aria-busy", "true");
@@ -1996,8 +2330,7 @@ async function loadAttendanceReport(createSheet = false, sheetType = "both") {
   }
 }
 
-function createAttendanceReportSheet() {
-  const sheetType = document.getElementById("attendanceSheetType").value;
+function createAttendanceReportSheet(sheetType = "both") {
   loadAttendanceReport(true, sheetType);
 }
 
@@ -2078,6 +2411,7 @@ function resetView(viewId) {
     document.getElementById("searchNameInput").value = "";
     document.getElementById("searchResults").innerHTML = "";
   } else if (viewId === "scanView") {
+    clearScanFeedback();
     stopLiveScanner();
   } else if (viewId === "addView") {
     document.getElementById("newStudentName").value = "";

@@ -279,7 +279,8 @@
   place-items: center;
 }
 
-.toolbar-menu-icon-wrap > i {
+.toolbar-menu-icon-wrap > i,
+.toolbar-menu-icon-wrap > img {
   display: grid;
   width: 34px;
   height: 34px;
@@ -290,6 +291,10 @@
   box-shadow: var(--icon-glass-shadow);
   color: var(--icon-foreground);
   font-size: 14px;
+}
+.toolbar-menu-icon-wrap > img {
+  object-fit: cover;
+  padding: 3px;
 }
 
 .toolbar-menu-icon-wrap .sync-now-count {

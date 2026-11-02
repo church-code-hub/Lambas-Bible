@@ -127,85 +127,70 @@ h2 > i {
   justify-content: center;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
 }
-.scan-mode-switch {
-  display: inline-flex;
-  align-self: flex-start;
-  gap: 6px;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 0 18px;
-  padding: 5px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 15px;
-  background: var(--glass-surface);
-  box-shadow: var(--icon-glass-shadow);
-  backdrop-filter: blur(18px) saturate(145%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
-}
-#scanView > .scan-mode-switch {
-  width: fit-content;
-  margin-right: auto;
-  margin-left: 0;
-}
-.scan-mode-button {
-  min-height: 42px;
-  padding: 8px 16px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  background: transparent;
-  color: var(--text-sub);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
-}
-.scan-mode-button[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--accent-gold) 55%, var(--glass-edge));
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-gold) 28%, var(--glass-surface)), var(--glass-surface));
-  color: var(--accent-gold);
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--accent-gold) 16%, transparent);
-}
-.scan-mode-button:hover {
-  color: var(--accent-gold);
-  transform: translateY(-1px);
-}
-.scan-mode-button:focus-visible {
-  outline: 2px solid var(--accent-gold);
-  outline-offset: 2px;
-}
-#scanView.payment-mode .camera-wrapper {
+#scanView .camera-wrapper {
   width: 100%;
   max-width: none;
   min-height: min(68dvh, 680px);
   border: 0;
-  border-radius: 18px;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-#scanView.payment-mode #qr-reader {
+#scanView #qr-reader {
   width: 100%;
   max-width: none;
 }
-#scanView.payment-mode .camera-wrapper.has-scan-result #qr-reader {
+#scanView .camera-wrapper.has-scan-result #qr-reader {
   display: none;
 }
-#scanView.payment-mode .camera-wrapper.has-scan-result {
-  border: 1px solid var(--glass-edge);
-  background: var(--panel-gradient), var(--glass-surface);
-  box-shadow: var(--shadow);
-}
-#scanView.payment-mode #qr-reader video {
+#scanView #qr-reader video {
   width: 100% !important;
   min-height: min(68dvh, 680px);
   object-fit: cover;
+}
+.scan-processing-overlay,
+.scan-processing-overlay[hidden] {
+  display: none;
+}
+.scan-processing-overlay:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: var(--panel-gradient), var(--card-bg);
+  color: var(--text-main);
+  text-align: center;
+}
+.scan-processing-spinner {
+  width: 54px;
+  aspect-ratio: 1;
+  border: 4px solid color-mix(in srgb, var(--accent-gold) 24%, transparent);
+  border-top-color: var(--accent-gold);
+  border-radius: 50%;
+  animation: scanSpinner 750ms linear infinite;
+}
+.scan-processing-overlay strong {
+  font-size: clamp(18px, 3vw, 25px);
+}
+.scan-processing-overlay > span {
+  color: var(--accent-gold);
+  font-size: clamp(18px, 3vw, 26px);
+  font-weight: 800;
+}
+@keyframes scanSpinner {
+  to { transform: rotate(360deg); }
 }
 .payment-scan-result,
 .payment-scan-result[hidden] {
   display: none;
 }
-#scanView.payment-mode .payment-scan-result:not([hidden]) {
+#scanView.laptop-mode .payment-scan-result:not([hidden]) {
   display: grid;
   width: 100%;
   min-height: inherit;
@@ -254,7 +239,7 @@ h2 > i {
 .payment-scan-result.is-error {
   color: #ef6464;
 }
-#scanView.payment-mode .camera-status {
+#scanView.laptop-mode .camera-status {
   display: none;
 }
 @keyframes scanResultIn {
