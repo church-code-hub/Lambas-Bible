@@ -553,7 +553,14 @@ function birthdayDayNumber(date) {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
 }
 
+async function requestPushPermissionIfNeeded() {
+  if (Notification.permission === "granted") return "granted";
+  if (Notification.permission === "denied") return "denied";
+  return Notification.requestPermission();
+}
+
 async function enablePushNotifications() {
+  if (pushEnableInFlight) return;
   const config = APP_CONFIG.firebaseConfig;
   const missingFirebaseFields = [
     "apiKey",
@@ -579,8 +586,14 @@ async function enablePushNotifications() {
     );
     return;
   }
+  const button = document.getElementById("enableBrowserNotificationsButton");
+  pushEnableInFlight = true;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  }
   try {
-    const permission = await Notification.requestPermission();
+    const permission = await requestPushPermissionIfNeeded();
     if (permission !== "granted") {
       showToast(translations[currentLang].browserNotificationsDenied, "info");
       return;
@@ -619,6 +632,12 @@ async function enablePushNotifications() {
       error.message || translations[currentLang].pushRegistrationFailed,
       "error",
     );
+  } finally {
+    pushEnableInFlight = false;
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
   }
 }
 

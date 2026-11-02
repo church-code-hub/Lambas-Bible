@@ -46,6 +46,7 @@ var attendanceTrendsRequestId = 0;
 var attendanceReportData = null;
 var currentAttendanceReportExport = null;
 var attendanceExportInFlight = false;
+var pushEnableInFlight = false;
 var followupReportPeople = [];
 var rosterManagementPeople = [];
 var currentProfilePersonId = "";

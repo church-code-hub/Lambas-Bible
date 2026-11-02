@@ -116,12 +116,15 @@ test("notifications use browser permission and support background sync results",
 });
 
 test("global push is opt-in, owner-only, and handled by the service worker", () => {
+  const html = fs.readFileSync(path.join(frontendRoot, "index.html"), "utf8");
   const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
   const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
   const backend = fs.readFileSync(path.join(__dirname, "..", "Backend", "Code.js"), "utf8");
   const workflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "pages.yml"), "utf8");
 
   assert.match(views, /async function enablePushNotifications\(\)/);
+  assert.match(html, /id="enableBrowserNotificationsButton"/);
+  assert.match(views, /if \(pushEnableInFlight\) return/);
   assert.match(views, /messaging\.getToken/);
   assert.match(views, /apiCall\("register_push_token"/);
   assert.match(views, /async function sendGlobalNotification\(\)/);
@@ -138,6 +141,34 @@ test("global push is opt-in, owner-only, and handled by the service worker", () 
   assert.match(workflow, /actions\/deploy-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v5/);
   assert.match(views, /Push configuration is missing from this deployed app/);
+});
+
+test("push permission is requested only while the browser permission is undecided", async () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const permissionHelper =
+    views.match(/async function requestPushPermissionIfNeeded\(\) \{[\s\S]*?\n\}/)?.[0] || "";
+  let requestCount = 0;
+  const browserContext = vm.createContext({
+    Notification: {
+      permission: "granted",
+      requestPermission: async () => {
+        requestCount++;
+        return "granted";
+      },
+    },
+  });
+  vm.runInContext(permissionHelper, browserContext);
+
+  assert.equal(await vm.runInContext("requestPushPermissionIfNeeded()", browserContext), "granted");
+  assert.equal(requestCount, 0);
+
+  browserContext.Notification.permission = "denied";
+  assert.equal(await vm.runInContext("requestPushPermissionIfNeeded()", browserContext), "denied");
+  assert.equal(requestCount, 0);
+
+  browserContext.Notification.permission = "default";
+  assert.equal(await vm.runInContext("requestPushPermissionIfNeeded()", browserContext), "granted");
+  assert.equal(requestCount, 1);
 });
 
 test("birthdays default to a week and WhatsApp sharing uses a saved phone when available", () => {
@@ -346,7 +377,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v87/);
+  assert.match(serviceWorker, /lambas-bible-shell-v88/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);

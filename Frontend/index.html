@@ -440,7 +440,7 @@
           <span data-i18n="notificationsTitle">الإشعارات</span>
         </h2>
         <div class="notification-controls">
-          <button class="btn secondary" type="button" onclick="enablePushNotifications()" data-i18n="enableBrowserNotifications">تفعيل إشعارات الجهاز</button>
+          <button id="enableBrowserNotificationsButton" class="btn secondary" type="button" onclick="enablePushNotifications()" data-i18n="enableBrowserNotifications">تفعيل إشعارات الجهاز</button>
           <button class="btn tertiary" type="button" onclick="markAppNotificationsRead()" data-i18n="markNotificationsRead">تحديد الكل كمقروء</button>
         </div>
         <section id="globalNotificationComposer" class="global-notification-composer" hidden>
@@ -1213,11 +1213,11 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=76"></script>
+  <script src="./js/app-state.js?v=77"></script>
   <script src="./js/app-i18n.js?v=80"></script>
   <script src="./js/app-core.js?v=73"></script>
   <script src="./js/app-offline.js?v=76"></script>
-  <script src="./js/app-views.js?v=83"></script>
+  <script src="./js/app-views.js?v=84"></script>
   <script src="./js/app-auth.js?v=75"></script>
   <script src="./js/app-scanner-search.js?v=76"></script>
   <script src="./js/app-cards-admin.js?v=76"></script>
