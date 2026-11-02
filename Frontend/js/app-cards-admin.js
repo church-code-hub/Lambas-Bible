@@ -57,36 +57,115 @@ function submitWhatsAppPhone(event) {
   openCardWhatsApp(phone);
 }
 
-function openCardWhatsApp(phone = "") {
-  if (!activePreviewCard.driveUrl) {
-    showToast(translations[currentLang].cardLinkUnavailable, "error");
-    return;
+function normalizeWhatsAppPhone(phone = "") {
+  const rawPhone = String(phone).trim();
+  let digits = rawPhone.replace(/\D/g, "");
+  if (!digits) return "";
+  if (rawPhone.startsWith("+")) return digits;
+  if (digits.startsWith("00")) return digits.slice(2);
+  if (digits.startsWith("20")) return digits;
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  return `20${digits}`;
+}
+
+function getPreviewCardImageBlob() {
+  const image = document.getElementById("previewCardImg");
+  if (!image.complete || !image.naturalWidth || !image.naturalHeight) {
+    throw new Error(translations[currentLang].whatsAppImageShareFailed);
   }
-  const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
-  const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
-  const firstName = String(activePreviewCard.name || "").trim().split(/\s+/)[0] || "";
-  const message = [prefix + firstName + suffix, activePreviewCard.driveUrl]
-    .filter(Boolean)
-    .join("\n");
-  const digits = String(phone).replace(/\D/g, "");
-  const target = digits
-    ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/?text=${encodeURIComponent(message)}`;
-  const popup = window.open(target, "_blank");
-  if (!popup) {
-    showToast(translations[currentLang].whatsAppPopupBlocked, "error");
-    return;
-  }
-  popup.opener = null;
-  if (activePreviewCard.fileId) {
-    apiCall("share_move_card", { fileId: activePreviewCard.fileId })
-      .then((result) => {
-        if (!result || !result.success)
-          throw new Error(result?.message || translations[currentLang].offlineSyncFailed);
-      })
-      .catch((error) =>
-        showToast(error.message || translations[currentLang].offlineSyncFailed, "error"),
-      );
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error(translations[currentLang].whatsAppImageShareFailed);
+  context.drawImage(image, 0, 0);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error(translations[currentLang].whatsAppImageShareFailed));
+        return;
+      }
+      resolve(blob);
+    }, "image/png");
+  });
+}
+
+function downloadPreviewCardImage(blob) {
+  const name = String(activePreviewCard.name || "qr-card")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .trim() || "qr-card";
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `${name}.png`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function openCardWhatsApp(phone = "") {
+  try {
+    const blob = await getPreviewCardImageBlob();
+    const name = String(activePreviewCard.name || "").trim();
+    const firstName = name.split(/\s+/)[0] || "";
+    const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
+    const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
+    const text = `${prefix}${firstName}${suffix}`.trim();
+    const hasFileShareApi =
+      typeof File === "function" &&
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function";
+    if (!hasFileShareApi) {
+      downloadPreviewCardImage(blob);
+      const digits = normalizeWhatsAppPhone(phone);
+      const target = digits
+        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
+      const popup = window.open(target, "_blank");
+      if (popup) popup.opener = null;
+      else showToast(translations[currentLang].whatsAppPopupBlocked, "error");
+      showToast(translations[currentLang].whatsAppImageShareUnavailable, "info");
+      return;
+    }
+    const file = new File(
+      [blob],
+      `${name.replace(/[\\/:*?"<>|]+/g, " ").trim() || "qr-card"}.png`,
+      { type: "image/png" },
+    );
+    const fileShareSupported =
+      navigator.canShare({ files: [file] });
+    if (!fileShareSupported) {
+      downloadPreviewCardImage(blob);
+      const digits = normalizeWhatsAppPhone(phone);
+      const target = digits
+        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+        : `https://wa.me/?text=${encodeURIComponent(text)}`;
+      const popup = window.open(target, "_blank");
+      if (popup) popup.opener = null;
+      else showToast(translations[currentLang].whatsAppPopupBlocked, "error");
+      showToast(translations[currentLang].whatsAppImageShareUnavailable, "info");
+      return;
+    }
+
+    await navigator.share({
+      files: [file],
+      title: name,
+      ...(text ? { text } : {}),
+    });
+    if (activePreviewCard.fileId) {
+      const result = await apiCall("share_move_card", {
+        fileId: activePreviewCard.fileId,
+      });
+      if (!result || !result.success)
+        throw new Error(result?.message || translations[currentLang].offlineSyncFailed);
+    }
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    showToast(
+      error.message || translations[currentLang].whatsAppImageShareFailed,
+      "error",
+    );
   }
 }
 

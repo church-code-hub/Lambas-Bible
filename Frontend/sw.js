@@ -1,4 +1,4 @@
-const CACHE_NAME = "lambas-bible-shell-v86";
+const CACHE_NAME = "lambas-bible-shell-v87";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -13,13 +13,13 @@ const APP_SHELL = [
   "./css/08-scanner-controls.css",
   "./css/09-sync-progress.css",
   "./js/app-state.js?v=76",
-  "./js/app-i18n.js?v=79",
+  "./js/app-i18n.js?v=80",
   "./js/app-core.js?v=73",
   "./js/app-offline.js?v=76",
-  "./js/app-views.js?v=82",
-  "./js/app-auth.js?v=74",
+  "./js/app-views.js?v=83",
+  "./js/app-auth.js?v=75",
   "./js/app-scanner-search.js?v=76",
-  "./js/app-cards-admin.js?v=75",
+  "./js/app-cards-admin.js?v=76",
   "./manifest.json",
   "./Assets/icons/icon-192.png",
   "./Assets/icons/icon-512.png",
@@ -78,7 +78,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const allowedViews = new Set(["birthdaysView", "notificationsView"]);
+  const allowedViews = new Set([
+    "birthdaysView",
+    "currentAttendeesView",
+    "notificationsView",
+  ]);
   const viewId = allowedViews.has(event.notification.data?.viewId)
     ? event.notification.data.viewId
     : "notificationsView";

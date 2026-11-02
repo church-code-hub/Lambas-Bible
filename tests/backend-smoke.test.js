@@ -1297,6 +1297,89 @@ test("registers device push tokens and sends global FCM data messages", () => {
   assert.equal(message.data.body, "Meeting starts soon");
   assert.equal(message.data.viewId, "notificationsView");
   assert.equal(message.webpush.headers.TTL, "604800");
+
+  context.UrlFetchApp.fetchAll = (requests) =>
+    requests.map(() => ({
+      getResponseCode: () => 403,
+      getContentText: () => JSON.stringify({
+        error: { status: "PERMISSION_DENIED" },
+      }),
+    }));
+  const failed = context.sendGlobalNotification_("Try again", "owner@example.com");
+  assert.equal(failed.success, false);
+  assert.equal(failed.code, "PUSH_DELIVERY_FAILED");
+  assert.deepEqual(Array.from(failed.failureReasons), ["PERMISSION_DENIED"]);
+});
+
+test("reports when no push devices are registered", () => {
+  const { context } = createBackendContext();
+  context.SpreadsheetApp.getActiveSpreadsheet = () => ({
+    getSheetByName: () => null,
+  });
+
+  const result = context.sendGlobalNotification_("Meeting starts soon", "owner@example.com");
+  assert.equal(result.success, false);
+  assert.equal(result.code, "NO_PUSH_SUBSCRIPTIONS");
+});
+
+test("installs an attendance-open trigger once and sends once per meeting session", () => {
+  const { context, scriptPropertiesStore } = createBackendContext();
+  const triggers = [];
+  let handler = "";
+  let interval = 0;
+  context.ScriptApp = {
+    getProjectTriggers: () => triggers,
+    newTrigger: (name) => {
+      handler = name;
+      return {
+        timeBased() {
+          return this;
+        },
+        everyMinutes(value) {
+          interval = value;
+          return this;
+        },
+        create() {
+          triggers.push({ getHandlerFunction: () => handler });
+        },
+      };
+    },
+  };
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.installAttendanceOpenNotificationTrigger())),
+    { success: true, alreadyInstalled: false },
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.installAttendanceOpenNotificationTrigger())),
+    { success: true, alreadyInstalled: true },
+  );
+  assert.equal(interval, 1);
+  assert.equal(triggers.length, 1);
+
+  let sessionDate = "2026-11-02";
+  const sent = [];
+  context.meetingOccurrenceAt_ = () => ({ dateKey: sessionDate });
+  context.sendGlobalNotification_ = (...args) => {
+    sent.push(args);
+    return { success: true, sentCount: 2, failedCount: 0 };
+  };
+  assert.equal(context.checkAttendanceOpenAndNotify_().sentCount, 2);
+  assert.equal(context.checkAttendanceOpenAndNotify_().skipped, true);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(Array.from(sent[0]), [
+    "Attendance is open now.",
+    "attendance-window-trigger",
+    "Attendance is open",
+    "currentAttendeesView",
+  ]);
+  assert.equal(
+    JSON.parse(scriptPropertiesStore.getProperty("ATTENDANCE_OPEN_NOTIFICATION_STATE")).status,
+    "sent",
+  );
+
+  sessionDate = "2026-11-09";
+  assert.equal(context.checkAttendanceOpenAndNotify_().sentCount, 2);
+  assert.equal(sent.length, 2);
 });
 
 test("verifies token audience and caches successful Google token checks", () => {

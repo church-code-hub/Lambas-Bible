@@ -640,16 +640,32 @@ async function sendGlobalNotification() {
   button.setAttribute("aria-busy", "true");
   try {
     const result = await apiCall("send_global_notification", { message });
-    if (!result || !result.success)
-      throw new Error(
-        result?.message || translations[currentLang].globalNotificationFailed,
-      );
+    if (!result || !result.success) {
+      const errorKey = {
+        NO_PUSH_SUBSCRIPTIONS: "globalNotificationNoDevices",
+        PUSH_NOT_CONFIGURED: "globalNotificationPushNotConfigured",
+        PUSH_CONFIGURATION_INVALID: "globalNotificationPushConfigInvalid",
+      }[result?.code] || "globalNotificationDeliveryFailed";
+      const reasons = Array.isArray(result?.failureReasons)
+        ? result.failureReasons.join(", ")
+        : "";
+      const errorMessage =
+        translations[currentLang][errorKey] ||
+        result?.message ||
+        translations[currentLang].globalNotificationFailed;
+      throw new Error(reasons ? `${errorMessage} (${reasons})` : errorMessage);
+    }
     input.value = "";
+    const sentMessage = result.failedCount
+      ? translations[currentLang].globalNotificationPartial
+          .replace("{sent}", String(result.sentCount))
+          .replace("{failed}", String(result.failedCount))
+      : translations[currentLang].globalNotificationSent.replace(
+          "{count}",
+          String(result.sentCount),
+        );
     showToast(
-      translations[currentLang].globalNotificationSent.replace(
-        "{count}",
-        String(result.sentCount),
-      ),
+      sentMessage,
       "success",
     );
   } catch (error) {
@@ -711,16 +727,8 @@ function recordAppOpeningNotification() {
   );
 }
 
-function updateAttendanceWindowNotification(windowOpen) {
-  const wasOpen = currentAttendeesWindowOpen;
+function updateAttendanceWindowState(windowOpen) {
   currentAttendeesWindowOpen = windowOpen;
-  if (!windowOpen || wasOpen) return;
-  const today = localDateInputValue(new Date());
-  recordAppNotification(
-    `meeting-open:${today}`,
-    "meetingOpenedNotificationTitle",
-    "meetingOpenedNotificationBody",
-  );
 }
 
 function setDashboardLayout(layout) {
@@ -1112,7 +1120,7 @@ async function openCurrentAttendeesView() {
       )
         return;
       revalidatedWindowResult = freshResult;
-      updateAttendanceWindowNotification(freshResult.windowOpen);
+      updateAttendanceWindowState(freshResult.windowOpen);
       currentAttendeesWindowCloseReason = freshResult.closeReason || "";
       updateCurrentAttendeesTileState();
       if (freshResult.windowOpen && currentActiveViewId === sourceViewId) {
@@ -1144,7 +1152,7 @@ async function openCurrentAttendeesView() {
           : translations[currentLang].attendanceWindowCheckFailed,
       );
     }
-    updateAttendanceWindowNotification(effectiveResult.windowOpen);
+    updateAttendanceWindowState(effectiveResult.windowOpen);
     currentAttendeesWindowCloseReason = effectiveResult.closeReason || "";
     updateCurrentAttendeesTileState();
     if (!effectiveResult.windowOpen) {
@@ -1233,7 +1241,7 @@ async function refreshCurrentAttendeesWindow() {
         typeof freshResult.windowOpen !== "boolean"
       )
         return;
-      updateAttendanceWindowNotification(freshResult.windowOpen);
+      updateAttendanceWindowState(freshResult.windowOpen);
       currentAttendeesWindowCloseReason = freshResult.closeReason || "";
       if (Number.isFinite(Number(freshResult.nextCheckMs))) {
         nextWindowCheckMs = Number(freshResult.nextCheckMs);
@@ -1248,7 +1256,7 @@ async function refreshCurrentAttendeesWindow() {
           : "Invalid attendance window response",
       );
     }
-    updateAttendanceWindowNotification(result.windowOpen);
+    updateAttendanceWindowState(result.windowOpen);
     currentAttendeesWindowCloseReason = result.closeReason || "";
     if (Number.isFinite(Number(result?.nextCheckMs))) {
       nextWindowCheckMs = Number(result.nextCheckMs);

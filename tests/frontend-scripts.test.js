@@ -130,6 +130,7 @@ test("global push is opt-in, owner-only, and handled by the service worker", () 
   assert.match(backend, /PUSH_NOTIFICATION_MAX_AGE_SECONDS_/);
   assert.match(serviceWorker, /onBackgroundMessage/);
   assert.match(serviceWorker, /notificationclick/);
+  assert.match(serviceWorker, /currentAttendeesView/);
   assert.match(workflow, /LAMBAS_FIREBASE_VAPID_KEY/);
   assert.match(workflow, /vars\.LAMBAS_FIREBASE_API_KEY \|\| secrets\.LAMBAS_FIREBASE_API_KEY/);
   assert.match(workflow, /actions\/checkout@v6/);
@@ -172,8 +173,19 @@ test("birthdays default to a week and WhatsApp sharing uses a saved phone when a
   assert.match(pngExportFlow, /label\.textContent = previousLabel/);
   assert.match(scanner, /openCardPreview\(item\.fileId, item\.driveUrl, item\.name, item\.phone\)/);
   assert.match(cards, /function openCardWhatsApp\(phone = ""\)/);
-  assert.match(cards, /const firstName = String\(activePreviewCard\.name \|\| ""\)\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);
+  assert.match(cards, /const firstName = name\.split\(\/\\s\+\/\)\[0\]/);
   assert.match(cards, /https:\/\/wa\.me\//);
+  const normalizePhoneSource =
+    cards.match(/function normalizeWhatsAppPhone\(phone = ""\) \{[\s\S]*?\n\}/)?.[0] || "";
+  const phoneContext = vm.createContext({});
+  vm.runInContext(normalizePhoneSource, phoneContext);
+  assert.equal(vm.runInContext('normalizeWhatsAppPhone("01012345678")', phoneContext), "201012345678");
+  assert.equal(vm.runInContext('normalizeWhatsAppPhone("+201012345678")', phoneContext), "201012345678");
+  const cardShareFlow =
+    cards.match(/async function openCardWhatsApp\(phone = ""\) \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(cardShareFlow, /navigator\.share\(\{[\s\S]*?files: \[file\]/);
+  assert.doesNotMatch(cardShareFlow, /activePreviewCard\.driveUrl/);
+  assert.match(cardShareFlow, /downloadPreviewCardImage\(blob\)/);
   assert.match(html, /class="notification-app-icon" src="\.\/Assets\/icons\/icon-192\.png"/);
   assert.match(backend, /phone: String\(data\[i\]\[3\] \|\| ""\)/);
 
@@ -334,7 +346,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v86/);
+  assert.match(serviceWorker, /lambas-bible-shell-v87/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);

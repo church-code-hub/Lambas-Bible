@@ -280,7 +280,11 @@ function setupUserProfileUI() {
   if (!currentUser.picture) showAvatarFallback();
   showView("dashboardView");
   const deepLinkView = new URLSearchParams(window.location.search).get("open");
-  if (["birthdaysView", "notificationsView"].includes(deepLinkView))
+  if (
+    ["birthdaysView", "currentAttendeesView", "notificationsView"].includes(
+      deepLinkView,
+    )
+  )
     showView(deepLinkView, false);
   startFirstRunTutorial();
   dismissStartupScreen();

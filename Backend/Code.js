@@ -306,6 +306,8 @@ function responseJSON_(data) {
 
 const PUSH_SUBSCRIPTIONS_SHEET_NAME_ = "Push Subscriptions";
 const PUSH_NOTIFICATION_MAX_AGE_SECONDS_ = 604800;
+const ATTENDANCE_OPEN_NOTIFICATION_STATE_KEY_ =
+  "ATTENDANCE_OPEN_NOTIFICATION_STATE";
 
 function getPushSubscriptionsSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -387,7 +389,12 @@ function getFirebaseAccessToken_(serviceAccount) {
   return tokenResult.access_token;
 }
 
-function sendGlobalNotification_(message, adminEmail) {
+function sendGlobalNotification_(
+  message,
+  adminEmail,
+  title = "Lambas Bible",
+  viewId = "notificationsView",
+) {
   const body = String(message || "").replace(/\s+/g, " ").trim();
   if (!body || body.length > 300) {
     return {
@@ -403,7 +410,21 @@ function sendGlobalNotification_(message, adminEmail) {
   const rows = sheet && lastRow >= 2
     ? sheet.getRange(2, 1, lastRow - 1, 3).getValues()
     : [];
-  if (!rows.length) return { success: true, sentCount: 0, failedCount: 0 };
+  const tokenRows = rows
+    .map((row, index) => ({
+      token: String(row[0] || "").trim(),
+      rowIndex: index + 2,
+    }))
+    .filter((row) => row.token);
+  if (!tokenRows.length) {
+    return {
+      success: false,
+      code: "NO_PUSH_SUBSCRIPTIONS",
+      sentCount: 0,
+      failedCount: 0,
+      message: "لا توجد أجهزة مسجلة لاستقبال الإشعارات. فعّل الإشعارات على جهاز واحد على الأقل.",
+    };
+  }
 
   const serviceAccountValue = PropertiesService.getScriptProperties().getProperty(
     "FCM_SERVICE_ACCOUNT_JSON",
@@ -439,19 +460,19 @@ function sendGlobalNotification_(message, adminEmail) {
   const accessToken = getFirebaseAccessToken_(serviceAccount);
   const notificationId = Utilities.getUuid();
   const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(serviceAccount.project_id)}/messages:send`;
-  const requests = rows.map((row) => ({
+  const requests = tokenRows.map((row) => ({
     url: endpoint,
     method: "post",
     contentType: "application/json",
     headers: { Authorization: "Bearer " + accessToken },
     payload: JSON.stringify({
       message: {
-        token: String(row[0] || ""),
+        token: row.token,
         data: {
-          title: "Lambas Bible",
+          title: String(title || "Lambas Bible"),
           body: body,
           notificationId: notificationId,
-          viewId: "notificationsView",
+          viewId: String(viewId || "notificationsView"),
         },
         webpush: {
           headers: { TTL: String(PUSH_NOTIFICATION_MAX_AGE_SECONDS_) },
@@ -463,6 +484,7 @@ function sendGlobalNotification_(message, adminEmail) {
   let sentCount = 0;
   let failedCount = 0;
   const expiredRowIndexes = new Set();
+  const failureReasons = new Set();
   for (let offset = 0; offset < requests.length; offset += 100) {
     const batch = UrlFetchApp.fetchAll(requests.slice(offset, offset + 100));
     batch.forEach((response, index) => {
@@ -474,10 +496,16 @@ function sendGlobalNotification_(message, adminEmail) {
       const requestIndex = offset + index;
       try {
         const errorBody = JSON.parse(response.getContentText());
-        const status = errorBody.error && errorBody.error.status;
+        const error = errorBody.error || {};
+        const errorCode = Array.isArray(error.details)
+          ? error.details.find((detail) => detail.errorCode)?.errorCode
+          : "";
+        const status = errorCode || error.status || `HTTP_${response.getResponseCode()}`;
+        failureReasons.add(status);
         if (status === "UNREGISTERED" || status === "NOT_FOUND")
-          expiredRowIndexes.add(requestIndex + 2);
+          expiredRowIndexes.add(tokenRows[requestIndex].rowIndex);
       } catch (error) {
+        failureReasons.add(`HTTP_${response.getResponseCode()}`);
         console.warn("Could not parse a Firebase send error.", error);
       }
     });
@@ -485,7 +513,7 @@ function sendGlobalNotification_(message, adminEmail) {
   if (expiredRowIndexes.size) {
     const expiredTokens = new Set(
       Array.from(expiredRowIndexes).map((rowIndex) =>
-        String(rows[rowIndex - 2][0]),
+        String(tokenRows.find((row) => row.rowIndex === rowIndex)?.token || ""),
       ),
     );
     withScriptLock_(() => {
@@ -510,10 +538,92 @@ function sendGlobalNotification_(message, adminEmail) {
     success: sentCount > 0 || failedCount === 0,
     sentCount: sentCount,
     failedCount: failedCount,
+    failureReasons: Array.from(failureReasons).sort(),
+    code: sentCount === 0 ? "PUSH_DELIVERY_FAILED" : "",
     message: failedCount && sentCount === 0
       ? "تعذر تسليم الرسالة إلى أي جهاز."
       : "",
   };
+}
+
+function installAttendanceOpenNotificationTrigger() {
+  const handler = "checkAttendanceOpenAndNotify_";
+  const existing = ScriptApp.getProjectTriggers().some(
+    (trigger) => trigger.getHandlerFunction() === handler,
+  );
+  if (!existing) {
+    ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
+  }
+  return { success: true, alreadyInstalled: existing };
+}
+
+function checkAttendanceOpenAndNotify_() {
+  const now = new Date();
+  const settings = getSettings();
+  const occurrence = meetingOccurrenceAt_(now, settings);
+  if (!occurrence) return { success: true, sentCount: 0, skipped: true };
+
+  const properties = PropertiesService.getScriptProperties();
+  const stateKey = ATTENDANCE_OPEN_NOTIFICATION_STATE_KEY_;
+  const claim = withScriptLock_(() => {
+    let state = null;
+    const savedState = properties.getProperty(stateKey);
+    if (savedState) {
+      try {
+        state = JSON.parse(savedState);
+      } catch (error) {
+        console.warn("Could not parse attendance notification state.", error);
+      }
+    }
+    if (state?.sessionDate === occurrence.dateKey && state.status === "sent")
+      return { claimed: false };
+    if (
+      state?.sessionDate === occurrence.dateKey &&
+      state.status === "sending" &&
+      now.getTime() - Number(state.startedAt) < 10 * 60 * 1000
+    ) return { claimed: false };
+    properties.setProperty(stateKey, JSON.stringify({
+      sessionDate: occurrence.dateKey,
+      status: "sending",
+      startedAt: now.getTime(),
+    }));
+    return { claimed: true };
+  });
+  if (claim.success === false) return claim;
+  if (!claim.claimed) return { success: true, sentCount: 0, skipped: true };
+
+  let result;
+  try {
+    result = sendGlobalNotification_(
+      "Attendance is open now.",
+      "attendance-window-trigger",
+      "Attendance is open",
+      "currentAttendeesView",
+    );
+  } catch (error) {
+    withScriptLock_(() => properties.deleteProperty(stateKey));
+    throw error;
+  }
+  withScriptLock_(() => {
+    if (result.success && result.sentCount > 0) {
+      properties.setProperty(stateKey, JSON.stringify({
+        sessionDate: occurrence.dateKey,
+        status: "sent",
+      }));
+    } else {
+      properties.deleteProperty(stateKey);
+    }
+  });
+  if (!result.success || result.failedCount) {
+    console.warn(
+      "Attendance-open notification delivery was incomplete.",
+      result.code || "",
+      result.sentCount || 0,
+      result.failedCount || 0,
+      result.failureReasons || [],
+    );
+  }
+  return result;
 }
 
 const OFFLINE_EVENT_PROPERTY_PREFIX_ = "OFFLINE_EVENT_";
