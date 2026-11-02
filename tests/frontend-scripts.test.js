@@ -152,6 +152,24 @@ test("birthdays default to a week and WhatsApp sharing uses a saved phone when a
   assert.match(views, /birthdayDaysAgo/);
   assert.match(views, /birthdayDayNumber\(occurrence\) - birthdayDayNumber\(today\)/);
   assert.match(views, /function resetBirthdayDateFilter\(\)/);
+  const timingLabelSource =
+    views.match(/function birthdayTimingLabel\(daysUntil\) \{[\s\S]*?\n\}/)?.[0] || "";
+  const timingContext = vm.createContext({
+    currentLang: "en",
+    translations: {
+      ar: { birthdayDaysAgo: "منذ {days} يوم", birthdayInDays: "بعد {days} يوم" },
+      en: { birthdayDaysAgo: null, birthdayInDays: null },
+    },
+  });
+  vm.runInContext(timingLabelSource, timingContext);
+  assert.equal(vm.runInContext("birthdayTimingLabel(-3)", timingContext), "منذ 3 يوم");
+  assert.equal(vm.runInContext("birthdayTimingLabel(2)", timingContext), "بعد 2 يوم");
+
+  const pngExportFlow =
+    views.match(/async function downloadAttendancePng\(date, type\) \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(pngExportFlow, /label\.textContent = translations\[currentLang\]\.downloadingAttendanceFile/);
+  assert.match(pngExportFlow, /button\.setAttribute\("aria-busy", "true"\)/);
+  assert.match(pngExportFlow, /label\.textContent = previousLabel/);
   assert.match(scanner, /openCardPreview\(item\.fileId, item\.driveUrl, item\.name, item\.phone\)/);
   assert.match(cards, /function openCardWhatsApp\(phone = ""\)/);
   assert.match(cards, /const firstName = String\(activePreviewCard\.name \|\| ""\)\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);

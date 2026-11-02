@@ -1024,15 +1024,7 @@ function renderBirthdays(now = new Date()) {
     if (!fromValue && !toValue) {
       timing.textContent = person.daysUntil === 0
         ? translations[currentLang].birthdayToday
-        : person.daysUntil < 0
-          ? translations[currentLang].birthdayDaysAgo.replace(
-              "{days}",
-              String(Math.abs(person.daysUntil)),
-            )
-          : translations[currentLang].birthdayInDays.replace(
-              "{days}",
-              String(person.daysUntil),
-            );
+        : birthdayTimingLabel(person.daysUntil);
       row.append(name, date, timing);
     } else {
       row.append(name, date);
@@ -1040,6 +1032,12 @@ function renderBirthdays(now = new Date()) {
     panel.appendChild(row);
   });
   container.replaceChildren(panel);
+}
+
+function birthdayTimingLabel(daysUntil) {
+  const key = daysUntil < 0 ? "birthdayDaysAgo" : "birthdayInDays";
+  const template = translations[currentLang]?.[key] || translations.ar[key];
+  return template.replace("{days}", String(Math.abs(daysUntil)));
 }
 
 function applyBirthdayDateFilter() {
@@ -2178,9 +2176,12 @@ async function runAttendanceExport(event) {
 async function downloadAttendancePng(date, type) {
   if (attendanceExportInFlight) return;
   const button = document.getElementById("attendanceExportSubmit");
+  const label = button.querySelector("span") || button;
+  const previousLabel = label.textContent;
   attendanceExportInFlight = true;
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
+  label.textContent = translations[currentLang].downloadingAttendanceFile;
   try {
     const result = await apiCall("get_attendance_day", { date });
     if (!result || !result.success || !Array.isArray(result.people))
@@ -2280,6 +2281,7 @@ async function downloadAttendancePng(date, type) {
     attendanceExportInFlight = false;
     button.disabled = false;
     button.removeAttribute("aria-busy");
+    label.textContent = previousLabel;
   }
 }
 
