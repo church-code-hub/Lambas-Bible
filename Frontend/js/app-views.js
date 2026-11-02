@@ -469,6 +469,7 @@ function recordAppNotification(key, title, body, viewId = "") {
 function renderAppNotifications() {
   const container = document.getElementById("notificationResults");
   if (!container) return;
+  updatePushPermissionControl();
   const composer = document.getElementById("globalNotificationComposer");
   if (composer) composer.hidden = currentUser?.isOwner !== true;
   const notifications = getAppNotifications();
@@ -517,6 +518,12 @@ function renderAppNotifications() {
     panel.appendChild(row);
   });
   container.replaceChildren(panel);
+}
+
+function updatePushPermissionControl() {
+  const button = document.getElementById("enableBrowserNotificationsButton");
+  if (!button || typeof Notification === "undefined") return;
+  button.hidden = Notification.permission === "granted";
 }
 
 function markAppNotificationsRead() {
@@ -634,6 +641,7 @@ async function enablePushNotifications() {
     );
   } finally {
     pushEnableInFlight = false;
+    updatePushPermissionControl();
     if (button) {
       button.disabled = false;
       button.removeAttribute("aria-busy");
@@ -660,6 +668,8 @@ async function sendGlobalNotification() {
   try {
     const result = await apiCall("send_global_notification", { message });
     if (!result || !result.success) {
+      const isPermissionDenied =
+        result?.failureReasons?.includes("PERMISSION_DENIED");
       const errorKey = {
         NO_PUSH_SUBSCRIPTIONS: "globalNotificationNoDevices",
         PUSH_NOT_CONFIGURED: "globalNotificationPushNotConfigured",
@@ -668,11 +678,16 @@ async function sendGlobalNotification() {
       const reasons = Array.isArray(result?.failureReasons)
         ? result.failureReasons.join(", ")
         : "";
-      const errorMessage =
-        translations[currentLang][errorKey] ||
+      const errorMessage = isPermissionDenied
+        ? translations[currentLang].globalNotificationPermissionDenied
+        : translations[currentLang][errorKey] ||
         result?.message ||
         translations[currentLang].globalNotificationFailed;
-      throw new Error(reasons ? `${errorMessage} (${reasons})` : errorMessage);
+      throw new Error(
+        !isPermissionDenied && reasons
+          ? `${errorMessage} (${reasons})`
+          : errorMessage,
+      );
     }
     input.value = "";
     const sentMessage = result.failedCount

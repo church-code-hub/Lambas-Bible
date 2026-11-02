@@ -96,9 +96,14 @@ test("laptop scan replaces the camera with processing and result states", () => 
   assert.match(feedback, /result\?\.name/);
   assert.match(feedback, /paymentScanResult/);
   assert.doesNotMatch(feedback, /paymentScanFeedbackChecking|pending/);
-  assert.match(feedback, /playPaymentScanTone\(success\)/);
+  assert.doesNotMatch(feedback, /!isLaptopScanMode/);
+  assert.match(feedback, /playPaymentScanTone\(result\)/);
+  assert.match(scanner, /\[520, 390\]/);
+  assert.match(scanner, /\[300, 210, 150\]/);
   assert.match(feedback, /setTimeout\(\(\) => \{[\s\S]*?startLiveScanner\(\)[\s\S]*?\}, 2000\);/);
   assert.match(scanner, /refreshAttendanceContext\(true\)/);
+  assert.match(html, /id="scanCameraPlaceholder"/);
+  assert.match(html, /id="cameraStatus" data-i18n="cameraStarting"/);
   assert.match(scanner, /function setScanModePreference\(mode\)/);
 });
 
@@ -125,6 +130,7 @@ test("global push is opt-in, owner-only, and handled by the service worker", () 
   assert.match(views, /async function enablePushNotifications\(\)/);
   assert.match(html, /id="enableBrowserNotificationsButton"/);
   assert.match(views, /if \(pushEnableInFlight\) return/);
+  assert.match(views, /button\.hidden = Notification\.permission === "granted"/);
   assert.match(views, /messaging\.getToken/);
   assert.match(views, /apiCall\("register_push_token"/);
   assert.match(views, /async function sendGlobalNotification\(\)/);
@@ -141,6 +147,7 @@ test("global push is opt-in, owner-only, and handled by the service worker", () 
   assert.match(workflow, /actions\/deploy-pages@v5/);
   assert.match(workflow, /actions\/upload-pages-artifact@v5/);
   assert.match(views, /Push configuration is missing from this deployed app/);
+  assert.match(views, /globalNotificationPermissionDenied/);
 });
 
 test("push permission is requested only while the browser permission is undecided", async () => {
@@ -203,20 +210,19 @@ test("birthdays default to a week and WhatsApp sharing uses a saved phone when a
   assert.match(pngExportFlow, /button\.setAttribute\("aria-busy", "true"\)/);
   assert.match(pngExportFlow, /label\.textContent = previousLabel/);
   assert.match(scanner, /openCardPreview\(item\.fileId, item\.driveUrl, item\.name, item\.phone\)/);
-  assert.match(cards, /function openCardWhatsApp\(phone = ""\)/);
-  assert.match(cards, /const firstName = name\.split\(\/\\s\+\/\)\[0\]/);
-  assert.match(cards, /https:\/\/wa\.me\//);
-  const normalizePhoneSource =
-    cards.match(/function normalizeWhatsAppPhone\(phone = ""\) \{[\s\S]*?\n\}/)?.[0] || "";
-  const phoneContext = vm.createContext({});
-  vm.runInContext(normalizePhoneSource, phoneContext);
-  assert.equal(vm.runInContext('normalizeWhatsAppPhone("01012345678")', phoneContext), "201012345678");
-  assert.equal(vm.runInContext('normalizeWhatsAppPhone("+201012345678")', phoneContext), "201012345678");
+  assert.match(cards, /function openCardWhatsApp\(\)/);
+  assert.match(cards, /const firstName =\s*String\(activePreviewCard\.name \|\| ""\)\.trim\(\)\.split\(\/\\s\+\/\)\[0\]/);
   const cardShareFlow =
-    cards.match(/async function openCardWhatsApp\(phone = ""\) \{[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(cardShareFlow, /navigator\.share\(\{[\s\S]*?files: \[file\]/);
-  assert.doesNotMatch(cardShareFlow, /activePreviewCard\.driveUrl/);
+    cards.match(/async function openCardWhatsApp\(\) \{[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(cardShareFlow, /new File\(\[blob\], `\$\{fileName\}\.png`, \{ type: "image\/png" \}\)/);
+  assert.match(cardShareFlow, /const shareData = \{ files: \[file\], text \}/);
+  assert.match(cardShareFlow, /navigator\.canShare\(shareData\)/);
+  assert.match(cardShareFlow, /await navigator\.share\(shareData\)/);
   assert.match(cardShareFlow, /downloadPreviewCardImage\(blob\)/);
+  assert.match(cardShareFlow, /error\.name === "AbortError"/);
+  assert.doesNotMatch(cardShareFlow, /wa\.me|window\.open/);
+  assert.doesNotMatch(cardShareFlow, /activePreviewCard\.driveUrl/);
+  assert.doesNotMatch(html, /whatsAppPhoneDialog|whatsAppPhoneInput/);
   assert.match(html, /class="notification-app-icon" src="\.\/Assets\/icons\/icon-192\.png"/);
   assert.match(backend, /phone: String\(data\[i\]\[3\] \|\| ""\)/);
 
@@ -377,7 +383,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v88/);
+  assert.match(serviceWorker, /lambas-bible-shell-v90/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);

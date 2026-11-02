@@ -616,18 +616,6 @@
         </form>
       </dialog>
 
-      <dialog id="whatsAppPhoneDialog" class="attendance-action-dialog" aria-labelledby="whatsAppPhoneDialogTitle">
-        <form class="attendance-action-dialog-content" onsubmit="submitWhatsAppPhone(event)">
-          <h2 id="whatsAppPhoneDialogTitle" data-i18n="whatsAppPhoneTitle">WhatsApp number</h2>
-          <label for="whatsAppPhoneInput" data-i18n="whatsAppPhoneLabel">Phone number (optional)</label>
-          <input id="whatsAppPhoneInput" type="tel" inputmode="tel" autocomplete="tel" />
-          <div class="attendance-action-dialog-buttons">
-            <button class="btn" type="submit" data-i18n="whatsAppContinue">Continue to WhatsApp</button>
-            <button class="btn secondary" type="button" onclick="closeWhatsAppPhoneDialog()" data-i18n="cancelEmergencyCheckout">Cancel</button>
-          </div>
-        </form>
-      </dialog>
-
       <dialog id="settingsExitDialog" class="settings-exit-dialog" aria-labelledby="settingsExitTitle" aria-describedby="settingsExitMessage">
         <div class="settings-exit-dialog-content">
           <h2 id="settingsExitTitle" data-i18n="unsavedSettingsTitle">Unsaved changes</h2>
@@ -721,8 +709,18 @@
           <i class="fa-solid fa-qrcode"></i>
           <span data-i18n="scanQrTitle">مسح QR</span>
         </h2>
-        <div class="camera-wrapper">
+        <div class="camera-wrapper scan-camera-frame">
           <div id="qr-reader"></div>
+          <div id="scanCameraPlaceholder" class="scan-camera-placeholder" role="status" aria-live="polite">
+            <div class="scan-camera-orbit" aria-hidden="true">
+              <i class="fa-solid fa-qrcode"></i>
+            </div>
+            <strong id="cameraStatus" data-i18n="cameraStarting">Starting camera...</strong>
+            <span data-i18n="scanCameraHint">Keep the QR code inside the camera frame.</span>
+            <button id="restartCameraPlaceholderButton" class="btn secondary" type="button" onclick="restartScanner()" data-i18n="restartCamera" hidden>
+              Restart camera
+            </button>
+          </div>
           <div id="scanProcessingOverlay" class="scan-processing-overlay" role="status" aria-live="polite" hidden>
             <div class="scan-processing-spinner" aria-hidden="true"></div>
             <strong data-i18n="attendanceScanProcessing">Checking...</strong>
@@ -733,7 +731,7 @@
             <span class="payment-scan-result-message"></span>
           </div>
         </div>
-        <div class="camera-status" id="cameraStatus" data-i18n="cameraStarting">
+        <div class="camera-status" id="cameraStatusText" data-i18n="cameraStarting" aria-live="polite">
           جاري تشغيل الكاميرا...
         </div>
         <button
@@ -1214,12 +1212,12 @@
     </div>
 
   <script src="./js/app-state.js?v=77"></script>
-  <script src="./js/app-i18n.js?v=80"></script>
+  <script src="./js/app-i18n.js?v=81"></script>
   <script src="./js/app-core.js?v=73"></script>
   <script src="./js/app-offline.js?v=76"></script>
   <script src="./js/app-views.js?v=84"></script>
   <script src="./js/app-auth.js?v=75"></script>
-  <script src="./js/app-scanner-search.js?v=76"></script>
-  <script src="./js/app-cards-admin.js?v=76"></script>
+  <script src="./js/app-scanner-search.js?v=77"></script>
+  <script src="./js/app-cards-admin.js?v=77"></script>
   </body>
 </html>

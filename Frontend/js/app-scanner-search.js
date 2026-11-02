@@ -1,7 +1,21 @@
 function setCameraStatus(translationKey) {
   const status = document.getElementById("cameraStatus");
+  const statusText = translations[currentLang][translationKey];
   status.setAttribute("data-i18n", translationKey);
-  status.textContent = translations[currentLang][translationKey];
+  status.textContent = statusText;
+  const statusTextElement = document.getElementById("cameraStatusText");
+  statusTextElement.setAttribute("data-i18n", translationKey);
+  statusTextElement.textContent = statusText;
+  const placeholder = document.getElementById("scanCameraPlaceholder");
+  const isActive = translationKey === "cameraActive";
+  placeholder.hidden = isActive;
+  placeholder.dataset.state = isActive
+    ? "active"
+    : translationKey === "cameraStarting"
+      ? "starting"
+      : "error";
+  document.getElementById("restartCameraPlaceholderButton").hidden =
+    isActive || translationKey === "cameraStarting";
 }
 
 function loadQrLibrary() {
@@ -39,23 +53,33 @@ function preparePaymentScanAudio() {
   }
 }
 
-function playPaymentScanTone(success) {
+function playPaymentScanTone(result) {
   const audioContext = preparePaymentScanAudio();
   if (!audioContext) return;
   try {
-    const oscillator = audioContext.createOscillator();
-    const gain = audioContext.createGain();
     const now = audioContext.currentTime;
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(success ? 660 : 190, now);
-    if (success) oscillator.frequency.setValueAtTime(880, now + 0.12);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.065, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-    oscillator.connect(gain);
-    gain.connect(audioContext.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.25);
+    const kind = typeof result === "boolean"
+      ? result ? "success" : "error"
+      : result?.kind || "error";
+    const frequencies = ["success", "late", "out"].includes(kind)
+      ? [660, 880]
+      : ["warn", "closed", "queued"].includes(kind)
+        ? [520, 390]
+        : [300, 210, 150];
+    frequencies.forEach((frequency, index) => {
+      const start = now + index * 0.12;
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.055, start + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.105);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.11);
+    });
   } catch (error) {
     console.warn("Could not play the scan result tone.", error);
   }
@@ -63,7 +87,6 @@ function playPaymentScanTone(success) {
 
 function showPaymentScanFeedback(result, expectedGeneration) {
   if (
-    !isLaptopScanMode ||
     currentActiveViewId !== "scanView" ||
     (expectedGeneration && expectedGeneration !== scanRequestGeneration)
   ) {
@@ -109,7 +132,7 @@ function showPaymentScanFeedback(result, expectedGeneration) {
     translateText(message || "paymentScanFailed");
   resultPanel.closest(".camera-wrapper")?.classList.add("has-scan-result");
   resultPanel.hidden = false;
-  playPaymentScanTone(success);
+  playPaymentScanTone(result);
   paymentFeedbackTimer = window.setTimeout(() => {
     if (expectedGeneration && expectedGeneration !== scanRequestGeneration) return;
     resultPanel.hidden = true;
@@ -244,7 +267,15 @@ async function startLiveScanner() {
     setCameraStatus("cameraActive");
   } catch (err) {
     isScannerRunning = false;
-    setCameraStatus(window.Html5Qrcode ? "cameraUnavailable" : "cameraError");
+    const permissionDenied = err?.name === "NotAllowedError" ||
+      /permission denied|not allowed/i.test(String(err?.message || ""));
+    setCameraStatus(
+      permissionDenied
+        ? "cameraPermissionDenied"
+        : window.Html5Qrcode
+          ? "cameraUnavailable"
+          : "cameraError",
+    );
   } finally {
     isScannerStarting = false;
     if (
@@ -313,18 +344,7 @@ function onScanSuccess(text) {
     })
     .finally(() => {
       if (requestGeneration !== scanRequestGeneration) return;
-      if (!isLaptopScanMode) {
-        hideScanProcessing();
-        isProcessingScan = false;
-        if (currentActiveViewId === "scanView") startLiveScanner();
-      } else if (
-        !paymentFeedbackTimer &&
-        !showPaymentScanFeedback({
-          kind: "error",
-          title: "paymentScanFailed",
-          message: "paymentScanFailed",
-        }, requestGeneration)
-      ) {
+      if (!paymentFeedbackTimer) {
         hideScanProcessing();
         isProcessingScan = false;
         if (currentActiveViewId === "scanView") startLiveScanner();
@@ -798,16 +818,11 @@ async function processAttendanceId(
               attendanceResult.kind === "closed"
             ? "info"
             : "success";
-      if (!isLaptopScanMode)
-        playPaymentScanTone(["success", "late", "out"].includes(attendanceResult.kind));
-      const laptopFeedbackShown = showPaymentScanFeedback(
+      const scanFeedbackShown = showPaymentScanFeedback(
         attendanceResult,
         event.scanGeneration,
       );
-      if (!laptopFeedbackShown) {
-        if (isLaptopScanMode) {
-          playPaymentScanTone(["success", "late", "out"].includes(attendanceResult.kind));
-        }
+      if (!scanFeedbackShown) {
         updateAttendanceToast(
           toast,
           attendanceResult,
@@ -829,7 +844,7 @@ async function processAttendanceId(
           message: "Connection error.",
           name: event.personName,
         }, event.scanGeneration)) {
-        playPaymentScanTone(false);
+          playPaymentScanTone({ kind: "error" });
         updateAttendanceToast(toast, null, event, "Connection error.", "error");
       }
     }
@@ -886,7 +901,7 @@ async function processScannedText(text, eventContext = {}) {
       eventContext.scanGeneration,
     ))
       return;
-    playPaymentScanTone(false);
+    playPaymentScanTone({ kind: "error" });
     showToast(
       [
         translateText("Invalid Code"),

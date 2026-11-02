@@ -31,41 +31,7 @@ function resolveHighQualityDriveImageUrl(driveUrl) {
 }
 
 function shareCurrentCardImage() {
-  if (activePreviewCard.phone) {
-    openCardWhatsApp(activePreviewCard.phone);
-    return;
-  }
-  const dialog = document.getElementById("whatsAppPhoneDialog");
-  document.getElementById("whatsAppPhoneInput").value = "";
-  dialog.showModal();
-  document.getElementById("whatsAppPhoneInput").focus();
-}
-
-function closeWhatsAppPhoneDialog() {
-  const dialog = document.getElementById("whatsAppPhoneDialog");
-  if (dialog.open) dialog.close();
-}
-
-function submitWhatsAppPhone(event) {
-  event.preventDefault();
-  const phone = document.getElementById("whatsAppPhoneInput").value.trim();
-  if (phone && !/^[+0-9().\-\s]+$/.test(phone)) {
-    showToast(translations[currentLang].phoneNumberInvalid, "error");
-    return;
-  }
-  closeWhatsAppPhoneDialog();
-  openCardWhatsApp(phone);
-}
-
-function normalizeWhatsAppPhone(phone = "") {
-  const rawPhone = String(phone).trim();
-  let digits = rawPhone.replace(/\D/g, "");
-  if (!digits) return "";
-  if (rawPhone.startsWith("+")) return digits;
-  if (digits.startsWith("00")) return digits.slice(2);
-  if (digits.startsWith("20")) return digits;
-  if (digits.startsWith("0")) digits = digits.slice(1);
-  return `20${digits}`;
+  openCardWhatsApp();
 }
 
 function getPreviewCardImageBlob() {
@@ -104,62 +70,28 @@ function downloadPreviewCardImage(blob) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-async function openCardWhatsApp(phone = "") {
+async function openCardWhatsApp() {
+  const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
+  const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
+  const firstName =
+    String(activePreviewCard.name || "").trim().split(/\s+/)[0] || "";
+  const text = `${prefix}${firstName}${suffix}`.trim();
   try {
     const blob = await getPreviewCardImageBlob();
-    const name = String(activePreviewCard.name || "").trim();
-    const firstName = name.split(/\s+/)[0] || "";
-    const prefix = localStorage.getItem("whatsapp_message_prefix") || "";
-    const suffix = localStorage.getItem("whatsapp_message_suffix") || "";
-    const text = `${prefix}${firstName}${suffix}`.trim();
-    const hasFileShareApi =
-      typeof File === "function" &&
-      typeof navigator.share === "function" &&
-      typeof navigator.canShare === "function";
-    if (!hasFileShareApi) {
+    const fileName = String(activePreviewCard.name || "qr-card")
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .trim() || "qr-card";
+    const file = new File([blob], `${fileName}.png`, { type: "image/png" });
+    const shareData = { files: [file], text };
+    if (
+      !navigator.share ||
+      (navigator.canShare && !navigator.canShare(shareData))
+    ) {
       downloadPreviewCardImage(blob);
-      const digits = normalizeWhatsAppPhone(phone);
-      const target = digits
-        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
-        : `https://wa.me/?text=${encodeURIComponent(text)}`;
-      const popup = window.open(target, "_blank");
-      if (popup) popup.opener = null;
-      else showToast(translations[currentLang].whatsAppPopupBlocked, "error");
       showToast(translations[currentLang].whatsAppImageShareUnavailable, "info");
       return;
     }
-    const file = new File(
-      [blob],
-      `${name.replace(/[\\/:*?"<>|]+/g, " ").trim() || "qr-card"}.png`,
-      { type: "image/png" },
-    );
-    const fileShareSupported =
-      navigator.canShare({ files: [file] });
-    if (!fileShareSupported) {
-      downloadPreviewCardImage(blob);
-      const digits = normalizeWhatsAppPhone(phone);
-      const target = digits
-        ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
-        : `https://wa.me/?text=${encodeURIComponent(text)}`;
-      const popup = window.open(target, "_blank");
-      if (popup) popup.opener = null;
-      else showToast(translations[currentLang].whatsAppPopupBlocked, "error");
-      showToast(translations[currentLang].whatsAppImageShareUnavailable, "info");
-      return;
-    }
-
-    await navigator.share({
-      files: [file],
-      title: name,
-      ...(text ? { text } : {}),
-    });
-    if (activePreviewCard.fileId) {
-      const result = await apiCall("share_move_card", {
-        fileId: activePreviewCard.fileId,
-      });
-      if (!result || !result.success)
-        throw new Error(result?.message || translations[currentLang].offlineSyncFailed);
-    }
+    await navigator.share(shareData);
   } catch (error) {
     if (error.name === "AbortError") return;
     showToast(
