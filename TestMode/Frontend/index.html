@@ -1,0 +1,1336 @@
+<!doctype html>
+<html dir="rtl" lang="ar" id="htmlRoot">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Lambas Bible</title>
+
+    <script src="./js/storage-namespace.js"></script>
+    <script src="./js/config.js"></script>
+    <script>
+      (() => {
+        const savedTheme = window.LAMBAS_TEST_STORAGE_READY === true
+          ? localStorage.getItem("app_theme")
+          : null;
+        const systemTheme = window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+        document.documentElement.dataset.theme = savedTheme || systemTheme;
+      })();
+    </script>
+    <script src="https://accounts.google.com/gsi/client" defer></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0d1b2a" />
+    <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
+    <link rel="stylesheet" href="./css/styles.css?v=86" />
+  </head>
+  <body data-theme="dark">
+    <div class="ambient-blobs" aria-hidden="true">
+      <span class="ambient-blob ambient-blob-pink"></span>
+      <span class="ambient-blob ambient-blob-blue"></span>
+      <span class="ambient-blob ambient-blob-green"></span>
+      <span class="ambient-blob ambient-blob-violet"></span>
+    </div>
+    <section id="startupScreen" class="startup-screen" role="status" aria-label="Lambas Bible" aria-hidden="false">
+      <div class="startup-content">
+        <div class="startup-mark">
+          <span class="startup-gold-orbit" aria-hidden="true"></span>
+          <span class="startup-gold-spark startup-gold-spark-one" aria-hidden="true"></span>
+          <span class="startup-gold-spark startup-gold-spark-two" aria-hidden="true"></span>
+          <img src="Assets/icons/icon-192.png" alt="" />
+        </div>
+        <h1>Lambas Bible</h1>
+        <div class="loader-bars startup-loader-bars" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+      <p class="startup-producer">Made by Church Code Hub</p>
+    </section>
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+    <div
+      id="connectionStatusBanner"
+      class="connection-status-banner"
+      role="status"
+      aria-live="polite"
+      hidden
+    ></div>
+    <header class="top-app-bar">
+      <div class="brand">
+        <img src="Assets/icons/icon-192.png" alt="" aria-hidden="true" />
+        <span>Lambas Bible</span>
+        <span class="test-mode-indicator">TEST MODE</span>
+      </div>
+      <a
+        class="test-mode-return"
+        id="testModeReturnLink"
+        href="../"
+        aria-label="Return to the main application"
+        title="Return to the main application"
+      >Main app</a>
+      <div class="top-actions">
+        <div class="toolbar-menu-wrap">
+          <button
+            type="button"
+            class="toolbar-menu-toggle"
+            id="toolbarMenuButton"
+            onclick="toggleToolbarMenu()"
+            aria-haspopup="true"
+            aria-controls="toolbarMenu"
+            aria-expanded="false"
+            data-i18n-aria-label="openOptionsMenu"
+            aria-label="Open options"
+            hidden
+          >
+            <span class="toolbar-avatar-wrap">
+              <img id="uAvatar" class="user-avatar" src="" alt="" aria-hidden="true" />
+              <span id="uAvatarFallback" class="user-avatar-fallback" aria-hidden="true" hidden>
+                <i class="fa-solid fa-user"></i>
+              </span>
+            </span>
+            <span id="uName" class="toolbar-user-name">Name</span>
+            <i class="fa-solid fa-chevron-down toolbar-menu-chevron" aria-hidden="true"></i>
+            <span id="syncMenuBadge" class="sync-menu-badge" aria-hidden="true" hidden></span>
+          </button>
+          <nav id="toolbarMenu" class="toolbar-menu" aria-label="App options" hidden>
+            <div class="toolbar-menu-account">
+              <span class="toolbar-menu-account-label" data-i18n="signedInAs">Signed in as</span>
+              <span id="uEmail" class="user-email">email@example.com</span>
+            </div>
+            <button type="button" class="toolbar-menu-item" onclick="openNotificationsView()"
+              title="الإشعارات" data-i18n-title="notificationsTitle" aria-label="الإشعارات" data-i18n-aria-label="notificationsTitle">
+              <span class="toolbar-menu-icon-wrap">
+                <img src="./Assets/icons/icon-192.png" alt="" aria-hidden="true" />
+                <span id="notificationsMenuBadge" class="sync-now-count" aria-hidden="true" hidden></span>
+              </span>
+              <span data-i18n="notificationsTitle">الإشعارات</span>
+            </button>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="syncNowToolbarButton"
+              data-online-only
+              onclick="syncFromToolbar()"
+              title="مزامنة الآن"
+              data-i18n-title="syncNow"
+              aria-label="مزامنة الآن"
+              data-i18n-aria-label="syncNow"
+            >
+              <span class="toolbar-menu-icon-wrap">
+                <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                <span id="syncNowCount" class="sync-now-count" aria-hidden="true" hidden></span>
+              </span>
+              <span data-i18n="syncNow">مزامنة الآن</span>
+            </button>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="adminToolbarButton"
+              data-online-only
+              onclick="openAdminSettings()"
+              title="إدارة الخدام"
+              data-i18n-title="adminTooltip"
+            >
+              <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+              <span data-i18n="adminTooltip">إدارة الخدام</span>
+            </button>
+            <button
+              type="button"
+              class="toolbar-menu-item"
+              id="appSettingsToolbarButton"
+              onclick="openAppSettings()"
+              title="إعدادات التطبيق"
+              data-i18n-title="appSettingsTitle"
+              aria-label="إعدادات التطبيق"
+              data-i18n-aria-label="appSettingsTitle"
+            >
+              <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+              <span data-i18n="appSettingsTitle">إعدادات التطبيق</span>
+            </button>
+            <button type="button" class="toolbar-menu-item toolbar-menu-logout" onclick="logoutUser()">
+              <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+              <span data-i18n="logout">خروج</span>
+            </button>
+          </nav>
+        </div>
+      </div>
+    </header>
+
+    <button
+      type="button"
+      id="homeBtn"
+      class="icon-btn home-btn"
+      style="display: none"
+      onclick="handleHomeNavigation()"
+      title="الرئيسية"
+      data-i18n-title="home"
+      aria-label="الرئيسية"
+      data-i18n-aria-label="home"
+    >
+      <i class="fa-solid fa-house" aria-hidden="true"></i>
+    </button>
+
+    <div class="container" id="mainContainer">
+      <div id="loader" class="loader-overlay" role="status" aria-live="polite">
+        <div class="tech-loader">
+          <div></div>
+          <div></div>
+          <span></span>
+          <span></span>
+        </div>
+        <div id="loaderText" data-i18n="loadingData">جارٍ تحميل البيانات...</div>
+      </div>
+
+      <!-- 0. Login View -->
+      <div id="loginView" class="login-view">
+        <div class="login-mark" aria-hidden="true">
+          <img src="Assets/icons/icon-192.png" alt="" />
+        </div>
+        <h1 class="login-title">Lambas Bible</h1>
+        <p class="login-instruction" data-i18n="loginSub">
+          يلزم تسجيل الدخول للمتابعة
+        </p>
+        <div class="login-signin">
+          <div id="g_id_signin"></div>
+        </div>
+        <div
+          id="loginError"
+          style="
+            color: #ef4444;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 12px;
+            display: none;
+          "
+        ></div>
+      </div>
+
+      <!-- 1. Dashboard View -->
+      <div id="dashboardView" data-layout="two" data-design="current" style="display: none">
+        <section class="dashboard-welcome">
+          <p class="dashboard-welcome-kicker" data-i18n="dashboardWelcomeKicker">YOUR SERVICE SPACE</p>
+          <h1>
+            <span data-i18n="welcomeBack">Welcome back</span>
+            <span id="dashboardWelcomeName">Name</span>
+          </h1>
+          <p class="dashboard-welcome-copy" data-i18n="dashboardWelcomeCopy">Everything you need for today, in one place.</p>
+          <div class="dashboard-heading-actions">
+            <div class="dashboard-layout-switcher" role="group" data-i18n-aria-label="dashboardLayoutSwitcher"
+              aria-label="Dashboard layout">
+              <button type="button" data-dashboard-layout="one" data-i18n-title="dashboardLayoutOne"
+                data-i18n-aria-label="dashboardLayoutOne" aria-pressed="false" onclick="setDashboardLayout('one')">
+                <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i><span>1</span>
+              </button>
+              <button type="button" data-dashboard-layout="two" data-i18n-title="dashboardLayoutTwo"
+                data-i18n-aria-label="dashboardLayoutTwo" aria-pressed="true" onclick="setDashboardLayout('two')">
+                <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>2</span>
+              </button>
+              <button type="button" data-dashboard-layout="three" data-i18n-title="dashboardLayoutThree"
+                data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
+                <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
+              </button>
+            </div>
+            <section class="dashboard-video" aria-labelledby="dashboardVideoTitle">
+              <h2 id="dashboardVideoTitle" data-i18n="dashboardVideoTitle">Church video</h2>
+              <video
+                controls
+                playsinline
+                preload="metadata"
+                poster="Assets/icons/icon-512.png"
+                aria-labelledby="dashboardVideoTitle"
+              >
+                <source src="Assets/video.mp4" type="video/mp4" />
+                <span data-i18n="dashboardVideoUnsupported">
+                  Video playback is not supported in this browser.
+                </span>
+              </video>
+            </section>
+          </div>
+        </section>
+        <div class="grid dashboard-actions-grid">
+          <button id="tutorialScanAction" class="tile primary" onclick="showView('scanView')">
+            <span class="ico"><i class="fa-solid fa-qrcode"></i></span
+            ><span data-i18n="scanQr">مسح QR</span>
+          </button>
+          <button id="tutorialSearchAction" class="tile" onclick="showView('searchView')">
+            <span class="ico"><i class="fa-solid fa-magnifying-glass"></i></span
+            ><span data-i18n="searchName">تحضير بالاسم</span>
+          </button>
+          <button id="tutorialAddAction" class="tile" onclick="showView('addView')">
+            <span class="ico"><i class="fa-solid fa-user-plus"></i></span
+            ><span data-i18n="addStudent">إضافة مخدوم</span>
+          </button>
+          <button id="tutorialRosterAction" class="tile" data-online-only onclick="openRosterManagement()">
+            <span class="ico"><i class="fa-solid fa-address-book"></i></span
+            ><span data-i18n="manageRoster">إدارة قائمة الأشخاص</span>
+          </button>
+          <button id="birthdaysAction" class="tile" data-online-only onclick="openBirthdaysView()">
+            <span class="ico"><i class="fa-solid fa-cake-candles"></i></span
+            ><span data-i18n="birthdaysTitle">أعياد الميلاد</span>
+          </button>
+          <button id="individualSearchAction" class="tile" data-online-only onclick="openIndividualSearchView()">
+            <span class="ico"><i class="fa-solid fa-magnifying-glass"></i></span
+            ><span data-i18n="individualSearchTitle">بحث عن شخص</span>
+          </button>
+          <button id="tutorialShareAction" class="tile" data-online-only onclick="showView('cardShareView')">
+            <span class="ico"><i class="fa-solid fa-share-nodes"></i></span
+            ><span data-i18n="shareCard">مشاركة كارت QR</span>
+          </button>
+          <button id="tutorialReportsAction" class="tile" data-online-only onclick="openAttendanceReport()">
+            <span class="ico"><i class="fa-solid fa-chart-column"></i></span
+            ><span data-i18n="attendanceReports">تقارير الحضور</span>
+          </button>
+          <button id="tutorialFollowupAction" class="tile" data-online-only onclick="openFollowupView()">
+            <span class="ico"><i class="fa-solid fa-hand-holding-heart"></i></span
+            ><span data-i18n="followupsTitle">الافتقاد</span>
+          </button>
+          <button id="tutorialSheetAction" class="tile" data-online-only onclick="openSheet()">
+            <span class="ico"><i class="fa-solid fa-table"></i></span
+            ><span data-i18n="openSheet">فتح الشيت</span>
+          </button>
+          <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
+            <span class="ico"><i class="fa-solid fa-people-group"></i></span
+            ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
+            <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
+          </button>
+          <button id="tutorialScheduleAction" class="tile" data-online-only onclick="openScheduleSettings()">
+            <span class="ico"><i class="fa-solid fa-gear"></i></span
+            ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="appSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-sliders"></i>
+          <span data-i18n="appSettingsTitle">إعدادات التطبيق</span>
+        </h2>
+        <section class="app-preference-group" aria-labelledby="appLanguageTitle">
+          <h3 id="appLanguageTitle" data-i18n="languageSettingTitle">اللغة</h3>
+          <div class="preference-options" role="group" aria-labelledby="appLanguageTitle">
+            <button id="languageArabicOption" type="button" class="preference-option" onclick="setLanguage('ar')">
+              <span>ع</span><span data-i18n="arabicLanguage">العربية</span>
+            </button>
+            <button id="languageEnglishOption" type="button" class="preference-option" onclick="setLanguage('en')">
+              <span>EN</span><span data-i18n="englishLanguage">English</span>
+            </button>
+          </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="appThemeTitle">
+          <h3 id="appThemeTitle" data-i18n="themeSettingTitle">المظهر</h3>
+          <div class="preference-options" role="group" aria-labelledby="appThemeTitle">
+            <button id="themeLightOption" type="button" class="preference-option" onclick="applyTheme('light')">
+              <i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">فاتح</span>
+            </button>
+            <button id="themeDarkOption" type="button" class="preference-option" onclick="applyTheme('dark')">
+              <i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span>
+            </button>
+          </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="scanModeSettingTitle">
+          <h3 id="scanModeSettingTitle" data-i18n="scanModeSettingTitle">Scan mode</h3>
+          <div class="preference-options" role="group" aria-labelledby="scanModeSettingTitle">
+            <button id="regularScanModeOption" type="button" class="preference-option" onclick="setScanModePreference('regular')">
+              <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i><span data-i18n="regularScanMode">Regular mode</span>
+            </button>
+            <button id="laptopScanModeOption" type="button" class="preference-option" onclick="setScanModePreference('laptop')">
+              <i class="fa-solid fa-laptop" aria-hidden="true"></i><span data-i18n="laptopScanMode">Laptop mode</span>
+            </button>
+          </div>
+        </section>
+        <section class="app-preference-group" aria-labelledby="whatsAppTemplateTitle">
+          <h3 id="whatsAppTemplateTitle" data-i18n="whatsAppTemplateTitle">WhatsApp message</h3>
+          <label for="whatsAppMessagePrefix" data-i18n="whatsAppPrefix">Text before the name</label>
+          <textarea id="whatsAppMessagePrefix" rows="3" maxlength="500"></textarea>
+          <label for="whatsAppMessageSuffix" data-i18n="whatsAppSuffix">Text after the name</label>
+          <textarea id="whatsAppMessageSuffix" rows="3" maxlength="500"></textarea>
+          <button class="btn secondary" type="button" onclick="saveWhatsAppMessageTemplate()" data-i18n="saveWhatsAppTemplate">Save WhatsApp message</button>
+        </section>
+        <section class="app-preference-group" aria-labelledby="tutorialPreferenceTitle">
+          <h3 id="tutorialPreferenceTitle" data-i18n="tutorialReopen">الشرح</h3>
+          <button id="tutorialReplayButton" class="btn secondary" type="button" onclick="replayFirstRunTutorial()">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            <span data-i18n="tutorialReplay">إعادة الجولة التعليمية</span>
+          </button>
+        </section>
+        <section class="app-preference-group" aria-labelledby="offlineReadinessTitle">
+          <h3 id="offlineReadinessTitle" data-i18n="offlineReadinessTitle">Offline readiness</h3>
+          <p id="offlineRosterStatus" class="report-note" aria-live="polite"></p>
+          <button class="btn secondary" type="button" data-online-only onclick="manuallyRefreshRosterCache()" data-i18n="refreshOfflineRoster">
+            Refresh offline list
+          </button>
+        </section>
+      </div>
+
+      <div id="rosterView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-address-book"></i>
+          <span data-i18n="manageRoster">Manage people</span>
+        </h2>
+        <label class="roster-search-wrap">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input
+            id="rosterSearchInput"
+            class="roster-search"
+            type="search"
+            data-i18n-aria-label="rosterSearchPlaceholder"
+            data-i18n-placeholder="rosterSearchPlaceholder"
+            placeholder="Search people"
+            oninput="filterRosterManagement()"
+          />
+        </label>
+        <div id="rosterManagementResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <div id="attendeeProfileView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-user"></i>
+          <span data-i18n="attendeeProfileTitle">ملف الشخص</span>
+        </h2>
+        <button class="btn secondary profile-back-button" type="button" onclick="openRosterManagement()">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          <span data-i18n="backToRoster">العودة إلى القائمة</span>
+        </button>
+        <form id="attendeeProfileForm" class="attendee-profile-form" onsubmit="saveAttendeeProfile(event)">
+          <label for="attendeeProfileName" data-i18n="rosterNameLabel">اسم الشخص</label>
+          <input id="attendeeProfileName" type="text" maxlength="120" required />
+          <label for="attendeeProfilePhone" data-i18n="phoneNumberLabel">رقم الهاتف</label>
+          <div class="attendee-profile-phone-row">
+            <input id="attendeeProfilePhone" type="tel" inputmode="tel" maxlength="32" autocomplete="tel" />
+            <button class="icon-btn" type="button" onclick="copyAttendeePhone()" title="نسخ الرقم" data-i18n-title="copyPhone" aria-label="نسخ الرقم" data-i18n-aria-label="copyPhone">
+              <i class="fa-regular fa-copy" aria-hidden="true"></i>
+            </button>
+          </div>
+          <fieldset class="attendee-profile-birthday">
+            <legend data-i18n="birthdayLabel">عيد الميلاد</legend>
+            <label for="attendeeProfileBirthMonth" data-i18n="monthLabel">الشهر</label>
+            <select id="attendeeProfileBirthMonth">
+              <option value="" data-i18n="monthPlaceholder">الشهر</option>
+              <option value="01">01</option><option value="02">02</option>
+              <option value="03">03</option><option value="04">04</option>
+              <option value="05">05</option><option value="06">06</option>
+              <option value="07">07</option><option value="08">08</option>
+              <option value="09">09</option><option value="10">10</option>
+              <option value="11">11</option><option value="12">12</option>
+            </select>
+            <label for="attendeeProfileBirthDay" data-i18n="dayLabel">اليوم</label>
+            <select id="attendeeProfileBirthDay">
+              <option value="" data-i18n="dayPlaceholder">اليوم</option>
+              <option value="01">01</option><option value="02">02</option>
+              <option value="03">03</option><option value="04">04</option>
+              <option value="05">05</option><option value="06">06</option>
+              <option value="07">07</option><option value="08">08</option>
+              <option value="09">09</option><option value="10">10</option>
+              <option value="11">11</option><option value="12">12</option>
+              <option value="13">13</option><option value="14">14</option>
+              <option value="15">15</option><option value="16">16</option>
+              <option value="17">17</option><option value="18">18</option>
+              <option value="19">19</option><option value="20">20</option>
+              <option value="21">21</option><option value="22">22</option>
+              <option value="23">23</option><option value="24">24</option>
+              <option value="25">25</option><option value="26">26</option>
+              <option value="27">27</option><option value="28">28</option>
+              <option value="29">29</option><option value="30">30</option>
+              <option value="31">31</option>
+            </select>
+          </fieldset>
+          <button id="saveAttendeeProfileButton" class="btn" type="submit" data-online-only data-i18n="saveProfile">حفظ الملف</button>
+          <button id="deleteAttendeeProfileButton" class="btn profile-delete-button" type="button" data-online-only
+            onclick="deactivateProfilePerson()" data-i18n="deleteRosterPerson">حذف</button>
+        </form>
+      </div>
+
+      <div id="birthdaysView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-cake-candles"></i>
+          <span data-i18n="birthdaysTitle">أعياد الميلاد</span>
+        </h2>
+        <div class="birthday-date-filter">
+          <label for="birthdayDateFrom" data-i18n="birthdayDateFrom">From</label>
+          <input id="birthdayDateFrom" type="date" />
+          <label for="birthdayDateTo" data-i18n="birthdayDateTo">To</label>
+          <input id="birthdayDateTo" type="date" />
+          <button class="btn secondary" type="button" onclick="applyBirthdayDateFilter()" data-i18n="birthdayApplyFilter">Show dates</button>
+          <button class="btn tertiary" type="button" onclick="resetBirthdayDateFilter()" data-i18n="birthdayResetFilter">This week</button>
+        </div>
+        <div id="birthdayResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <div id="individualPersonView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <span data-i18n="individualSearchTitle">Find a person</span>
+        </h2>
+        <label id="individualSearchLabel" for="individualPersonSearch" data-i18n="individualSearchLabel">Search by name</label>
+        <input
+          id="individualPersonSearch"
+          type="search"
+          autocomplete="off"
+          data-i18n-placeholder="individualSearchLabel"
+          placeholder="Search by name"
+          oninput="filterIndividualPeople()"
+        />
+        <div id="individualPeopleResults" class="report-list" role="region"
+          aria-labelledby="individualSearchLabel" aria-live="polite"></div>
+        <section id="individualProfilePanel" class="report-panel individual-profile-panel"
+          aria-labelledby="individualProfileName" hidden>
+          <div class="individual-profile-heading">
+            <h3 id="individualProfileName"></h3>
+            <small id="individualProfileId"></small>
+          </div>
+          <dl class="individual-profile-details">
+            <div>
+              <dt data-i18n="individualBirthdayLabel">Birthday</dt>
+              <dd id="individualProfileBirthday"></dd>
+            </div>
+            <div>
+              <dt data-i18n="individualPhoneLabel">Phone number</dt>
+              <dd id="individualProfilePhone"></dd>
+            </div>
+            <div>
+              <dt data-i18n="individualRosterStatusLabel">Roster status</dt>
+              <dd id="individualProfileRosterStatus"></dd>
+            </div>
+          </dl>
+        </section>
+        <section id="individualAttendancePanel" class="individual-attendance-panel" hidden
+          aria-labelledby="individualAttendanceHeading">
+          <h3 id="individualAttendanceHeading" data-i18n="individualAttendanceTitle">Individual attendance details</h3>
+          <form id="individualAttendanceRangeForm" class="individual-date-range"
+            onsubmit="loadIndividualAttendance(event)">
+            <label for="individualAttendanceFrom" data-i18n="individualFromDate">From date</label>
+            <input id="individualAttendanceFrom" type="date" required />
+            <label for="individualAttendanceTo" data-i18n="individualToDate">To date</label>
+            <input id="individualAttendanceTo" type="date" required />
+            <button id="individualAttendanceSubmit" class="btn" type="submit"
+              data-online-only data-i18n="individualLoadAttendance">Show attendance</button>
+          </form>
+          <div id="individualAttendanceResults" class="report-list" aria-live="polite"></div>
+          <div id="individualExportControls" class="individual-export-controls" hidden>
+            <button id="individualExportImage" class="btn secondary" type="button"
+              data-online-only onclick="exportIndividualAttendance('png')">
+              <i class="fa-solid fa-image" aria-hidden="true"></i>
+              <span data-i18n="individualExportImage">Download image</span>
+            </button>
+            <button id="individualExportPdf" class="btn secondary" type="button"
+              data-online-only onclick="exportIndividualAttendance('pdf')">
+              <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+              <span data-i18n="individualExportPdf">Download PDF</span>
+            </button>
+            <button id="individualExportExcel" class="btn secondary" type="button"
+              data-online-only onclick="exportIndividualAttendance('xlsx')">
+              <i class="fa-solid fa-file-excel" aria-hidden="true"></i>
+              <span data-i18n="individualExportExcel">Download Excel</span>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div id="notificationsView" style="display: none">
+        <h2>
+          <img class="notification-app-icon" src="./Assets/icons/icon-192.png" alt="" aria-hidden="true" />
+          <span data-i18n="notificationsTitle">الإشعارات</span>
+        </h2>
+        <div class="notification-controls">
+          <button id="enableBrowserNotificationsButton" class="btn secondary" type="button" onclick="enablePushNotifications()" data-i18n="enableBrowserNotifications">تفعيل إشعارات الجهاز</button>
+          <button class="btn tertiary" type="button" onclick="markAppNotificationsRead()" data-i18n="markNotificationsRead">تحديد الكل كمقروء</button>
+        </div>
+        <section id="globalNotificationComposer" class="global-notification-composer" hidden>
+          <h3 data-i18n="globalNotificationTitle">Send a global message</h3>
+          <label for="globalNotificationMessage" data-i18n="globalNotificationMessage">Message</label>
+          <textarea id="globalNotificationMessage" maxlength="300" rows="3" required></textarea>
+          <button class="btn" type="button" onclick="sendGlobalNotification()" data-i18n="sendGlobalNotification">Send to everyone</button>
+        </section>
+        <div id="notificationResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <div id="currentAttendeesView" style="display: none">
+        <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
+        <button id="refreshCurrentAttendeesButton" class="btn secondary" type="button" data-online-only onclick="updateCurrentAttendees()" data-i18n="refreshCurrentAttendees">
+          تحديث الحضور
+        </button>
+        <input id="currentAttendeesSearch" class="current-attendees-search" type="search"
+          data-i18n-placeholder="currentAttendeesSearchPlaceholder"
+          placeholder="ابحث بالاسم أو اسم المسؤول" oninput="filterCurrentAttendees()" />
+        <div id="currentAttendeesAvailability" class="attendance-window-note" aria-live="polite"></div>
+        <div id="currentAttendeesResults" class="report-list" aria-live="polite"></div>
+      </div>
+
+      <dialog id="emergencyCheckoutDialog" class="attendance-action-dialog" aria-labelledby="emergencyCheckoutDialogTitle">
+        <form class="attendance-action-dialog-content" onsubmit="submitEmergencyCheckout(event)">
+          <h2 id="emergencyCheckoutDialogTitle" data-i18n="emergencyCheckout">انصراف طارئ</h2>
+          <p id="emergencyCheckoutAttendee" class="report-note"></p>
+          <label for="emergencyCheckoutReason" data-i18n="emergencyCheckoutReason">سبب الانصراف الطارئ</label>
+          <textarea id="emergencyCheckoutReason" required minlength="5" maxlength="500" rows="4"
+            data-i18n-placeholder="emergencyCheckoutReason" placeholder="سبب الانصراف الطارئ (5 إلى 500 حرف)"></textarea>
+          <div class="attendance-action-dialog-buttons">
+            <button id="emergencyCheckoutSubmit" class="btn emergency-checkout-submit" type="submit" data-i18n="emergencyCheckout">انصراف طارئ</button>
+            <button class="btn secondary" type="button" onclick="closeEmergencyCheckoutDialog()" data-i18n="cancelEmergencyCheckout">إلغاء</button>
+          </div>
+        </form>
+      </dialog>
+
+      <div id="attendanceReportView" style="display: none">
+        <h2 id="attendanceReportTitle" data-i18n="attendanceReports">تقارير الحضور</h2>
+        <div class="report-tabs" data-active-tab="attendance" role="tablist" aria-labelledby="attendanceReportTitle">
+          <button id="attendanceTabButton" class="report-tab is-active" data-online-only type="button" role="tab"
+            aria-selected="true" aria-controls="attendanceTabPanel" onclick="selectAttendanceReportTab('attendance')"
+            data-i18n="attendanceTab">الحضور</button>
+          <button id="trendsTabButton" class="report-tab" data-online-only type="button" role="tab"
+            aria-selected="false" aria-controls="trendsTabPanel" onclick="selectAttendanceReportTab('trends')"
+            data-i18n="attendanceTrendsTitle">اتجاهات الحضور</button>
+        </div>
+        <section id="attendanceTabPanel" role="tabpanel" aria-labelledby="attendanceTabButton">
+          <label class="date-picker-label" for="attendanceReportDate" data-i18n="attendanceDateLabel">تاريخ الاجتماع</label>
+          <select id="attendanceReportDate" class="date-picker" data-online-only onchange="loadAttendanceReport()">
+            <option value="" data-i18n="attendanceDatesLoading">جارٍ تحميل التواريخ...</option>
+          </select>
+          <div class="attendance-filter-controls">
+            <label for="attendanceStatusFilter" data-i18n="attendanceStatusFilterLabel">Show</label>
+            <select id="attendanceStatusFilter" class="attendance-filter-select" onchange="filterAttendanceReport()">
+              <option value="all" data-i18n="attendanceFilterAll">Everyone</option>
+              <option value="attended" data-i18n="attendanceFilterAttended">Attended</option>
+              <option value="absent" data-i18n="attendanceFilterAbsent">Not attended</option>
+            </select>
+          </div>
+          <div class="attendance-export-entry">
+            <button id="attendanceExportButton" class="attendance-export-icon-button" data-online-only type="button"
+              onclick="openAttendanceExportDialog()" data-i18n-title="attendanceExportAction" data-i18n-aria-label="attendanceExportAction">
+              <i class="fa-solid fa-file-export" aria-hidden="true"></i>
+            </button>
+            <span data-i18n="attendanceExportAction">Export</span>
+          </div>
+          <div class="attendance-report-controls">
+            <input
+              type="text"
+              id="attendancePersonQuery"
+              placeholder="ابحث عن اسم في هذا اليوم"
+              data-i18n-placeholder="attendancePersonPlaceholder"
+              onkeydown="if(event.key === 'Enter'){event.preventDefault();loadAttendanceReport();}"
+            />
+            <button class="btn secondary attendance-search-button" data-online-only type="button" onclick="loadAttendanceReport()" data-i18n-title="searchAttendanceBtn" data-i18n-aria-label="searchAttendanceBtn" aria-label="البحث في هذا اليوم">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="searchAttendanceBtn">بحث</span>
+            </button>
+            <button id="attendanceSearchAgainButton" class="btn secondary search-another-person-button" type="button" onclick="startAttendanceSearchAgain()" data-i18n-title="searchAnotherPerson" data-i18n-aria-label="searchAnotherPerson" aria-label="البحث عن شخص آخر" hidden>
+              <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="searchAnotherPerson">البحث عن شخص آخر</span>
+            </button>
+          </div>
+          <div id="attendanceSearchResult" class="report-result" aria-live="polite"></div>
+          <div id="attendanceReportResults" class="report-list" aria-live="polite"></div>
+        </section>
+        <section id="trendsTabPanel" class="attendance-trends-panel" role="tabpanel" aria-labelledby="trendsTabButton" hidden>
+            <h3 data-i18n="attendanceTrendsTitle">Attendance trends</h3>
+            <div class="attendance-trend-controls">
+              <label for="attendanceTrendMeetings" data-i18n="attendanceTrendMeetingsLabel">Meetings</label>
+              <select id="attendanceTrendMeetings" class="attendance-filter-select" data-online-only onchange="loadAttendanceTrends()">
+                <option value="6">6</option>
+                <option value="8" selected>8</option>
+                <option value="12">12</option>
+                <option value="24">24</option>
+              </select>
+              <button class="btn secondary" data-online-only type="button" onclick="loadAttendanceTrends()" data-i18n="refreshTrendsBtn">Refresh</button>
+            </div>
+            <div id="attendanceTrendsResults" class="attendance-trends-results" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <div id="followupView" style="display: none">
+        <h2 data-i18n="followupsTitle">قائمة الافتقاد</h2>
+        <section id="followupPanel">
+          <p class="report-note" data-i18n="followupsNote">أشخاص سبق لهم الحضور وغابوا عن ثلاثة اجتماعات متتالية على الأقل.</p>
+          <div class="followup-search-controls">
+            <input id="followupPersonQuery" type="search" data-i18n-placeholder="followupSearchPlaceholder" placeholder="ابحث في قائمة الافتقاد" oninput="filterFollowups()" onkeydown="if(event.key === 'Enter'){event.preventDefault();filterFollowups();}" />
+            <button class="btn secondary followup-search-button" data-online-only type="button" onclick="filterFollowups()" data-i18n-title="searchFollowupsBtn" data-i18n-aria-label="searchFollowupsBtn" aria-label="بحث">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="searchFollowupsBtn">بحث</span>
+            </button>
+            <button class="btn secondary followup-refresh-button" data-online-only type="button" onclick="loadFollowups()" data-i18n-title="refreshFollowupsBtn" data-i18n-aria-label="refreshFollowupsBtn" aria-label="تحديث القائمة">
+              <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+              <span class="compact-control-label" data-i18n="refreshFollowupsBtn">تحديث القائمة</span>
+            </button>
+          </div>
+          <div id="followupResults" class="report-list" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <dialog id="attendanceSheetResultDialog" class="attendance-sheet-dialog" aria-labelledby="attendanceSheetResultTitle">
+        <div class="attendance-sheet-dialog-content">
+          <button class="attendance-sheet-dialog-close" type="button" onclick="closeAttendanceSheetResult()" aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+          <div class="attendance-sheet-success-icon" aria-hidden="true">
+            <svg class="google-sheets-icon" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V8h4.2L13 3.8ZM7 11v8h10v-8H7Zm1.5 1.5h2v2h-2v-2Zm4 0h3v2h-3v-2Zm-4 3.5h2v1.5h-2V16Zm4 0h3v1.5h-3V16Z"/>
+            </svg>
+          </div>
+          <h2 id="attendanceSheetResultTitle" data-i18n="attendanceSheetSuccessTitle">Attendance sheet ready</h2>
+          <p id="attendanceSheetResultMessage" class="report-note"></p>
+          <a id="attendanceSheetOpenLink" class="btn attendance-sheet-open-link" target="_blank" rel="noopener noreferrer">
+            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+            <span data-i18n="openAttendanceSheet">Open Google Sheet</span>
+          </a>
+          <div class="attendance-sheet-downloads">
+            <button id="attendanceSheetExcelLink" class="btn secondary" type="button" onclick="downloadAttendanceExport('xlsx')">
+              <i class="fa-solid fa-file-excel" aria-hidden="true"></i>
+              <span data-i18n="downloadAttendanceExcel">Download Excel</span>
+            </button>
+            <button id="attendanceSheetPdfLink" class="btn secondary" type="button" onclick="downloadAttendanceExport('pdf')">
+              <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+              <span data-i18n="downloadAttendancePdf">Download PDF</span>
+            </button>
+          </div>
+          <button class="btn secondary attendance-sheet-done-button" type="button" onclick="closeAttendanceSheetResult()" data-i18n="done">Done</button>
+        </div>
+      </dialog>
+
+      <dialog id="attendanceExportDialog" class="attendance-action-dialog" aria-labelledby="attendanceExportDialogTitle">
+        <form class="attendance-action-dialog-content" onsubmit="runAttendanceExport(event)">
+          <h2 id="attendanceExportDialogTitle" data-i18n="attendanceExportAction">Export</h2>
+          <label for="attendanceExportPeople" data-i18n="attendanceSheetTypeLabel">People</label>
+          <select id="attendanceExportPeople" class="attendance-filter-select">
+            <option value="both" data-i18n="attendanceSheetBoth">Attendees and absentees</option>
+            <option value="attendees" data-i18n="attendanceSheetAttendees">Attendees only</option>
+            <option value="absents" data-i18n="attendanceSheetAbsents">Absentees only</option>
+          </select>
+          <label for="attendanceExportFormat" data-i18n="attendanceExportFormatLabel">Format</label>
+          <select id="attendanceExportFormat" class="attendance-filter-select">
+            <option value="sheets" data-i18n="attendanceExportSheets">Google Sheets tab</option>
+            <option value="xlsx" data-i18n="attendanceExportExcelOption">Excel workbook</option>
+            <option value="pdf" data-i18n="attendanceExportPdfOption">PDF document</option>
+            <option value="png" data-i18n="attendanceExportPngOption">PNG image</option>
+          </select>
+          <div class="attendance-action-dialog-buttons">
+            <button id="attendanceExportSubmit" class="btn" type="submit" data-i18n="attendanceExportAction">Export</button>
+            <button class="btn secondary" type="button" onclick="document.getElementById('attendanceExportDialog').close()" data-i18n="cancelEmergencyCheckout">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="attendanceImagePartsDialog" class="attendance-action-dialog" aria-labelledby="attendanceImagePartsTitle">
+        <section class="attendance-action-dialog-content">
+          <h2 id="attendanceImagePartsTitle" data-i18n="attendanceImagePartsTitle">Download report images</h2>
+          <p id="attendanceImagePartsMessage" class="report-note"></p>
+          <div id="attendanceImagePartsLinks" class="attendance-image-parts-links"></div>
+          <button class="btn secondary" type="button" onclick="document.getElementById('attendanceImagePartsDialog').close()" data-i18n="done">Done</button>
+        </section>
+      </dialog>
+
+      <dialog id="settingsExitDialog" class="settings-exit-dialog" aria-labelledby="settingsExitTitle" aria-describedby="settingsExitMessage">
+        <div class="settings-exit-dialog-content">
+          <h2 id="settingsExitTitle" data-i18n="unsavedSettingsTitle">Unsaved changes</h2>
+          <p id="settingsExitMessage" data-i18n="unsavedSettingsMessage">You have unsaved changes. Exit without saving?</p>
+          <div class="settings-exit-actions">
+            <button class="btn danger" type="button" onclick="discardSettingsAndGoHome()" data-i18n="exitWithoutSaving">Exit without saving</button>
+            <button class="btn secondary" type="button" onclick="continueSettingsEditing()" data-i18n="continueEditing">Continue editing</button>
+          </div>
+        </div>
+      </dialog>
+
+      <div id="tutorialFocusWash" class="tutorial-focus-wash" aria-hidden="true" hidden>
+        <div class="tutorial-focus-shade tutorial-focus-shade-top"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-left"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-right"></div>
+        <div class="tutorial-focus-shade tutorial-focus-shade-bottom"></div>
+      </div>
+      <section id="firstRunTutorial" class="tutorial-dialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialDescription" role="dialog" aria-modal="true" hidden>
+        <div class="tutorial-header">
+          <div>
+            <p id="tutorialStepCount" class="tutorial-step-count"></p>
+            <h2 id="tutorialTitle"></h2>
+          </div>
+        </div>
+        <div class="tutorial-progress" aria-hidden="true">
+          <span id="tutorialProgressBar"></span>
+        </div>
+        <p id="tutorialDescription" class="tutorial-description"></p>
+  <p class="tutorial-click-hint" data-i18n="tutorialClickHint">Choose the highlighted action. Demo results are not saved and the tour continues automatically.</p>
+        <div class="tutorial-actions">
+          <button id="tutorialNextButton" type="button" class="btn tutorial-next" onclick="nextFirstRunTutorialStep()">
+            <span id="tutorialNextLabel" data-i18n="tutorialNext">Next</span>
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          </button>
+          <button id="tutorialSkipButton" type="button" class="btn secondary" onclick="skipFirstRunTutorial()" data-i18n="tutorialSkip">
+            Skip tutorial
+          </button>
+        </div>
+      </section>
+      <dialog id="firstRunSetupDialog" class="first-run-setup-dialog" aria-labelledby="firstRunSetupTitle" aria-describedby="firstRunSetupDescription" oncancel="event.preventDefault()">
+        <div class="first-run-setup-content">
+          <h2 id="firstRunSetupTitle" data-i18n="firstRunSetupTitle">Welcome</h2>
+          <p id="firstRunSetupDescription" class="report-note" data-i18n="firstRunSetupDescription"></p>
+          <section class="app-preference-group" aria-labelledby="firstRunSetupLanguageTitle">
+            <h3 id="firstRunSetupLanguageTitle" data-i18n="firstRunSetupLanguage"></h3>
+            <div class="preference-options" role="group" aria-labelledby="firstRunSetupLanguageTitle">
+              <button type="button" class="preference-option" data-setup-language="ar" aria-pressed="false" onclick="setLanguage('ar')"><span>ع</span><span data-i18n="arabicLanguage">العربية</span></button>
+              <button type="button" class="preference-option" data-setup-language="en" aria-pressed="false" onclick="setLanguage('en')"><span>EN</span><span data-i18n="englishLanguage">English</span></button>
+            </div>
+          </section>
+          <section class="app-preference-group" aria-labelledby="firstRunSetupThemeTitle">
+            <h3 id="firstRunSetupThemeTitle" data-i18n="firstRunSetupTheme"></h3>
+            <div class="preference-options" role="group" aria-labelledby="firstRunSetupThemeTitle">
+              <button type="button" class="preference-option" data-setup-theme="light" aria-pressed="false" onclick="applyTheme('light')"><i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">فاتح</span></button>
+              <button type="button" class="preference-option" data-setup-theme="dark" aria-pressed="false" onclick="applyTheme('dark')"><i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span></button>
+            </div>
+          </section>
+          <div class="first-run-setup-actions">
+            <button type="button" class="btn" onclick="finishFirstRunSetup(true)" data-i18n="firstRunSetupContinue">Continue to tutorial</button>
+            <button type="button" class="btn secondary" onclick="finishFirstRunSetup(false)" data-i18n="firstRunSetupSkip">Skip tutorial</button>
+          </div>
+        </div>
+      </dialog>
+
+      <div id="offlineQueueView" style="display: none">
+        <h2 data-i18n="offlineQueueTitle">الإجراءات المحفوظة</h2>
+        <p class="report-note" data-i18n="offlineManualSyncNote">
+          راجع الأحداث واحذف غير المطلوب قبل المزامنة اليدوية.
+        </p>
+        <section id="offlineSyncProgress" class="sync-progress" aria-live="polite" hidden>
+          <h3 id="offlineSyncProgressTitle" data-i18n="offlineSyncProgressTitle">نتائج المزامنة</h3>
+          <progress id="offlineSyncProgressBar" max="1" value="0" aria-labelledby="offlineSyncProgressTitle"></progress>
+          <span id="offlineSyncProgressCount" class="sync-progress-count"></span>
+          <div class="sync-progress-stage">
+            <span class="sync-progress-stage-label" data-i18n="offlineSyncProgressInFlight">Processing next event</span>
+            <div id="offlineSyncProgressLane" class="sync-progress-lane" aria-hidden="true">
+              <span class="sync-progress-lane-target"><i class="fa-solid fa-inbox"></i></span>
+            </div>
+          </div>
+          <div id="offlineSyncProgressResults" class="sync-progress-results"></div>
+        </section>
+        <div id="offlineQueueResults" class="report-list" aria-live="polite"></div>
+        <button id="syncOfflineEventsButton" class="btn" data-online-only onclick="syncOfflineQueue('', true)" data-i18n="syncNow">
+          مزامنة الآن
+        </button>
+      </div>
+
+      <!-- 2. Live QR Scan View -->
+      <div id="scanView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-qrcode"></i>
+          <span data-i18n="scanQrTitle">مسح QR</span>
+        </h2>
+        <div class="camera-wrapper scan-camera-frame">
+          <div id="qr-reader"></div>
+          <div id="scanCameraPlaceholder" class="scan-camera-placeholder" role="status" aria-live="polite">
+            <div class="scan-camera-orbit" aria-hidden="true">
+              <i class="fa-solid fa-qrcode"></i>
+            </div>
+            <strong id="cameraStatus" data-i18n="cameraStarting">Starting camera...</strong>
+            <span data-i18n="scanCameraHint">Keep the QR code inside the camera frame.</span>
+            <button id="restartCameraPlaceholderButton" class="btn secondary" type="button" onclick="restartScanner()" data-i18n="restartCamera" hidden>
+              Restart camera
+            </button>
+          </div>
+          <div id="scanProcessingOverlay" class="scan-processing-overlay" role="status" aria-live="polite" hidden>
+            <div class="scan-processing-spinner" aria-hidden="true"></div>
+            <strong data-i18n="attendanceScanProcessing">Checking...</strong>
+            <span id="scanProcessingName"></span>
+          </div>
+          <div id="paymentScanResult" class="payment-scan-result" role="status" aria-live="assertive" hidden>
+            <span class="payment-scan-result-icon" aria-hidden="true"></span>
+            <span class="payment-scan-result-message"></span>
+          </div>
+        </div>
+        <div class="camera-status" id="cameraStatusText" data-i18n="cameraStarting" aria-live="polite">
+          جاري تشغيل الكاميرا...
+        </div>
+        <button
+          class="btn secondary"
+          style="margin-top: 12px"
+          onclick="restartScanner()"
+        >
+          <i class="fa-solid fa-rotate"></i>
+          <span data-i18n="restartCamera">إعادة تشغيل الكاميرا</span>
+        </button>
+        <button id="tutorialScanDemoButton" class="btn" type="button" data-i18n="tutorialScanDemoButton" onclick="runTutorialScanDemo()" hidden>
+          تجربة مسح تجريبي
+        </button>
+      </div>
+
+      <!-- 3. Search View -->
+      <div id="searchView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="quickSearchTitle">التحضير السريع بالاسم</span>
+        </h2>
+        <input
+          type="text"
+          id="searchNameInput"
+          placeholder="اكتب الاسم هنا..."
+          data-i18n-placeholder="searchPlaceholder"
+          autocomplete="off"
+          enterkeyhint="search"
+        />
+        <button
+          class="btn"
+          id="btnSearch"
+          onclick="executeSearch()"
+          data-i18n="searchBtn"
+        >
+          بحث
+        </button>
+        <button id="tutorialSearchDemoButton" class="btn secondary" type="button" data-i18n="tutorialTryNameButton" onclick="runTutorialSearchDemo()" hidden>
+          تجربة البحث والتسجيل
+        </button>
+        <div
+          id="searchResults"
+          style="margin-top: 15px"
+          aria-live="polite"
+        ></div>
+      </div>
+
+      <!-- 3.5 Card Share View -->
+      <div id="cardShareView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-share-nodes"></i>
+          <span data-i18n="shareCardTitle">مشاركة كارت المخدوم</span>
+        </h2>
+        <input
+          type="text"
+          id="shareNameInput"
+          placeholder="اكتب اسم المخدوم للبحث..."
+          data-i18n-placeholder="sharePlaceholder"
+          autocomplete="off"
+          enterkeyhint="search"
+        />
+        <label class="date-picker-label" for="cardShareFilter" data-i18n="cardShareFilterLabel">حالة المشاركة</label>
+        <select id="cardShareFilter" class="date-picker">
+          <option value="all" data-i18n="cardShareFilterAll">الكل</option>
+          <option value="shared" data-i18n="alreadyShared">تمت مشاركته</option>
+          <option value="unshared" data-i18n="notShared">لم تتم مشاركته</option>
+        </select>
+        <button
+          class="btn"
+          data-online-only
+          onclick="executeCardSearch()"
+          data-i18n="searchCardBtn"
+        >
+          بحث عن الكارت
+        </button>
+        <div
+          id="shareResults"
+          style="margin-top: 15px"
+          aria-live="polite"
+        ></div>
+      </div>
+
+      <!-- 3.6 Individual Card Preview View -->
+      <div id="cardPreviewView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-eye"></i>
+          <span data-i18n="cardPreviewTitle">معاينة الكارت والمشاركة</span>
+        </h2>
+        <div class="name" id="previewStudentName">اسم المخدوم</div>
+        <div
+          class="camera-wrapper"
+          style="
+            background: #0f172a;
+            min-height: 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+          "
+        >
+          <img
+            id="previewCardImg"
+            src=""
+            alt="Card Preview"
+            data-i18n-alt="cardPreviewAlt"
+            crossorigin="anonymous"
+            style="
+              max-width: 100%;
+              max-height: 320px;
+              object-fit: contain;
+              border-radius: 14px;
+              border: 1px solid var(--card-border);
+            "
+          />
+        </div>
+        <button class="btn" data-online-only onclick="shareCurrentCardImage()">
+          <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+          <span data-i18n="sendWhatsAppBtn">Send with WhatsApp</span>
+        </button>
+        <button class="btn secondary" data-online-only onclick="openCurrentCardDrive()">
+          <i class="fa-solid fa-folder-open"></i>
+          <span data-i18n="openDriveBtn">فتح في Google Drive</span>
+        </button>
+        <button
+          class="btn secondary"
+          style="margin-top: 8px"
+          onclick="showView('cardShareView')"
+        >
+          <i class="fa-solid fa-arrow-right"></i>
+          <span data-i18n="backBtn">رجوع</span>
+        </button>
+        <button class="btn secondary" onclick="showView('cardShareView'); document.getElementById('shareNameInput').focus()">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="searchAnotherPerson">البحث عن شخص آخر</span>
+        </button>
+      </div>
+
+      <!-- 4. Add Student View -->
+      <div id="addView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-user-plus"></i>
+          <span data-i18n="addStudentTitle">إضافة مخدوم جديد</span>
+        </h2>
+        <input
+          type="text"
+          id="newStudentName"
+          maxlength="120"
+          placeholder="اسم المخدوم ثلاثي..."
+          data-i18n-placeholder="studentNamePlaceholder"
+          autocomplete="off"
+          enterkeyhint="done"
+        />
+        <label class="attendance-choice" for="attendNewStudent">
+          <input type="checkbox" id="attendNewStudent" checked />
+          <span data-i18n="attendNewStudent"
+            >Mark present if the meeting is open</span
+          >
+        </label>
+        <button
+          class="btn"
+          id="btnAddStudent"
+          onclick="submitNewStudent()"
+          data-i18n="saveGenerateBtn"
+        >
+          حفظ وتوليد الكارت 🎨
+        </button>
+        <button id="tutorialAddDemoButton" class="btn secondary" type="button" data-i18n="tutorialTryAddButton" onclick="runTutorialAddDemo()" hidden>
+          عرض رسالة تجريبية
+        </button>
+        <div id="addResult" style="margin-top: 12px; text-align: center"></div>
+      </div>
+
+      <!-- 5. Admin Settings View -->
+      <div id="adminSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-user-shield"></i>
+          <span data-i18n="adminSettingsTitle">إدارة الخدام وكلمة المرور</span>
+        </h2>
+        <div id="adminSettingsLock">
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="adminGatePassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              placeholder="ادخل كلمة المرور"
+              data-i18n-placeholder="passwordPlaceholder"
+              enterkeyhint="go"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="adminGatePassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+          <button
+            class="btn"
+            data-online-only
+            onclick="unlockAdminSettings()"
+            data-i18n="enterBtn"
+          >
+            دخول
+          </button>
+        </div>
+
+        <div id="adminSettingsForm" style="display: none">
+          <h3
+            style="
+              font-size: 14px;
+              color: var(--accent-gold);
+              margin-bottom: 8px;
+            "
+            data-i18n="editMyName"
+          >
+            تعديل اسمك في الشيت
+          </h3>
+          <input
+            type="text"
+            id="cfgAdminName"
+            placeholder="اسمك الذي يظهر في الشيت"
+            data-i18n-placeholder="adminNamePlaceholder"
+          />
+          <button
+            class="btn secondary"
+            data-online-only
+            onclick="updateMyName()"
+            style="margin-bottom: 16px"
+          >
+            💾 <span data-i18n="updateMyNameBtn">تحديث اسمي</span>
+          </button>
+
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="newPasswordLabel"
+            >كلمة مرور النظام الجديدة (اختياري)</label
+          >
+          <div class="password-input-wrap" style="margin-bottom: 16px">
+            <input
+              type="password"
+              id="cfgNewPassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="new-password"
+              minlength="8"
+              placeholder="اتركها فارغة للإبقاء على الحالية"
+              data-i18n-placeholder="newPasswordPlaceholder"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="cfgNewPassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <h3
+            style="
+              font-size: 14px;
+              color: var(--accent-gold);
+              margin-bottom: 8px;
+            "
+            data-i18n="adminsListTitle"
+          >
+            👥 قائمة الخدام
+          </h3>
+          <div id="adminsListContainer" style="margin-bottom: 12px"></div>
+
+          <div
+            style="
+              background: var(--chip-bg);
+              backdrop-filter: blur(15px);
+              padding: 10px;
+              border-radius: 14px;
+              border: 1px dashed var(--card-border);
+              margin-bottom: 12px;
+            "
+          >
+            <input
+              id="newAdminEmail"
+              type="email"
+              placeholder="البريد الإلكتروني للخادم الجديد"
+              data-i18n-placeholder="newAdminEmailPlaceholder"
+              style="margin-bottom: 8px"
+              enterkeyhint="next"
+            />
+            <input
+              type="text"
+              id="newAdminNameInput"
+              placeholder="اسم الخادم"
+              data-i18n-placeholder="newAdminNamePlaceholder"
+              style="margin-bottom: 8px"
+              enterkeyhint="done"
+            />
+            <button class="btn secondary" data-online-only onclick="addNewAdmin()">
+              ➕ <span data-i18n="addAdminBtn">إضافة خادم جديد</span>
+            </button>
+          </div>
+
+          <button
+            class="btn"
+            data-online-only
+            onclick="saveAdminSettings()"
+            data-i18n="saveChangesBtn"
+          >
+            💾 حفظ التغييرات
+          </button>
+        </div>
+      </div>
+
+      <!-- 6. Schedule Settings View -->
+      <div id="scheduleSettingsView" style="display: none">
+        <h2>
+          <i class="fa-solid fa-gear"></i>
+          <span data-i18n="scheduleTitle">مواعيد الاجتماع وأيامه</span>
+        </h2>
+        <div id="scheduleSettingsLock">
+          <div class="password-input-wrap">
+            <input
+              type="password"
+              id="scheduleGatePassword"
+              class="numeric-password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              placeholder="ادخل كلمة المرور"
+              data-i18n-placeholder="passwordPlaceholder"
+              enterkeyhint="go"
+            />
+            <button class="password-visibility-btn" type="button" data-password-toggle="scheduleGatePassword"
+              data-i18n="showPassword" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">
+              <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+          <button
+            class="btn"
+            data-online-only
+            onclick="unlockScheduleSettings()"
+            data-i18n="enterBtn"
+          >
+            دخول
+          </button>
+        </div>
+
+        <div id="scheduleSettingsForm" style="display: none">
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="startTimeLabel"
+            >موعد بدء الاجتماع</label
+          >
+          <input type="time" id="cfgStartTime" />
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="endTimeLabel"
+            >موعد نهاية الاجتماع</label
+          >
+          <input type="time" id="cfgEndTime" />
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="delayLabel"
+            >مدة السماح بالتأخير (دقائق)</label
+          >
+          <input
+            type="number"
+            id="cfgAcceptedDelay"
+            min="0"
+            max="240"
+            step="1"
+          />
+
+          <label
+            style="
+              font-weight: bold;
+              font-size: 12px;
+              display: block;
+              margin-bottom: 6px;
+            "
+            data-i18n="allowedDaysLabel"
+            >الأيام المسموحة</label
+          >
+          <div class="days-grid">
+            <div class="day-chip">
+              <input type="checkbox" id="day0" value="0" /><label
+                for="day0"
+                data-i18n="daySun"
+                >الأحد</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day1" value="1" /><label
+                for="day1"
+                data-i18n="dayMon"
+                >الاثنين</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day2" value="2" /><label
+                for="day2"
+                data-i18n="dayTue"
+                >الثلاثاء</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day3" value="3" /><label
+                for="day3"
+                data-i18n="dayWed"
+                >الأربعاء</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day4" value="4" /><label
+                for="day4"
+                data-i18n="dayThu"
+                >الخميس</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day5" value="5" /><label
+                for="day5"
+                data-i18n="dayFri"
+                >الجمعة</label
+              >
+            </div>
+            <div class="day-chip">
+              <input type="checkbox" id="day6" value="6" /><label
+                for="day6"
+                data-i18n="daySat"
+                >السبت</label
+              >
+            </div>
+          </div>
+
+          <button
+            class="btn"
+            data-online-only
+            onclick="saveScheduleSettings()"
+            data-i18n="saveScheduleBtn"
+          >
+            💾 حفظ المواعيد
+          </button>
+        </div>
+      </div>
+
+      <!-- Result View -->
+      <div id="resultView" style="display: none">
+        <div class="icon" id="rIcon"><i class="fa-solid fa-check"></i></div>
+        <div class="title" id="rTitle">تم التسجيل</div>
+        <div class="name" id="rName">الاسم</div>
+        <div class="status-tag" id="rMsg">تفاصيل</div>
+        <button class="btn" onclick="showView('scanView')">
+          <i class="fa-solid fa-qrcode"></i>
+          <span data-i18n="scanAnother">مسح آخر</span>
+        </button>
+        <button class="btn secondary" id="searchAnotherFromResult" hidden onclick="showView('searchView')">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span data-i18n="searchAnotherPerson">البحث عن شخص آخر</span>
+        </button>
+      </div>
+    </div>
+
+  <script src="./js/app-state.js?v=77"></script>
+  <script src="./js/app-i18n.js?v=86"></script>
+  <script src="./js/app-core.js?v=76"></script>
+  <script src="./js/app-offline.js?v=78"></script>
+  <script src="./js/app-views.js?v=88"></script>
+  <script src="./js/app-individual.js?v=1"></script>
+  <script src="./js/app-auth.js?v=78"></script>
+  <script src="./js/app-scanner-search.js?v=77"></script>
+  <script src="./js/app-cards-admin.js?v=77"></script>
+  </body>
+</html>

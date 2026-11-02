@@ -81,8 +81,103 @@ jobs:
           }
           fs.writeFileSync('config.js', `globalThis.LAMBAS_CONFIG = Object.freeze(${JSON.stringify(config)});\n`);
           NODE
+      - name: Stage production and isolated test shells
+        env:
+          PRODUCTION_API_URL: ${{ vars.LAMBAS_API_URL }}
+          PRODUCTION_GOOGLE_CLIENT_ID: ${{ vars.LAMBAS_GOOGLE_CLIENT_ID }}
+          PRODUCTION_GOOGLE_SHEET_URL: ${{ vars.LAMBAS_GOOGLE_SHEET_URL }}
+          PRODUCTION_FIREBASE_PROJECT_ID: ${{ vars.LAMBAS_FIREBASE_PROJECT_ID || secrets.LAMBAS_FIREBASE_PROJECT_ID }}
+          TEST_API_URL: ${{ vars.LAMBAS_TEST_API_URL }}
+          TEST_GOOGLE_CLIENT_ID: ${{ vars.LAMBAS_TEST_GOOGLE_CLIENT_ID }}
+          TEST_GOOGLE_SHEET_URL: ${{ vars.LAMBAS_TEST_GOOGLE_SHEET_URL }}
+          TEST_FIREBASE_API_KEY: ${{ vars.LAMBAS_TEST_FIREBASE_API_KEY || secrets.LAMBAS_TEST_FIREBASE_API_KEY }}
+          TEST_FIREBASE_AUTH_DOMAIN: ${{ vars.LAMBAS_TEST_FIREBASE_AUTH_DOMAIN || secrets.LAMBAS_TEST_FIREBASE_AUTH_DOMAIN }}
+          TEST_FIREBASE_PROJECT_ID: ${{ vars.LAMBAS_TEST_FIREBASE_PROJECT_ID || secrets.LAMBAS_TEST_FIREBASE_PROJECT_ID }}
+          TEST_FIREBASE_STORAGE_BUCKET: ${{ vars.LAMBAS_TEST_FIREBASE_STORAGE_BUCKET || secrets.LAMBAS_TEST_FIREBASE_STORAGE_BUCKET }}
+          TEST_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.LAMBAS_TEST_FIREBASE_MESSAGING_SENDER_ID || secrets.LAMBAS_TEST_FIREBASE_MESSAGING_SENDER_ID }}
+          TEST_FIREBASE_APP_ID: ${{ vars.LAMBAS_TEST_FIREBASE_APP_ID || secrets.LAMBAS_TEST_FIREBASE_APP_ID }}
+          TEST_FIREBASE_VAPID_KEY: ${{ vars.LAMBAS_TEST_FIREBASE_VAPID_KEY || secrets.LAMBAS_TEST_FIREBASE_VAPID_KEY }}
+        run: |
+          mkdir -p site/test-mode
+          cp -R Frontend/. site/
+          cp -R TestMode/Frontend/. site/test-mode/
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const env = process.env;
+          const required = ['TEST_API_URL', 'TEST_GOOGLE_CLIENT_ID', 'TEST_GOOGLE_SHEET_URL'];
+          const provisioned = required.every((name) => Boolean(env[name]));
+          const config = {
+            apiUrl: '',
+            googleClientId: '',
+            googleSheetUrl: '',
+            firebaseConfig: null,
+            firebaseVapidKey: '',
+          };
+          if (provisioned) {
+            if (!env.TEST_API_URL.startsWith('https://script.google.com/macros/s/') || !env.TEST_API_URL.endsWith('/exec')) {
+              throw new Error('LAMBAS_TEST_API_URL must be the separate test Apps Script /exec URL.');
+            }
+            if (!env.TEST_GOOGLE_CLIENT_ID.endsWith('.apps.googleusercontent.com')) {
+              throw new Error('LAMBAS_TEST_GOOGLE_CLIENT_ID is not a Google OAuth client ID.');
+            }
+            if (
+              env.TEST_API_URL === env.PRODUCTION_API_URL ||
+              env.TEST_GOOGLE_CLIENT_ID === env.PRODUCTION_GOOGLE_CLIENT_ID
+            ) {
+              throw new Error('Test Mode must use a separate Apps Script deployment and OAuth client.');
+            }
+            const spreadsheetId = (url) =>
+              String(url || '').match(/\/spreadsheets\/d\/([^/?#]+)/)?.[1] || '';
+            const testSheetId = spreadsheetId(env.TEST_GOOGLE_SHEET_URL);
+            const productionSheetId = spreadsheetId(env.PRODUCTION_GOOGLE_SHEET_URL);
+            if (!testSheetId || !productionSheetId || testSheetId === productionSheetId) {
+              throw new Error('Test Mode must use a separate Google spreadsheet URL.');
+            }
+            config.apiUrl = env.TEST_API_URL;
+            config.googleClientId = env.TEST_GOOGLE_CLIENT_ID;
+            config.googleSheetUrl = env.TEST_GOOGLE_SHEET_URL;
+          }
+          const firebaseFields = [
+            'TEST_FIREBASE_API_KEY',
+            'TEST_FIREBASE_AUTH_DOMAIN',
+            'TEST_FIREBASE_PROJECT_ID',
+            'TEST_FIREBASE_MESSAGING_SENDER_ID',
+            'TEST_FIREBASE_APP_ID',
+            'TEST_FIREBASE_VAPID_KEY',
+          ];
+          const configuredFirebaseFields = firebaseFields.filter((name) => env[name]);
+          if (configuredFirebaseFields.length && configuredFirebaseFields.length !== firebaseFields.length) {
+            throw new Error('Configure all LAMBAS_TEST_FIREBASE_* variables or secrets to enable test push notifications.');
+          }
+          if (configuredFirebaseFields.length && provisioned) {
+            if (
+              env.PRODUCTION_FIREBASE_PROJECT_ID &&
+              env.TEST_FIREBASE_PROJECT_ID === env.PRODUCTION_FIREBASE_PROJECT_ID
+            ) {
+              throw new Error('Test Mode must use a separate Firebase project.');
+            }
+            config.firebaseConfig = {
+              apiKey: env.TEST_FIREBASE_API_KEY,
+              authDomain: env.TEST_FIREBASE_AUTH_DOMAIN,
+              projectId: env.TEST_FIREBASE_PROJECT_ID,
+              storageBucket: env.TEST_FIREBASE_STORAGE_BUCKET || '',
+              messagingSenderId: env.TEST_FIREBASE_MESSAGING_SENDER_ID,
+              appId: env.TEST_FIREBASE_APP_ID,
+            };
+            config.firebaseVapidKey = env.TEST_FIREBASE_VAPID_KEY;
+          }
+          fs.writeFileSync(
+            path.join('site', 'js', 'test-mode-entry-config.js'),
+            `globalThis.LAMBAS_TEST_MODE_AVAILABLE = ${provisioned};\n`,
+          );
+          fs.writeFileSync(
+            path.join('site', 'test-mode', 'js', 'config.js'),
+            `globalThis.LAMBAS_CONFIG = Object.freeze(${JSON.stringify(config)});\n`,
+          );
+          NODE
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: Frontend
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v5

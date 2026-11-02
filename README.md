@@ -31,6 +31,9 @@ Frontend/js/config.example.js   Safe template for local frontend configuration
 Frontend/manifest.json          PWA metadata
 Frontend/sw.js                  Service worker
 Frontend/Assets/icons/          App icons
+TestMode/Frontend/              Isolated in-app test shell staged at /test-mode/
+TestMode/Backend/Code.js        Test-only GAS clone; never the production API
+TestMode/Backend/TestModeConfig.gs Server-side Test Mode tester allowlist
 tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 ```
 
@@ -41,6 +44,34 @@ tests/backend-smoke.test.js     Backend rule tests with Apps Script mocks
 3. The frontend JavaScript is loaded as ordered classic scripts so existing inline UI handlers and shared application state continue to work.
 4. Add the development and production origins to the OAuth client's Authorized JavaScript origins.
 5. Run the checks with `node --test tests/*.test.js`.
+
+## Test Mode (P0 isolation boundary)
+
+The production Pages app remains the root experience. Its Lambas icon is a
+keyboard-accessible Test Mode entry button; canceling its confirmation keeps
+the current production page open. Confirming only navigates to the same-origin
+`/test-mode/` path when the separate test frontend settings are provisioned.
+The Pages workflow stages `Frontend/` at the site root and `TestMode/Frontend/`
+at `/test-mode/`; test settings are generated only from distinct
+`LAMBAS_TEST_*` repository variables/secrets. If the test API URL, OAuth client
+ID, or sheet URL is missing, the entry is unavailable and the test frontend has
+no API URL. Test deployment settings are never copied from production
+configuration.
+
+Before provisioning the Pages variables, create and review a dedicated test
+GAS project, Google OAuth client, spreadsheet, Drive folders, Slides templates,
+and (if used) Firebase project. Follow [TestMode/README.md](./TestMode/README.md).
+The test GAS project/account must have no permission to production resources.
+Keep `TestMode/Backend/TestModeConfig.gs` allowlist empty until each tester has
+been approved, and configure the backend's required test-only properties and
+spreadsheet marker. The server verifies each Google ID token and authorizes
+the normalized email against that allowlist on every API action. The test
+frontend has separate service-worker/IndexedDB caches and namespaced browser
+storage; offline startup does not grant authorization or display cached private
+test data.
+
+These source/workflow changes do not publish or deploy anything. Do not copy
+the test backend into `Backend/Code.js` or point it at production resources.
 
 The CSS entry point imports the numbered modules in cascade order. Add styles to the module that owns the component or view, and keep view-specific responsive rules beside those styles so the existing override order remains predictable. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the frontend architecture and change workflow.
 

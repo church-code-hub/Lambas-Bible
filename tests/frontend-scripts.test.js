@@ -383,7 +383,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v90/);
+  assert.match(serviceWorker, /lambas-bible-shell-v91/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);

@@ -1,5 +1,6 @@
 # Local deployment configuration
 Frontend/js/config.js
+TestMode/Frontend/js/config.js
 .clasp.json
 .clasp.json.*
 

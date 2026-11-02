@@ -1,4 +1,4 @@
-const CACHE_NAME = "lambas-bible-shell-v90";
+const CACHE_NAME = "lambas-bible-shell-v91";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -20,6 +20,7 @@ const APP_SHELL = [
   "./js/app-auth.js?v=75",
   "./js/app-scanner-search.js?v=77",
   "./js/app-cards-admin.js?v=77",
+  "./js/test-mode-entry.js?v=1",
   "./manifest.json",
   "./Assets/icons/icon-192.png",
   "./Assets/icons/icon-512.png",
@@ -58,6 +59,11 @@ self.addEventListener("install", (event) => {
           await cache.add("./js/config.js");
         } catch {
           // Local development may not have a generated config.js.
+        }
+        try {
+          await cache.add("./js/test-mode-entry-config.js");
+        } catch {
+          // Local development can run without a configured Test Mode deployment.
         }
       })
       .then(() => self.skipWaiting())
@@ -105,6 +111,8 @@ self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(request.url);
 
   if (request.method !== "GET" || requestUrl.origin !== self.location.origin) return;
+  const testModePath = new URL("./test-mode/", self.registration.scope).pathname;
+  if (requestUrl.pathname.startsWith(testModePath)) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

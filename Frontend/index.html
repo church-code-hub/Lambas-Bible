@@ -9,6 +9,7 @@
     <title>Lambas Bible</title>
 
     <script src="./js/config.js"></script>
+    <script src="./js/test-mode-entry-config.js"></script>
     <script>
       (() => {
         const savedTheme = localStorage.getItem("app_theme");
@@ -58,11 +59,15 @@
     <div id="toastContainer" class="toast-container"></div>
     <header class="top-app-bar">
       <div class="brand">
-        <img
-          src="Assets/icons/icon-192.png"
-          alt="App Icon"
-          data-i18n-alt="appIconAlt"
-        />
+        <button
+          type="button"
+          class="test-mode-entry"
+          id="testModeEntryButton"
+          aria-label="Enter Test Mode"
+          title="Enter Test Mode"
+        >
+          <img src="Assets/icons/icon-192.png" alt="" aria-hidden="true" />
+        </button>
         <span>Lambas Bible</span>
       </div>
       <div class="top-actions">
@@ -152,7 +157,6 @@
         </div>
       </div>
     </header>
-
     <button
       type="button"
       id="homeBtn"
@@ -166,6 +170,7 @@
     >
       <i class="fa-solid fa-house" aria-hidden="true"></i>
     </button>
+    <p id="testModeEntryStatus" class="test-mode-entry-status" role="alert" hidden></p>
 
     <div class="container" id="mainContainer">
       <div id="loader" class="loader-overlay" role="status" aria-live="polite">
@@ -1219,5 +1224,6 @@
   <script src="./js/app-auth.js?v=75"></script>
   <script src="./js/app-scanner-search.js?v=77"></script>
   <script src="./js/app-cards-admin.js?v=77"></script>
+  <script src="./js/test-mode-entry.js?v=1"></script>
   </body>
 </html>
