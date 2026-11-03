@@ -104,10 +104,12 @@ notification UI, and PWA manifest use those existing files. Replace the
 provided files only after the owner supplies approved replacement artwork,
 preserving the current filenames and dimensions where possible.
 
-The supplied Test Mode video is `Frontend/Assets/video.mp4` and appears on the
-Test Mode dashboard with native playback controls. It is not automatically
-played or precached by the service worker; playback requires a network
-connection.
+The supplied Test Mode video is `Frontend/Assets/video.mp4` and plays muted,
+inline, and on loop behind the sign-in view. A tinted overlay blends it with
+the current design, and the full-screen login surface blocks interaction with
+app controls beneath it. The video is not precached by the service worker, so
+playback requires a network connection; it is hidden when reduced motion is
+preferred.
 
 App Settings already provides a responsive one-, two-, or three-column
 dashboard layout switcher, and the existing light/dark theme remains separate.

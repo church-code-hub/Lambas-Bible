@@ -194,26 +194,41 @@
 
       <!-- 0. Login View -->
       <div id="loginView" class="login-view">
-        <div class="login-mark" aria-hidden="true">
-          <img src="Assets/icons/icon-192.png" alt="" />
+        <video
+          class="login-background-video"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="auto"
+          poster="Assets/icons/icon-512.png"
+          aria-hidden="true"
+          tabindex="-1"
+        >
+          <source src="Assets/video.mp4" type="video/mp4" />
+        </video>
+        <div class="login-panel">
+          <div class="login-mark" aria-hidden="true">
+            <img src="Assets/icons/icon-192.png" alt="" />
+          </div>
+          <h1 class="login-title">Lambas Bible</h1>
+          <p class="login-instruction" data-i18n="loginSub">
+            يلزم تسجيل الدخول للمتابعة
+          </p>
+          <div class="login-signin">
+            <div id="g_id_signin"></div>
+          </div>
+          <div
+            id="loginError"
+            style="
+              color: #ef4444;
+              font-weight: bold;
+              text-align: center;
+              margin-top: 12px;
+              display: none;
+            "
+          ></div>
         </div>
-        <h1 class="login-title">Lambas Bible</h1>
-        <p class="login-instruction" data-i18n="loginSub">
-          يلزم تسجيل الدخول للمتابعة
-        </p>
-        <div class="login-signin">
-          <div id="g_id_signin"></div>
-        </div>
-        <div
-          id="loginError"
-          style="
-            color: #ef4444;
-            font-weight: bold;
-            text-align: center;
-            margin-top: 12px;
-            display: none;
-          "
-        ></div>
       </div>
 
       <!-- 1. Dashboard View -->
@@ -237,25 +252,10 @@
                 <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>2</span>
               </button>
               <button type="button" data-dashboard-layout="three" data-i18n-title="dashboardLayoutThree"
-                data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
-                <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
-              </button>
-            </div>
-            <section class="dashboard-video" aria-labelledby="dashboardVideoTitle">
-              <h2 id="dashboardVideoTitle" data-i18n="dashboardVideoTitle">Church video</h2>
-              <video
-                controls
-                playsinline
-                preload="metadata"
-                poster="Assets/icons/icon-512.png"
-                aria-labelledby="dashboardVideoTitle"
-              >
-                <source src="Assets/video.mp4" type="video/mp4" />
-                <span data-i18n="dashboardVideoUnsupported">
-                  Video playback is not supported in this browser.
-                </span>
-              </video>
-            </section>
+                  data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
+                  <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
+                </button>
+              </div>
           </div>
         </section>
         <div class="grid dashboard-actions-grid">

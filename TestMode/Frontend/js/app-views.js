@@ -221,8 +221,7 @@ function showView(viewId, pushHistory = true) {
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) {
-      el.style.display =
-        id === viewId ? (id === "loginView" ? "block" : "flex") : "none";
+      el.style.display = id === viewId ? "flex" : "none";
     }
   });
   const activeView = document.getElementById(viewId);
