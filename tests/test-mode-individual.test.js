@@ -698,8 +698,13 @@ test("Test Mode exposes accessible individual search and guards API-backed saves
   assert.match(htmlSource, /id="individualExportPdf"/);
   assert.match(htmlSource, /id="individualExportExcel"/);
   assert.match(htmlSource, /id="saveAttendeeProfileButton"[^>]+data-online-only/);
-  assert.match(htmlSource, /app-individual\.js\?v=1/);
-  assert.match(serviceWorkerSource, /app-individual\.js\?v=1/);
+  assert.match(htmlSource, /id="rosterProfileAttendanceChart"/);
+  assert.match(htmlSource, /class="roster-profile-attendance-details"/);
+  assert.match(htmlSource, /exportRosterProfileAttendance\('xlsx'\)/);
+  assert.match(frontendSource, /function renderRosterProfileAttendance\(report\)/);
+  assert.match(frontendSource, /async function exportRosterProfileAttendance\(format\)/);
+  assert.match(htmlSource, /app-individual\.js\?v=2/);
+  assert.match(serviceWorkerSource, /app-individual\.js\?v=2/);
   assert.match(
     viewsSource,
     /async function saveAttendeeProfile\(event\) \{[\s\S]*?if \(!navigator\.onLine\)[\s\S]*?apiCall\("update_roster_person"/,

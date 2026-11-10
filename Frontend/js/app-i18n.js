@@ -27,6 +27,12 @@ const translations = {
     offlineStorageError: "تعذر حفظ الإجراء دون اتصال على هذا الجهاز.",
     offlineSyncFailed:
       "تعذرت مزامنة الإجراءات المحفوظة. ستظل محفوظة على هذا الجهاز للمحاولة لاحقاً.",
+    offlineLogoutReconnect:
+      "اتصل بالإنترنت لتسجيل الخروج وإلغاء جلسة التطبيق.",
+    offlineLogoutNotAvailable:
+      "تسجيل الخروج غير متاح دون اتصال. اتصل بالإنترنت وحاول مرة أخرى.",
+    logoutSessionFailed:
+      "تعذر تأكيد تسجيل الخروج من الخادم. لا تزال الجلسة نشطة؛ حاول مرة أخرى.",
     offlineQueuedTitle: "محفوظ للمزامنة",
     offlineSyncMessage:
       "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
@@ -460,6 +466,12 @@ const translations = {
     offlineStorageError: "Could not save this offline action on the device.",
     offlineSyncFailed:
       "Saved actions could not sync. They remain on this device for another attempt.",
+    offlineLogoutReconnect:
+      "Reconnect to sign out and revoke the app session.",
+    offlineLogoutNotAvailable:
+      "Sign-out is unavailable offline. Reconnect and try again.",
+    logoutSessionFailed:
+      "The server could not confirm sign-out. Your session is still active; try again.",
     offlineQueuedTitle: "Saved for sync",
     offlineSyncMessage:
       "This action will be recorded after connection and account verification return.",

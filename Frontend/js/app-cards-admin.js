@@ -183,7 +183,7 @@ async function submitNewStudent() {
     }
   };
   try {
-    if (!currentUser || (navigator.onLine && !googleIdToken))
+    if (!currentUser || (navigator.onLine && !hasApiCredential_()))
       throw new Error("Offline actions require a signed-in account.");
     if (!navigator.onLine) {
       await queueOfflineEvent({

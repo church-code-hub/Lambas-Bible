@@ -287,10 +287,13 @@ async function performApiCall(
   isBackgroundRevalidation = false,
 ) {
   if (!API_URL) throw new Error("Application is not configured.");
+  const activeSessionToken =
+    typeof backendSessionToken === "string" ? backendSessionToken : "";
   const requestBody = {
     ...payload,
     action: action,
-    idToken: googleIdToken,
+    sessionToken: activeSessionToken,
+    idToken: activeSessionToken ? "" : googleIdToken,
     requestId:
       "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
   };
@@ -342,10 +345,18 @@ async function performApiCall(
     if (!response.ok) throw new Error("HTTP " + response.status);
     const result = await response.json();
     if (result.code === "AUTH_INVALID" && action !== "check_auth") {
+      const expectedEmail = currentUser && currentUser.email;
+      backendSessionToken = "";
+      localStorage.removeItem("app_session_token");
+      sessionStorage.removeItem("app_session_token");
       googleIdToken = "";
       localStorage.removeItem("google_id_token");
       sessionStorage.removeItem("google_id_token");
-      if (currentUser) beginSessionRestore(currentUser.email);
+      if (expectedEmail) {
+        logoutUser(result.message || "Please sign in again.");
+        initializeGoogleSignIn(false);
+        beginSessionRestore(expectedEmail);
+      }
       else logoutUser(result.message || "❌ Unauthorized account.");
     } else if (result.code === "AUTH_DENIED") {
       logoutUser(result.message || "❌ Unauthorized account.");

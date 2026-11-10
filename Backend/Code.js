@@ -102,7 +102,7 @@ function decryptId(token) {
 function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
   const action = params.action;
-  const identity = verifyGoogleIdToken_(params.idToken);
+  const identity = resolveRequestIdentity_(params, action);
   if (!identity.success) return responseJSON_(identity);
   if (!isEmailAllowed(identity.email))
     return responseJSON_(authorizationDenied_());
@@ -156,10 +156,10 @@ function doPost(e) {
       data = JSON.parse(e.postData.contents);
     else if (e && e.parameter) data = e.parameter;
 
-    const identity = verifyGoogleIdToken_(data.idToken);
+    action = data.action;
+    const identity = resolveRequestIdentity_(data, action);
     if (!identity.success) return responseJSON_(identity);
 
-    action = data.action;
     if (action === "check_auth") {
       const authorized = isEmailAllowed(identity.email);
       result = {
@@ -169,7 +169,29 @@ function doPost(e) {
         adminName: authorized ? getAdminNameByEmail(identity.email) : "",
         isOwner: authorized && isSpreadsheetOwner_(identity.email),
       };
+      if (authorized && identity.authMethod === "google_id_token") {
+        const session = withScriptLock_(() =>
+          createBackendSession_(identity.email),
+        );
+        if (!session.success) result = session;
+        else {
+          result.sessionToken = session.sessionToken;
+          result.sessionExpiresAt = session.expiresAt;
+        }
+      } else if (authorized && identity.syncOnly) {
+        result = authorizationDenied_();
+      }
+    } else if (action === "logout") {
+      result = revokeBackendSession_(
+        data.sessionToken,
+        data.preserveForSync === true,
+      );
     } else if (!isEmailAllowed(identity.email)) {
+      result = authorizationDenied_();
+    } else if (
+      identity.syncOnly &&
+      action !== "sync_offline_events"
+    ) {
       result = authorizationDenied_();
     } else if (action === "sync_offline_events") {
       result = syncOfflineEvents_(data.events, identity.email);
@@ -875,6 +897,174 @@ function verifyGoogleIdToken_(idToken) {
   }
 }
 
+const BACKEND_SESSION_TTL_SECONDS_ = 30 * 24 * 60 * 60;
+const BACKEND_SESSION_PROPERTY_PREFIX_ = "BACKEND_AUTH_SESSION_";
+const BACKEND_SESSION_MAX_COUNT_ = 400;
+
+function resolveRequestIdentity_(request, action) {
+  const data = request || {};
+  const sessionToken = typeof data.sessionToken === "string"
+    ? data.sessionToken.trim()
+    : "";
+  if (sessionToken) {
+    const session = getBackendSession_(sessionToken);
+    if (!session.success) return session;
+    if (action !== "logout" && !isEmailAllowed(session.email)) {
+      const propertyKey = backendSessionPropertyKey_(sessionToken);
+      if (propertyKey)
+        PropertiesService.getScriptProperties().deleteProperty(propertyKey);
+      return authorizationDenied_();
+    }
+    if (session.syncOnly && action !== "sync_offline_events" && action !== "logout")
+      return authorizationDenied_();
+    return {
+      success: true,
+      email: session.email,
+      authMethod: "backend_session",
+      syncOnly: session.syncOnly,
+    };
+  }
+  const identity = verifyGoogleIdToken_(data.idToken);
+  if (!identity.success) return identity;
+  return {
+    success: true,
+    email: identity.email,
+    authMethod: "google_id_token",
+    syncOnly: false,
+  };
+}
+
+function backendSessionPropertyKey_(sessionToken) {
+  const token = typeof sessionToken === "string" ? sessionToken.trim() : "";
+  if (!/^[0-9a-f-]{72}$/i.test(token)) return "";
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    token,
+  );
+  return BACKEND_SESSION_PROPERTY_PREFIX_ +
+    Utilities.base64EncodeWebSafe(digest).replace(/=+$/, "");
+}
+
+function createBackendSession_(email) {
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  if (!normalizedEmail || !isEmailAllowed(normalizedEmail))
+    return authorizationDenied_();
+  const properties = PropertiesService.getScriptProperties();
+  const now = Math.floor(Date.now() / 1000);
+  const allProperties = properties.getProperties();
+  let activeCount = 0;
+  Object.keys(allProperties).forEach((key) => {
+    if (!key.startsWith(BACKEND_SESSION_PROPERTY_PREFIX_)) return;
+    let record = null;
+    try {
+      record = JSON.parse(allProperties[key]);
+    } catch (error) {}
+    if (!record || Number(record.expiresAt) <= now) {
+      properties.deleteProperty(key);
+      return;
+    }
+    activeCount++;
+  });
+  if (activeCount >= BACKEND_SESSION_MAX_COUNT_) {
+    return {
+      success: false,
+      code: "AUTH_SESSION_CAPACITY",
+      message: "Too many active app sessions. Try again later.",
+    };
+  }
+  const sessionToken = Utilities.getUuid() + Utilities.getUuid();
+  const propertyKey = backendSessionPropertyKey_(sessionToken);
+  if (!propertyKey) {
+    return {
+      success: false,
+      code: "AUTH_SESSION_FAILED",
+      message: "Could not create an app session.",
+    };
+  }
+  const expiresAt = now + BACKEND_SESSION_TTL_SECONDS_;
+  properties.setProperty(
+    propertyKey,
+    JSON.stringify({
+      email: normalizedEmail,
+      expiresAt: expiresAt,
+      syncOnly: false,
+    }),
+  );
+  return { success: true, sessionToken: sessionToken, expiresAt: expiresAt };
+}
+
+function getBackendSession_(sessionToken) {
+  const propertyKey = backendSessionPropertyKey_(sessionToken);
+  if (!propertyKey) {
+    return {
+      success: false,
+      code: "AUTH_INVALID",
+      message: "The app session is invalid or expired. Sign in again.",
+    };
+  }
+  const properties = PropertiesService.getScriptProperties();
+  const serialized = properties.getProperty(propertyKey);
+  if (!serialized) {
+    return {
+      success: false,
+      code: "AUTH_INVALID",
+      message: "The app session is invalid or expired. Sign in again.",
+    };
+  }
+  let record = null;
+  try {
+    record = JSON.parse(serialized);
+  } catch (error) {}
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    !record ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(record.email || "")) ||
+    !Number.isSafeInteger(Number(record.expiresAt)) ||
+    Number(record.expiresAt) <= now
+  ) {
+    properties.deleteProperty(propertyKey);
+    return {
+      success: false,
+      code: "AUTH_INVALID",
+      message: "The app session is invalid or expired. Sign in again.",
+    };
+  }
+  return {
+    success: true,
+    email: String(record.email).toLowerCase().trim(),
+    expiresAt: Number(record.expiresAt),
+    syncOnly: record.syncOnly === true,
+  };
+}
+
+function revokeBackendSession_(sessionToken, preserveForSync) {
+  const propertyKey = backendSessionPropertyKey_(sessionToken);
+  if (!propertyKey) {
+    return {
+      success: false,
+      code: "AUTH_INVALID",
+      message: "The app session is invalid or expired. Sign in again.",
+    };
+  }
+  const properties = PropertiesService.getScriptProperties();
+  const session = getBackendSession_(sessionToken);
+  if (!session.success) return session;
+  const retainForSync = preserveForSync && isEmailAllowed(session.email);
+  if (retainForSync) {
+    properties.setProperty(
+      propertyKey,
+      JSON.stringify({
+        email: session.email,
+        expiresAt: session.expiresAt,
+        syncOnly: true,
+      }),
+    );
+  } else {
+    properties.deleteProperty(propertyKey);
+  }
+  return { success: true, revoked: !retainForSync };
+}
+
 // =========================================================================
 // 🔒 Admins & Permissions
 // =========================================================================
@@ -1472,15 +1662,29 @@ function isAttendanceTimeAllowed() {
 
 function attendanceTimeParts_(date) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const timeZone =
-    spreadsheet && spreadsheet.getSpreadsheetTimeZone
-      ? spreadsheet.getSpreadsheetTimeZone()
-      : Session.getScriptTimeZone();
-  const parts = Utilities.formatDate(date, timeZone, "yyyy-MM-dd|HH|mm|u").split("|");
+  const hasSpreadsheetTimeZone =
+    spreadsheet && typeof spreadsheet.getSpreadsheetTimeZone === "function";
+
+  if (hasSpreadsheetTimeZone) {
+    const timeZone = spreadsheet.getSpreadsheetTimeZone();
+    const parts = Utilities.formatDate(date, timeZone, "yyyy-MM-dd|HH|mm|u").split("|");
+    return {
+      dateKey: parts[0],
+      day: Number(parts[3]) % 7,
+      minute: Number(parts[1]) * 60 + Number(parts[2]),
+    };
+  }
+
+  const day = date.getDay() % 7;
+  const minute = date.getHours() * 60 + date.getMinutes();
   return {
-    dateKey: parts[0],
-    day: Number(parts[3]) % 7,
-    minute: Number(parts[1]) * 60 + Number(parts[2]),
+    dateKey: [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-"),
+    day,
+    minute,
   };
 }
 
@@ -1543,7 +1747,15 @@ function isCurrentAttendanceWindowOpen_(date, settings) {
 }
 
 function attendanceWindowCloseReason_(date, settings) {
-  const local = attendanceTimeParts_(date);
+  const local = {
+    dateKey: [
+      date.getUTCFullYear(),
+      String(date.getUTCMonth() + 1).padStart(2, "0"),
+      String(date.getUTCDate()).padStart(2, "0"),
+    ].join("-"),
+    day: date.getUTCDay() % 7,
+    minute: date.getUTCHours() * 60 + date.getUTCMinutes(),
+  };
   const [startHour, startMinute] = settings.startTime.split(":").map(Number);
   const [endHour, endMinute] = settings.endTime.split(":").map(Number);
   const start = startHour * 60 + startMinute;

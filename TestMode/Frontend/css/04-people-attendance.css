@@ -249,6 +249,65 @@
   width: fit-content;
   margin: 0;
 }
+.roster-profile-attendance {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--glass-surface) 86%, transparent);
+}
+.roster-profile-attendance h3 {
+  margin: 0;
+  color: var(--accent-gold);
+  text-align: center;
+}
+.roster-profile-attendance-chart {
+  display: grid;
+  width: 140px;
+  height: 140px;
+  place-items: center;
+}
+.roster-profile-attendance-chart svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.roster-profile-chart-value {
+  fill: var(--text-main);
+  font-size: 23px;
+  font-weight: 800;
+}
+.roster-profile-attendance-details {
+  width: 100%;
+}
+.roster-profile-attendance-details > summary,
+.settings-secondary-controls > summary,
+.dashboard-more-actions > summary {
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  font-weight: 700;
+  cursor: pointer;
+}
+.roster-profile-attendance-details > summary:focus-visible,
+.settings-secondary-controls > summary:focus-visible,
+.dashboard-more-actions > summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-gold) 55%, transparent);
+  outline-offset: 2px;
+}
+.roster-profile-attendance-details[open] > summary,
+.settings-secondary-controls[open] > summary,
+.dashboard-more-actions[open] > summary {
+  margin-bottom: 10px;
+  border-color: var(--accent-gold);
+}
+.roster-profile-attendance-details .individual-attendance-table {
+  margin-top: 0;
+}
 .profile-delete-button {
   border-color: color-mix(in srgb, #ef4444 68%, var(--glass-edge));
   background: color-mix(in srgb, #ef4444 13%, var(--glass-surface));

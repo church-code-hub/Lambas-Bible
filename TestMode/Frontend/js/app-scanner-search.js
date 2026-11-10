@@ -226,6 +226,21 @@ function saveWhatsAppMessageTemplate() {
   showToast(translations[currentLang].whatsAppTemplateSaved, "success");
 }
 
+async function loadWhatsAppAutomationStatus() {
+  const status = document.getElementById("whatsAppAutomationStatus");
+  if (!status || !currentUser || !testModePasswordUnlocked) return;
+  status.textContent = translations[currentLang].whatsAppAutomationStatusPending;
+  try {
+    const result = await apiCall("get_whatsapp_automation_status");
+    if (!result || !result.success) return;
+    status.textContent = result.configured
+      ? translations[currentLang].whatsAppAutomationConfiguredDisabled
+      : translations[currentLang].whatsAppAutomationStatusPending;
+  } catch (error) {
+    status.textContent = translations[currentLang].whatsAppAutomationStatusPending;
+  }
+}
+
 async function startLiveScanner() {
   if (isScannerRunning || isScannerStarting) return;
   if (!currentAttendanceContext && currentUser) refreshAttendanceContext();

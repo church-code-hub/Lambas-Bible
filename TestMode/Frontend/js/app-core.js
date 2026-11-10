@@ -153,7 +153,15 @@ function setLanguage(lang) {
       typeof refreshIndividualPersonView === "function"
     )
       refreshIndividualPersonView();
-    if (currentActiveViewId === "appSettingsView") updateOfflineStatus();
+    if (currentActiveViewId === "appSettingsView") {
+      updateOfflineStatus();
+      loadWhatsAppAutomationStatus();
+    }
+    if (
+      currentActiveViewId === "attendeeProfileView" &&
+      rosterProfileAttendanceReport
+    )
+      renderRosterProfileAttendance(rosterProfileAttendanceReport);
     const tutorialDialog = document.getElementById("firstRunTutorial");
     if (
       tutorialDialog?.classList.contains("is-active") &&
@@ -208,7 +216,8 @@ function toggleTheme() {
 
 function isReadApiAction(action) {
   return (
-    action.startsWith("get_") ||
+    (action.startsWith("get_") &&
+      action !== "get_whatsapp_automation_status") ||
     ["search", "search_card_share"].includes(action)
   );
 }
@@ -250,6 +259,13 @@ async function apiCall(action, payload = {}, onRevalidate = null) {
     action !== "check_test_access"
   ) {
     throw new Error("Test Mode backend verification is required.");
+  }
+  if (
+    testModeServerVerified &&
+    !testModePasswordUnlocked &&
+    !["check_test_access", "verify_test_mode_password"].includes(action)
+  ) {
+    throw new Error("Unlock Test Mode before using its application APIs.");
   }
   const cacheable =
     isReadApiAction(action) &&
@@ -312,6 +328,13 @@ async function performApiCall(
     action !== "check_test_access"
   ) {
     throw new Error("Test Mode backend verification is required.");
+  }
+  if (
+    testModeServerVerified &&
+    !testModePasswordUnlocked &&
+    !["check_test_access", "verify_test_mode_password"].includes(action)
+  ) {
+    throw new Error("Unlock Test Mode before using its application APIs.");
   }
   if (!API_URL) throw new Error("Application is not configured.");
   const requestBody = {
@@ -376,6 +399,8 @@ async function performApiCall(
     }
     if (result.code === "AUTH_INVALID" && action !== "check_auth") {
       googleIdToken = "";
+      testModeServerVerified = false;
+      testModePasswordUnlocked = false;
       localStorage.removeItem("google_id_token");
       sessionStorage.removeItem("google_id_token");
       if (currentUser) beginSessionRestore(currentUser.email);

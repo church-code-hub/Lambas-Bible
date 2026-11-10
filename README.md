@@ -64,7 +64,7 @@ and (if used) Firebase project. Follow [TestMode/README.md](./TestMode/README.md
 The test GAS project/account must have no permission to production resources.
 Keep `TestMode/Backend/TestModeConfig.gs` allowlist empty until each tester has
 been approved, and configure the backend's required test-only properties and
-spreadsheet marker. The server verifies each Google ID token and authorizes
+spreadsheet marker. The Test Mode server verifies each Google ID token and authorizes
 the normalized email against that allowlist on every API action. The test
 frontend has separate service-worker/IndexedDB caches and namespaced browser
 storage; offline startup does not grant authorization or display cached private
@@ -75,7 +75,35 @@ the test backend into `Backend/Code.js` or point it at production resources.
 
 The CSS entry point imports the numbered modules in cascade order. Add styles to the module that owns the component or view, and keep view-specific responsive rules beside those styles so the existing override order remains predictable. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the frontend architecture and change workflow.
 
-After one successful online load, a previously authenticated user can scan QR cards, search the saved roster by name, and queue new attendees while offline. Each attendance scan is first committed to the IndexedDB queue with `pending` status and its scan-time timestamp, then sent immediately to the GAS sync endpoint. Existing scan feedback appears after a randomized 1–2 second delay without waiting for the network. If the request cannot complete, the event remains pending for the existing manual queue sync or the public `triggerManualSync()` function; supported browsers also register the `sync-pending-events` Background Sync tag so the service worker can retry after the page is closed. Background sync needs the saved ID token to authorize its GAS request, so that credential is stored in the device's IndexedDB while queued events remain. Keep devices physically controlled and sign out only on trusted devices.
+After one successful online load, a previously authenticated user can scan QR cards, search the saved roster by name, and queue new attendees while offline. Each attendance scan is first committed to the IndexedDB queue with `pending` status and its scan-time timestamp, then sent immediately to the GAS sync endpoint. Existing scan feedback appears after a randomized 1–2 second delay without waiting for the network. If the request cannot complete, the event remains pending for the existing manual queue sync or the public `triggerManualSync()` function; supported browsers also register the `sync-pending-events` Background Sync tag so the service worker can retry after the page is closed. While queued events remain, the worker stores the backend session token in that device's IndexedDB. When online, signing out restricts such a retained server session to the offline-sync API only; otherwise logout revokes it. Signing out is unavailable while offline; reconnect before signing out so the backend can confirm revocation or sync-only restriction. Keep devices physically controlled and sign out only on trusted devices.
+
+## Main App backend sessions
+
+After an initial Google ID-token verification, `check_auth` issues a random,
+opaque backend session valid for exactly 30 days. The browser stores it using
+the existing local-storage convention and sends it on subsequent API requests.
+The GAS backend stores only a hash-keyed session record in Script Properties;
+the random bearer token is never decoded or accepted as an email claim. This
+server-side record is integrity-protected by storage access control, so no
+signing secret or hardcoded credential is needed. The backend checks the
+session's expiry and rechecks the account's current Admins/owner authorization
+for every API action. Expired, altered, revoked, or unauthorized sessions are
+rejected; an allowlist denial invalidates the stored session so restoring
+authorization later cannot revive its bearer. A valid session bearer can always
+revoke itself, but an account no longer authorized cannot retain a sync-only
+session. Online logout waits for backend confirmation before clearing the local
+session. It revokes the session; if pending events remain, the session is
+restricted server-side to `sync_offline_events` so the existing background
+queue can finish, and expires within its original 30-day window. Logout is
+unavailable offline, even if the queue appears empty, because the backend cannot
+confirm revocation or restriction.
+Session issuance fails closed after pruning expired records if the backend
+reaches its 400-active-session limit.
+
+Deploy the backend update before serving the updated frontend. Google ID
+tokens remain supported for initial sign-in and migration of saved ID-token
+sessions; after a successful check, the client replaces the ID token with the
+backend session. No authentication signing secret needs to be provisioned.
 
 Read actions use IndexedDB stale-while-revalidate: a saved response is returned for the existing view to render immediately, while the network response refreshes the cache and updates that view through its callback. The roster, including each attendee's existing QR token for local name lookup, is downloaded to that device after an authorized online sign-in; offline search uses that saved snapshot and may not include recent roster changes. App Settings shows the saved roster's freshness and provides a manual refresh. A scanned QR token is kept unchanged in the queued event sent to the backend. Name matching ranks exact and word matches first, then supports partial names and one-character typos. Selecting a name queues the same attendance scan used by QR check-in/check-out. The saved-actions view is available offline so queued events can be reviewed or deleted. When online, users can sync an individual event or group in any order; each event retains its original recorded timestamp for attendance processing. Syncing the whole queue defaults to timestamp order. Events and the roster snapshot are stored in IndexedDB on that device; the backend uses Script Properties for retry protection and prunes records older than seven days during a subsequent sync. A fresh login, card operations, and management actions still require a connection. Offline device clocks are not a tamper-proof time source; the backend rejects events more than seven days old or more than five minutes in the future. Review synced timestamps.
 
@@ -83,7 +111,7 @@ Multiple online devices can use the app at once. Attendance, roster ID allocatio
 
 Online scans show a locally predicted check-in, check-out, duplicate, or delay result immediately. The prediction uses an attendance snapshot and schedule/time-zone settings preloaded from the backend; the saved scan is still processed by the backend, which remains authoritative if another device changed attendance after the snapshot was loaded. Deploy the updated Apps Script backend together with the frontend for immediate detailed results.
 
-After a first successful sign-in, a one-time setup lets each device choose its language and theme, then continue to or skip the tutorial. These preferences are stored locally for that device. The profile is cached so the app can show the saved account immediately on later visits; Google Identity Services silently attempts to refresh the short-lived API token with account auto-selection. Browser privacy settings, revoked Google access, or an expired/revoked account may still require the user to sign in again before server actions can run. The tutorial can be replayed from App Settings. During it, scrolling and unrelated actions are blocked; previews and sample searches do not write to Sheets, alter attendance, or enter the offline sync queue.
+After a first successful sign-in, a one-time setup lets each device choose its language and theme, then continue to or skip the tutorial. These preferences are stored locally for that device. The profile is cached so the app can show the saved account immediately on later visits; the backend validates the saved 30-day app session and current account authorization on each online API request. An expired or revoked app session, or removal from the authorized account list, requires Google sign-in again. Revoking Google access alone does not immediately revoke an already-issued app session; sign out online to revoke it. The tutorial can be replayed from App Settings. During it, scrolling and unrelated actions are blocked; previews and sample searches do not write to Sheets, alter attendance, or enter the offline sync queue.
 
 ## Attendance Management
 

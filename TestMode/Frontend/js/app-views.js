@@ -199,6 +199,7 @@ function showView(viewId, pushHistory = true) {
 
   [
     "loginView",
+    "testModePasswordView",
     "dashboardView",
     "scanView",
     "searchView",
@@ -407,6 +408,7 @@ function openFollowupView() {
 function openAppSettings() {
   if (!currentUser) return;
   showView("appSettingsView");
+  loadWhatsAppAutomationStatus();
 }
 
 function openRosterManagement() {
@@ -945,6 +947,7 @@ function openAttendeeProfile(id) {
   document.getElementById("attendeeProfileBirthMonth").value = month;
   document.getElementById("attendeeProfileBirthDay").value = day;
   showView("attendeeProfileView");
+  loadRosterProfileAttendance(person);
 }
 
 async function copyAttendeePhone() {

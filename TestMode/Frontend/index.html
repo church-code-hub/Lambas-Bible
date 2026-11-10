@@ -30,7 +30,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=86" />
+    <link rel="stylesheet" href="./css/styles.css?v=87" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -216,6 +216,23 @@
         ></div>
       </div>
 
+      <div id="testModePasswordView" class="login-view test-mode-password-view" style="display: none">
+        <div class="login-mark" aria-hidden="true">
+          <img src="Assets/icons/icon-192.png" alt="" />
+        </div>
+        <h1 class="login-title" data-i18n="testModePasswordTitle">Test Mode password</h1>
+        <p class="login-instruction" data-i18n="testModePasswordInstructions">
+          Enter the password provided by the Test Mode administrator.
+        </p>
+        <form id="testModePasswordForm" onsubmit="submitTestModePassword(event)">
+          <label for="testModePasswordInput" data-i18n="testModePasswordLabel">Test Mode password</label>
+          <input id="testModePasswordInput" type="password" autocomplete="current-password"
+            minlength="1" maxlength="256" required />
+          <button id="testModePasswordSubmit" class="btn" type="submit" data-i18n="testModePasswordContinue">Continue</button>
+        </form>
+        <p id="testModePasswordError" class="report-note" role="alert" aria-live="assertive"></p>
+      </div>
+
       <!-- 1. Dashboard View -->
       <div id="dashboardView" data-layout="two" data-design="current" style="display: none">
         <section class="dashboard-welcome">
@@ -275,6 +292,15 @@
             <span class="ico"><i class="fa-solid fa-address-book"></i></span
             ><span data-i18n="manageRoster">إدارة قائمة الأشخاص</span>
           </button>
+          <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
+            <span class="ico"><i class="fa-solid fa-people-group"></i></span
+            ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
+            <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
+          </button>
+        </div>
+        <details id="dashboardMoreActions" class="dashboard-more-actions">
+          <summary data-i18n="moreActions">More actions</summary>
+          <div class="grid dashboard-actions-grid">
           <button id="birthdaysAction" class="tile" data-online-only onclick="openBirthdaysView()">
             <span class="ico"><i class="fa-solid fa-cake-candles"></i></span
             ><span data-i18n="birthdaysTitle">أعياد الميلاد</span>
@@ -299,16 +325,12 @@
             <span class="ico"><i class="fa-solid fa-table"></i></span
             ><span data-i18n="openSheet">فتح الشيت</span>
           </button>
-          <button id="currentAttendeesTile" class="tile" data-online-only disabled aria-busy="true" onclick="openCurrentAttendeesView()">
-            <span class="ico"><i class="fa-solid fa-people-group"></i></span
-            ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
-            <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
-          </button>
           <button id="tutorialScheduleAction" class="tile" data-online-only onclick="openScheduleSettings()">
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div id="appSettingsView" style="display: none">
@@ -349,28 +371,33 @@
             </button>
           </div>
         </section>
-        <section class="app-preference-group" aria-labelledby="whatsAppTemplateTitle">
-          <h3 id="whatsAppTemplateTitle" data-i18n="whatsAppTemplateTitle">WhatsApp message</h3>
-          <label for="whatsAppMessagePrefix" data-i18n="whatsAppPrefix">Text before the name</label>
-          <textarea id="whatsAppMessagePrefix" rows="3" maxlength="500"></textarea>
-          <label for="whatsAppMessageSuffix" data-i18n="whatsAppSuffix">Text after the name</label>
-          <textarea id="whatsAppMessageSuffix" rows="3" maxlength="500"></textarea>
-          <button class="btn secondary" type="button" onclick="saveWhatsAppMessageTemplate()" data-i18n="saveWhatsAppTemplate">Save WhatsApp message</button>
-        </section>
-        <section class="app-preference-group" aria-labelledby="tutorialPreferenceTitle">
-          <h3 id="tutorialPreferenceTitle" data-i18n="tutorialReopen">الشرح</h3>
-          <button id="tutorialReplayButton" class="btn secondary" type="button" onclick="replayFirstRunTutorial()">
-            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-            <span data-i18n="tutorialReplay">إعادة الجولة التعليمية</span>
-          </button>
-        </section>
-        <section class="app-preference-group" aria-labelledby="offlineReadinessTitle">
-          <h3 id="offlineReadinessTitle" data-i18n="offlineReadinessTitle">Offline readiness</h3>
-          <p id="offlineRosterStatus" class="report-note" aria-live="polite"></p>
-          <button class="btn secondary" type="button" data-online-only onclick="manuallyRefreshRosterCache()" data-i18n="refreshOfflineRoster">
-            Refresh offline list
-          </button>
-        </section>
+        <details class="settings-secondary-controls">
+          <summary data-i18n="moreSettings">More settings</summary>
+          <section class="app-preference-group" aria-labelledby="whatsAppTemplateTitle">
+            <h3 id="whatsAppTemplateTitle" data-i18n="whatsAppTemplateTitle">WhatsApp message</h3>
+            <p class="report-note" data-i18n="whatsAppAutomationDisabled">Automatic WhatsApp messages are disabled in this test build.</p>
+            <p id="whatsAppAutomationStatus" class="report-note" role="status" aria-live="polite"></p>
+            <label for="whatsAppMessagePrefix" data-i18n="whatsAppPrefix">Text before the name</label>
+            <textarea id="whatsAppMessagePrefix" rows="3" maxlength="500"></textarea>
+            <label for="whatsAppMessageSuffix" data-i18n="whatsAppSuffix">Text after the name</label>
+            <textarea id="whatsAppMessageSuffix" rows="3" maxlength="500"></textarea>
+            <button class="btn secondary" type="button" onclick="saveWhatsAppMessageTemplate()" data-i18n="saveWhatsAppTemplate">Save WhatsApp message</button>
+          </section>
+          <section class="app-preference-group" aria-labelledby="tutorialPreferenceTitle">
+            <h3 id="tutorialPreferenceTitle" data-i18n="tutorialReopen">الشرح</h3>
+            <button id="tutorialReplayButton" class="btn secondary" type="button" onclick="replayFirstRunTutorial()">
+              <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+              <span data-i18n="tutorialReplay">إعادة الجولة التعليمية</span>
+            </button>
+          </section>
+          <section class="app-preference-group" aria-labelledby="offlineReadinessTitle">
+            <h3 id="offlineReadinessTitle" data-i18n="offlineReadinessTitle">Offline readiness</h3>
+            <p id="offlineRosterStatus" class="report-note" aria-live="polite"></p>
+            <button class="btn secondary" type="button" data-online-only onclick="manuallyRefreshRosterCache()" data-i18n="refreshOfflineRoster">
+              Refresh offline list
+            </button>
+          </section>
+        </details>
       </div>
 
       <div id="rosterView" style="display: none">
@@ -445,6 +472,22 @@
               <option value="31">31</option>
             </select>
           </fieldset>
+          <section class="roster-profile-attendance" aria-labelledby="rosterProfileAttendanceTitle">
+            <h3 id="rosterProfileAttendanceTitle" data-i18n="individualAttendanceTitle">Attendance</h3>
+            <div id="rosterProfileAttendanceChart" class="roster-profile-attendance-chart"
+              role="img" aria-label="Attendance chart" data-i18n-aria-label="rosterProfileChartLabel"></div>
+            <p id="rosterProfileAttendanceSummary" class="report-note" aria-live="polite"></p>
+            <div id="rosterProfileAttendanceExports" class="individual-export-controls" hidden>
+              <button id="rosterProfileExportPng" class="btn secondary" type="button" data-online-only
+                onclick="exportRosterProfileAttendance('png')" data-i18n="individualExportImage">Download image</button>
+              <button id="rosterProfileExportXlsx" class="btn secondary" type="button" data-online-only
+                onclick="exportRosterProfileAttendance('xlsx')" data-i18n="individualExportExcel">Download Excel</button>
+            </div>
+            <details class="roster-profile-attendance-details">
+              <summary data-i18n="rosterProfileAttendanceDetails">Detailed attendance records</summary>
+              <div id="rosterProfileAttendanceRecords" class="report-list" aria-live="polite"></div>
+            </details>
+          </section>
           <button id="saveAttendeeProfileButton" class="btn" type="submit" data-online-only data-i18n="saveProfile">حفظ الملف</button>
           <button id="deleteAttendeeProfileButton" class="btn profile-delete-button" type="button" data-online-only
             onclick="deactivateProfilePerson()" data-i18n="deleteRosterPerson">حذف</button>
@@ -464,6 +507,13 @@
           <button class="btn secondary" type="button" onclick="applyBirthdayDateFilter()" data-i18n="birthdayApplyFilter">Show dates</button>
           <button class="btn tertiary" type="button" onclick="resetBirthdayDateFilter()" data-i18n="birthdayResetFilter">This week</button>
         </div>
+        <details class="whatsapp-automation-controls">
+          <summary id="whatsAppAutomationTitle" data-i18n="whatsAppAutomationTitle">WhatsApp Business automation</summary>
+          <p class="report-note" data-i18n="whatsAppAutomationDisabled">Automatic WhatsApp messages are disabled in this test build.</p>
+          <div class="whatsapp-campaign-actions">
+            <button class="btn secondary" type="button" disabled aria-disabled="true" data-i18n="whatsAppBirthdayCampaign">Birthday congratulations</button>
+          </div>
+        </details>
         <div id="birthdayResults" class="report-list" aria-live="polite"></div>
       </div>
 
@@ -557,6 +607,11 @@
 
       <div id="currentAttendeesView" style="display: none">
         <h2 data-i18n="currentAttendeesTitle">الحضور الحالي</h2>
+        <details class="whatsapp-automation-controls">
+          <summary data-i18n="whatsAppAutomationTitle">WhatsApp Business automation</summary>
+          <p class="report-note" data-i18n="whatsAppAutomationDisabled">Automatic WhatsApp messages are disabled in this test build.</p>
+          <button class="btn secondary" type="button" disabled aria-disabled="true" data-i18n="whatsAppCheckoutCampaign">Checkout everyone</button>
+        </details>
         <button id="refreshCurrentAttendeesButton" class="btn secondary" type="button" data-online-only onclick="updateCurrentAttendees()" data-i18n="refreshCurrentAttendees">
           تحديث الحضور
         </button>
@@ -919,6 +974,11 @@
         >
           بحث عن الكارت
         </button>
+        <details class="whatsapp-automation-controls">
+          <summary data-i18n="whatsAppAutomationTitle">WhatsApp Business automation</summary>
+          <p class="report-note" data-i18n="whatsAppAutomationDisabled">Automatic WhatsApp messages are disabled in this test build.</p>
+          <button class="btn secondary" type="button" disabled aria-disabled="true" data-i18n="whatsAppQrCampaign">Send unsent QR messages</button>
+        </details>
         <div
           id="shareResults"
           style="margin-top: 15px"
@@ -1323,14 +1383,14 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=77"></script>
-  <script src="./js/app-i18n.js?v=86"></script>
-  <script src="./js/app-core.js?v=76"></script>
+  <script src="./js/app-state.js?v=78"></script>
+  <script src="./js/app-i18n.js?v=87"></script>
+  <script src="./js/app-core.js?v=77"></script>
   <script src="./js/app-offline.js?v=78"></script>
-  <script src="./js/app-views.js?v=88"></script>
-  <script src="./js/app-individual.js?v=1"></script>
-  <script src="./js/app-auth.js?v=78"></script>
-  <script src="./js/app-scanner-search.js?v=77"></script>
+  <script src="./js/app-views.js?v=89"></script>
+  <script src="./js/app-individual.js?v=2"></script>
+  <script src="./js/app-auth.js?v=79"></script>
+  <script src="./js/app-scanner-search.js?v=78"></script>
   <script src="./js/app-cards-admin.js?v=77"></script>
   </body>
 </html>

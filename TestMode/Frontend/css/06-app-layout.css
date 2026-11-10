@@ -137,6 +137,63 @@
   overflow: hidden;
 }
 
+.dashboard-more-actions,
+.settings-secondary-controls {
+  width: min(100%, 1120px);
+  margin: 14px auto 0;
+}
+.dashboard-more-actions > summary,
+.settings-secondary-controls > summary {
+  max-width: 720px;
+  margin-inline: auto;
+  background: color-mix(in srgb, var(--glass-surface) 86%, transparent);
+  text-align: center;
+}
+.dashboard-more-actions .dashboard-actions-grid {
+  margin-top: 12px;
+}
+.settings-secondary-controls[open] {
+  display: grid;
+  gap: 12px;
+}
+.whatsapp-automation-controls {
+  margin-block: 12px;
+  padding: 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  background: var(--glass-surface);
+}
+.whatsapp-automation-controls h3 {
+  margin-block: 0 8px;
+  color: var(--accent-gold);
+}
+.whatsapp-campaign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.whatsapp-campaign-actions .btn {
+  flex: 1 1 180px;
+}
+.test-mode-password-view form {
+  display: grid;
+  gap: 10px;
+  text-align: start;
+}
+.test-mode-password-view input {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 13px;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font: inherit;
+}
+.test-mode-password-view input:focus-visible {
+  border-color: var(--accent-gold);
+  outline: 3px solid color-mix(in srgb, var(--accent-gold) 34%, transparent);
+}
+
 @keyframes viewEnter {
   0% {
     opacity: 0;

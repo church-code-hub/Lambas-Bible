@@ -41,12 +41,19 @@ window.addEventListener("DOMContentLoaded", async function () {
   });
   if (hasSavedUser) {
     currentUser = savedUser;
-    setupUserProfileUI();
-    checkDirectUrlScan();
     if (navigator.onLine) {
-      initializeGoogleSignIn(false);
-      if (googleIdToken) validateSavedSession();
-      else beginSessionRestore(currentUser.email);
+      if (backendSessionToken || googleIdToken) {
+        if (googleIdToken) initializeGoogleSignIn(false);
+        await validateSavedSession();
+      } else {
+        initializeGoogleSignIn(false);
+        showView("loginView", false);
+        beginSessionRestore(currentUser.email);
+        dismissStartupScreen();
+      }
+    } else {
+      setupUserProfileUI();
+      checkDirectUrlScan();
     }
   } else {
     if (navigator.onLine) initializeGoogleSignIn(true);
@@ -56,7 +63,8 @@ window.addEventListener("DOMContentLoaded", async function () {
 });
 
 async function validateSavedSession() {
-  if (!currentUser || !googleIdToken || !navigator.onLine) return;
+  if (!currentUser || (!backendSessionToken && !googleIdToken) || !navigator.onLine)
+    return;
   const expectedEmail = currentUser.email.toLowerCase().trim();
   try {
     const authRes = await apiCall("check_auth", { email: expectedEmail });
@@ -67,26 +75,43 @@ async function validateSavedSession() {
         .toLowerCase()
         .trim() === expectedEmail
     ) {
+      if (!backendSessionToken && !authRes.sessionToken) {
+        logoutUser("The server did not issue an app session. Please sign in again.");
+        return;
+      }
       if (authRes.adminName) currentUser.name = authRes.adminName;
       currentUser.isOwner = authRes.isOwner === true;
       localStorage.setItem(OFFLINE_SESSION_KEY, expectedEmail);
       localStorage.setItem("app_user", JSON.stringify(currentUser));
+      if (authRes.sessionToken) saveBackendSession_(authRes);
+      else if (backendSessionToken) saveBackendSession_(authRes);
       setupUserProfileUI();
       refreshUserDataAfterTutorial();
       return;
     }
     if (authRes && authRes.code === "AUTH_INVALID") {
       googleIdToken = "";
+      backendSessionToken = "";
+      localStorage.removeItem("app_session_token");
+      sessionStorage.removeItem("app_session_token");
       localStorage.removeItem("google_id_token");
       sessionStorage.removeItem("google_id_token");
+      initializeGoogleSignIn(false);
+      showView("loginView", false);
+      dismissStartupScreen();
       beginSessionRestore(expectedEmail);
-    } else if (authRes && authRes.success && !authRes.authorized) {
-      logoutUser("❌ Unauthorized account.");
+    } else if (
+      authRes &&
+      (authRes.code === "AUTH_DENIED" ||
+        (authRes.success && !authRes.authorized))
+    ) {
+      logoutUser("❌ Unauthorized account.", true);
     } else if (authRes && authRes.authorized) {
       logoutUser("Please sign in again.");
     }
   } catch (error) {
     console.warn("Could not validate the saved Google session yet.", error);
+    logoutUser("Could not verify your app session. Please sign in again.");
   }
 }
 
@@ -196,8 +221,12 @@ async function handleCredentialResponse(response) {
           payload.picture || "https://lh3.googleusercontent.com/a/default-user",
         isOwner: authRes.isOwner === true,
       };
-      sessionStorage.setItem("google_id_token", googleIdToken);
-      localStorage.setItem("google_id_token", googleIdToken);
+      if (!authRes.sessionToken) {
+        throw new Error(
+          "The server did not issue an app session. Check the Apps Script deployment.",
+        );
+      }
+      saveBackendSession_(authRes);
       localStorage.setItem("app_user", JSON.stringify(currentUser));
       localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
       setupUserProfileUI();
@@ -205,6 +234,9 @@ async function handleCredentialResponse(response) {
       refreshUserDataAfterTutorial();
     } else if (authRes && authRes.code === "AUTH_INVALID") {
       googleIdToken = "";
+      backendSessionToken = "";
+      localStorage.removeItem("app_session_token");
+      sessionStorage.removeItem("app_session_token");
       localStorage.removeItem("google_id_token");
       sessionStorage.removeItem("google_id_token");
       if (restoringSavedAccount) {
@@ -219,7 +251,10 @@ async function handleCredentialResponse(response) {
       }
     } else if (authRes && authRes.code === "AUTH_REQUIRED") {
       googleIdToken = "";
+      backendSessionToken = "";
       localStorage.removeItem("google_id_token");
+      localStorage.removeItem("app_session_token");
+      sessionStorage.removeItem("app_session_token");
       sessionStorage.removeItem("google_id_token");
       if (!restoringSavedAccount) showLoginError("Please sign in again.");
     } else if (authRes && authRes.authorized) {
@@ -237,7 +272,10 @@ async function handleCredentialResponse(response) {
       }
     } else {
       googleIdToken = "";
+      backendSessionToken = "";
       localStorage.removeItem("google_id_token");
+      localStorage.removeItem("app_session_token");
+      sessionStorage.removeItem("app_session_token");
       sessionStorage.removeItem("google_id_token");
       const checkedEmail =
         authRes && authRes.email ? authRes.email : payload.email;
@@ -259,6 +297,19 @@ async function handleCredentialResponse(response) {
       console.warn("Could not refresh the saved account session.", e);
     }
   }
+}
+
+function saveBackendSession_(authResponse) {
+  const token = typeof authResponse?.sessionToken === "string"
+    ? authResponse.sessionToken.trim()
+    : backendSessionToken;
+  if (!token) throw new Error("The server app session is missing.");
+  backendSessionToken = token;
+  googleIdToken = "";
+  localStorage.setItem("app_session_token", token);
+  sessionStorage.setItem("app_session_token", token);
+  localStorage.removeItem("google_id_token");
+  sessionStorage.removeItem("google_id_token");
 }
 
 function setupUserProfileUI() {
@@ -873,9 +924,35 @@ function finishFirstRunTutorial() {
   if (currentActiveViewId === "dashboardView") refreshCurrentAttendeesWindow();
 }
 
-function logoutUser(msg) {
+async function logoutUser(msg, backendSessionRejected = false) {
+  const sessionToken = backendSessionToken;
+  const email = currentUser && currentUser.email ? currentUser.email : "";
+  if (!navigator.onLine && !backendSessionRejected) {
+    showToast(
+      sessionToken
+        ? translations[currentLang].offlineLogoutReconnect
+        : translations[currentLang].offlineLogoutNotAvailable,
+      "error",
+    );
+    return false;
+  }
+  if (sessionToken && !backendSessionRejected) {
+    try {
+      await retireBackendSession_(sessionToken, email);
+    } catch (error) {
+      console.warn("Could not revoke the app session during logout.", error);
+      showToast(
+        translations[currentLang].logoutSessionFailed,
+        "error",
+      );
+      return false;
+    }
+  }
+  backendSessionToken = "";
   localStorage.removeItem("app_user");
   localStorage.removeItem(OFFLINE_SESSION_KEY);
+  localStorage.removeItem("app_session_token");
+  sessionStorage.removeItem("app_session_token");
   localStorage.removeItem("google_id_token");
   sessionStorage.removeItem("google_id_token");
   pendingSessionRestoreEmail = "";
@@ -887,6 +964,38 @@ function logoutUser(msg) {
   if (msg) showLoginError(msg);
   showView("loginView", false);
   dismissStartupScreen();
+  return true;
+}
+
+async function retireBackendSession_(sessionToken, email) {
+  if (!sessionToken || !navigator.onLine || !API_URL)
+    throw new Error("The app session could not be revoked.");
+  let preserveForSync = true;
+  try {
+    preserveForSync = (await getBackgroundSyncEventCount(email)) > 0;
+  } catch (error) {
+    // Keep an active session restricted to queued sync rather than strand work.
+  }
+  const response = await fetch(API_URL, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "logout",
+      sessionToken,
+      preserveForSync,
+    }),
+  });
+  if (!response.ok)
+    throw new Error(`Session logout returned HTTP ${response.status}.`);
+  const result = await response.json();
+  if (!result || result.success !== true)
+    throw new Error("The server did not confirm session logout.");
+  if (preserveForSync && typeof result.revoked !== "boolean")
+    throw new Error("The server did not confirm the session's logout state.");
+  if (!preserveForSync && result.revoked !== true)
+    throw new Error("The server did not revoke the app session.");
+  return result;
 }
 
 function showLoginError(msg) {

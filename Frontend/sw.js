@@ -1,4 +1,4 @@
-const CACHE_NAME = "lambas-bible-shell-v91";
+const CACHE_NAME = "lambas-bible-shell-v94";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,14 +12,14 @@ const APP_SHELL = [
   "./css/07-dashboard.css",
   "./css/08-scanner-controls.css",
   "./css/09-sync-progress.css",
-  "./js/app-state.js?v=77",
-  "./js/app-i18n.js?v=81",
-  "./js/app-core.js?v=73",
-  "./js/app-offline.js?v=76",
-  "./js/app-views.js?v=84",
-  "./js/app-auth.js?v=75",
-  "./js/app-scanner-search.js?v=77",
-  "./js/app-cards-admin.js?v=77",
+  "./js/app-state.js?v=79",
+  "./js/app-i18n.js?v=82",
+  "./js/app-core.js?v=74",
+  "./js/app-offline.js?v=79",
+  "./js/app-views.js?v=85",
+  "./js/app-auth.js?v=78",
+  "./js/app-scanner-search.js?v=78",
+  "./js/app-cards-admin.js?v=78",
   "./js/test-mode-entry.js?v=1",
   "./manifest.json",
   "./Assets/icons/icon-192.png",
@@ -220,7 +220,12 @@ async function syncPendingEvents() {
   const database = await openOfflineDatabase();
   try {
     const { events, credentials } = await readSyncData(database);
-    if (!credentials || !credentials.apiUrl || !credentials.idToken || !credentials.email) {
+    if (
+      !credentials ||
+      !credentials.apiUrl ||
+      (!credentials.idToken && !credentials.sessionToken) ||
+      !credentials.email
+    ) {
       if (events.some((event) => event.status !== "complete")) {
         throw new Error("Background sync credentials are unavailable.");
       }
@@ -237,7 +242,8 @@ async function syncPendingEvents() {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           action: "sync_offline_events",
-          idToken: credentials.idToken,
+          idToken: credentials.sessionToken ? "" : credentials.idToken,
+          sessionToken: credentials.sessionToken || "",
           requestId: `sw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           events: batch,
         }),

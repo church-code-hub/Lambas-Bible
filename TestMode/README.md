@@ -31,7 +31,9 @@ value: test code must never open it.
    - `PRODUCTION_SPREADSHEET_ID` = the production spreadsheet ID solely for
      same-ID rejection; never grant this test identity access to it
    - `TEST_GOOGLE_CLIENT_ID` = the separate test OAuth client ID
-   - `TEST_QR_SECRET_KEY`, `TEST_INITIAL_SETTINGS_PASSWORD`,
+   - `TEST_MODE_PASSWORD` (a unique random password of at least 12
+     characters; the client never receives it), `TEST_QR_SECRET_KEY`,
+     `TEST_INITIAL_SETTINGS_PASSWORD`,
      `TEST_NEW_CARDS_FOLDER_ID`, and `TEST_ACTIVE_CARDS_FOLDER_ID`
    - `TEST_CARD_TEMPLATE_IMAGE_ID` and `TEST_CARD_SLIDES_TEMPLATE_ID`, using
      test-only Drive/Slides resources
@@ -95,6 +97,50 @@ tokens are included in navigation URLs or shared with the production app.
 
 This is a code-only scaffold. No Pages or GAS deployment is performed by these
 instructions or by the source tests.
+
+## Test Mode password gate
+
+After Google sign-in and the server-side tester allowlist check, each fresh
+app entry asks for the password stored only in the separate GAS project's
+`TEST_MODE_PASSWORD` Script Property. Set a unique random value of at least
+12 characters through the Apps Script project settings; never put it in
+`config.js`, HTML, source control, URL parameters, or a frontend variable.
+The backend checks it for every new page session and does not issue or cache a
+password credential. Test Mode API requests remain protected by the Google ID
+token and backend allowlist; the password does not replace either check.
+
+## WhatsApp Business automation scaffold
+
+The Test Mode UI contains planning controls for unsent QR messages,
+checkout-all, and birthday greetings, but all campaign buttons are disabled.
+The separate backend only reports non-secret configuration state and has no
+message-dispatch implementation or installed time trigger. It cannot send
+WhatsApp messages even if configuration properties are present. Do not enable
+or schedule automatic sends from this scaffold.
+
+For future isolated integration work, use only a WhatsApp Business test
+account and server-side Script Properties in the Test Mode GAS project:
+`TEST_WHATSAPP_BUSINESS_ACCOUNT_ID`, `TEST_WHATSAPP_PHONE_NUMBER_ID`,
+`TEST_WHATSAPP_ACCESS_TOKEN`, `TEST_WHATSAPP_APPROVED_TEMPLATE_NAMES` (JSON
+object mapping `qr_unsent`, `checkout_all`, and `birthday` to exact approved
+template names), and `TEST_WHATSAPP_AUTOMATION_ENABLED` (must remain `false`
+until a separate approved implementation). Never add tokens to frontend
+configuration.
+
+Consent is not inferred from having a phone number. Any future intent
+validation requires an active test roster entry with a valid phone number and
+a test-only `WhatsApp Consent` sheet with a header row containing `Person ID`
+and `Opted In`, plus an explicit `true` value for that person. The server
+intent validator also requires the campaign's exact
+approved template and an idempotency key, but it deliberately returns
+`WHATSAPP_PROVIDER_NOT_IMPLEMENTED` and never enqueues or sends. A real
+integration still requires a reviewed consent capture/revocation flow,
+idempotent queue storage, template-language/locale handling, safe scheduling,
+rate limits, opt-out processing, and provider error handling.
+
+The attendee profile in Test Mode also shows an attendance percentage chart
+with folded detailed records. Its exports use the existing server-side XLSX
+report path and a local PNG chart export.
 
 ## Pending branding and dashboard designs
 

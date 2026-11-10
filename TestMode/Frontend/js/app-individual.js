@@ -6,6 +6,228 @@ var individualRosterRequestId = 0;
 var individualDatesRequestId = 0;
 var individualAttendanceRequestId = 0;
 var individualExportInFlight = false;
+var rosterProfileAttendanceReport = null;
+var rosterProfileAttendanceRequestId = 0;
+
+async function loadRosterProfileAttendance(person) {
+  const requestId = ++rosterProfileAttendanceRequestId;
+  rosterProfileAttendanceReport = null;
+  const summary = document.getElementById("rosterProfileAttendanceSummary");
+  const records = document.getElementById("rosterProfileAttendanceRecords");
+  const exports = document.getElementById("rosterProfileAttendanceExports");
+  if (!summary || !records || !exports) return;
+  summary.textContent = translations[currentLang].rosterProfileAttendanceLoading;
+  records.replaceChildren();
+  exports.hidden = true;
+  document.getElementById("rosterProfileAttendanceChart").replaceChildren();
+  try {
+    const datesResult = await apiCall("get_attendance_dates");
+    if (requestId !== rosterProfileAttendanceRequestId) return;
+    if (!datesResult || !datesResult.success || !Array.isArray(datesResult.dates))
+      throw new Error(translations[currentLang].rosterProfileAttendanceFailed);
+    const dates = getPastAttendanceDates(
+      datesResult.dates,
+      localDateInputValue(new Date()),
+    );
+    if (!dates.length) {
+      summary.textContent = translations[currentLang].individualDatesEmpty;
+      return;
+    }
+    const result = await apiCall("get_individual_attendance", {
+      id: person.id,
+      fromDate: dates[0],
+      toDate: dates[dates.length - 1],
+    });
+    if (requestId !== rosterProfileAttendanceRequestId) return;
+    if (!result || !result.success || !Array.isArray(result.meetings))
+      throw new Error(
+        result?.message || translations[currentLang].rosterProfileAttendanceFailed,
+      );
+    rosterProfileAttendanceReport = result;
+    renderRosterProfileAttendance(result);
+  } catch (error) {
+    if (requestId !== rosterProfileAttendanceRequestId) return;
+    summary.textContent =
+      error.message || translations[currentLang].rosterProfileAttendanceFailed;
+  }
+}
+
+function renderRosterProfileAttendance(report) {
+  const meetings = Array.isArray(report.meetings) ? report.meetings : [];
+  const knownMeetings = meetings.filter((meeting) =>
+    ["present", "late", "absent"].includes(meeting.state),
+  );
+  const attended = knownMeetings.filter((meeting) =>
+    ["present", "late"].includes(meeting.state),
+  ).length;
+  const total = knownMeetings.length;
+  const rate = total ? Math.round((attended / total) * 100) : 0;
+  document.getElementById("rosterProfileAttendanceSummary").textContent =
+    translations[currentLang].rosterProfileAttendanceSummary
+      .replace("{attended}", String(attended))
+      .replace("{total}", String(total))
+      .replace("{rate}", String(rate));
+
+  const chart = document.getElementById("rosterProfileAttendanceChart");
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 120 120");
+  svg.setAttribute("aria-hidden", "true");
+  const background = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  background.setAttribute("cx", "60");
+  background.setAttribute("cy", "60");
+  background.setAttribute("r", "48");
+  background.setAttribute("fill", "none");
+  background.setAttribute("stroke", "#8993a2");
+  background.setAttribute("stroke-width", "12");
+  background.setAttribute("opacity", "0.28");
+  const progress = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  const circumference = 2 * Math.PI * 48;
+  progress.setAttribute("cx", "60");
+  progress.setAttribute("cy", "60");
+  progress.setAttribute("r", "48");
+  progress.setAttribute("fill", "none");
+  progress.setAttribute("stroke", "#f5bd55");
+  progress.setAttribute("stroke-width", "12");
+  progress.setAttribute("stroke-linecap", "round");
+  progress.setAttribute("transform", "rotate(-90 60 60)");
+  progress.setAttribute(
+    "stroke-dasharray",
+    `${(circumference * rate) / 100} ${circumference}`,
+  );
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.setAttribute("x", "60");
+  label.setAttribute("y", "66");
+  label.setAttribute("text-anchor", "middle");
+  label.setAttribute("class", "roster-profile-chart-value");
+  label.textContent = `${rate}%`;
+  svg.append(background, progress, label);
+  chart.replaceChildren(svg);
+  chart.setAttribute(
+    "aria-label",
+    `${translations[currentLang].rosterProfileChartLabel}: ${rate}%`,
+  );
+
+  const records = document.getElementById("rosterProfileAttendanceRecords");
+  if (!meetings.length) {
+    const empty = document.createElement("p");
+    empty.className = "report-note";
+    empty.textContent = translations[currentLang].individualAttendanceEmpty;
+    records.replaceChildren(empty);
+  } else {
+    const table = document.createElement("table");
+    table.className = "individual-attendance-table";
+    const head = document.createElement("thead");
+    const header = document.createElement("tr");
+    [
+      "individualMeetingDate",
+      "individualMeetingType",
+      "attendanceStateLabel",
+      "delayLabel",
+    ].forEach((key) => {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.textContent = translations[currentLang][key];
+      header.appendChild(cell);
+    });
+    head.appendChild(header);
+    table.appendChild(head);
+    const body = document.createElement("tbody");
+    meetings.forEach((meeting) => {
+      const row = document.createElement("tr");
+      [
+        formatAttendanceDateOption(
+          meeting.date,
+          localDateInputValue(new Date()),
+        ),
+        meeting.meetingType ||
+          translations[currentLang].individualMeetingTypeUnknown,
+        individualAttendanceStateLabel(meeting.state),
+        meeting.delay || "—",
+      ].forEach((value, index) => {
+        const cell = document.createElement("td");
+        cell.textContent = String(value || "");
+        if (index === 2)
+          cell.className = `attendance-state attendance-state-${meeting.state}`;
+        row.appendChild(cell);
+      });
+      body.appendChild(row);
+    });
+    table.appendChild(body);
+    records.replaceChildren(table);
+  }
+  document.getElementById("rosterProfileAttendanceExports").hidden = false;
+}
+
+async function exportRosterProfileAttendance(format) {
+  const report = rosterProfileAttendanceReport;
+  if (!report || !["png", "xlsx"].includes(format)) return;
+  const button = document.getElementById(
+    format === "png" ? "rosterProfileExportPng" : "rosterProfileExportXlsx",
+  );
+  await runIndividualExport(button, async () => {
+    if (format === "xlsx") {
+      const result = await apiCall("export_individual_attendance_report", {
+        id: report.person.id,
+        fromDate: report.fromDate,
+        toDate: report.toDate,
+        format: "xlsx",
+      });
+      downloadIndividualExportFile(result);
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = 720;
+    canvas.height = 420;
+    const context = canvas.getContext("2d");
+    if (!context)
+      throw new Error(translations[currentLang].attendanceExportFailed);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#182333";
+    context.textAlign = "center";
+    context.font = "700 24px Arial, sans-serif";
+    context.fillText(String(report.person.name || ""), 360, 48, 650);
+    const known = report.meetings.filter((meeting) =>
+      ["present", "late", "absent"].includes(meeting.state),
+    );
+    const attended = known.filter((meeting) =>
+      ["present", "late"].includes(meeting.state),
+    ).length;
+    const rate = known.length ? Math.round(attended / known.length * 100) : 0;
+    context.beginPath();
+    context.arc(360, 220, 118, 0, Math.PI * 2);
+    context.strokeStyle = "#d7dce3";
+    context.lineWidth = 28;
+    context.stroke();
+    context.beginPath();
+    context.arc(360, 220, 118, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * rate / 100);
+    context.strokeStyle = "#f5bd55";
+    context.lineWidth = 28;
+    context.lineCap = "round";
+    context.stroke();
+    context.fillStyle = "#182333";
+    context.font = "700 40px Arial, sans-serif";
+    context.fillText(`${rate}%`, 360, 230);
+    context.font = "500 18px Arial, sans-serif";
+    context.fillText(
+      translations[currentLang].rosterProfileAttendanceSummary
+        .replace("{attended}", String(attended))
+        .replace("{total}", String(known.length))
+        .replace("{rate}", String(rate)),
+      360,
+      370,
+      680,
+    );
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((image) =>
+        image ? resolve(image) : reject(
+          new Error(translations[currentLang].attendanceExportFailed),
+        ), "image/png");
+    });
+    const safeId = String(report.person.id).replace(/[^A-Za-z0-9_-]/g, "_");
+    triggerIndividualDownload(blob, `attendance-chart-${safeId}.png`);
+  });
+}
 
 function getBirthdayWeekStart(date = new Date()) {
   const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());

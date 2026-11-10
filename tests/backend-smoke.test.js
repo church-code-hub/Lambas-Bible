@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -13,6 +14,7 @@ function createBackendContext(
   rosterRows = [["ID", "Name", "Card URL"]],
   { stubCardGeneration = true } = {},
 ) {
+  let uuidCounter = 0;
   const scriptProperties = {
     GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
     QR_SECRET_KEY: "test-only-qr-secret-key",
@@ -70,8 +72,13 @@ function createBackendContext(
     Utilities: {
       DigestAlgorithm: { SHA_256: "SHA-256" },
       computeDigest: (_algorithm, value) =>
-        Buffer.from(String(value)).subarray(0, 32),
+        crypto.createHash("sha256").update(String(value)).digest(),
       base64EncodeWebSafe: (value) => Buffer.from(value).toString("base64url"),
+      getUuid: () => {
+        uuidCounter++;
+        const suffix = String(uuidCounter).padStart(12, "0");
+        return `00000000-0000-4000-8000-${suffix}`;
+      },
       formatDate: (date, timeZone, pattern) => {
         const parts = Object.fromEntries(
           new Intl.DateTimeFormat("en-US", {
@@ -1437,6 +1444,270 @@ test("check_auth returns the email verified from the ID token", () => {
   assert.equal(result.authorized, true);
   assert.equal(result.email, "admin@example.com");
   assert.equal(result.adminName, "Test Admin");
+  assert.equal(typeof result.sessionToken, "string");
+  assert.equal(result.sessionToken.length, 72);
+  assert.ok(
+    Math.abs(
+      result.sessionExpiresAt -
+        (Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
+    ) <= 1,
+  );
+});
+
+test("backend session authorizes actions without re-verifying Google and rechecks allowlist", () => {
+  const { context, tokenResponses, getTokenFetchCount } = createBackendContext();
+  const email = "admin@example.com";
+  tokenResponses.set("valid-session-issue", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email,
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  let allowed = true;
+  context.isEmailAllowed = (value) => allowed && value === email;
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.getAttendanceDates_ = () => ({ success: true, dates: [] });
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  const login = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "valid-session-issue",
+        email: "attacker@example.com",
+      }),
+    },
+  });
+  assert.equal(login.authorized, true);
+  assert.equal(login.email, email);
+  assert.ok(login.sessionToken);
+  const tokenChecksAfterIssue = getTokenFetchCount();
+
+  const response = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken: login.sessionToken,
+        idToken: "must-not-be-used",
+      }),
+    },
+  });
+  assert.deepEqual(response, { success: true, dates: [] });
+  assert.equal(getTokenFetchCount(), tokenChecksAfterIssue);
+
+  allowed = false;
+  const denied = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken: login.sessionToken,
+      }),
+    },
+  });
+  assert.equal(denied.code, "AUTH_DENIED");
+  assert.equal(getTokenFetchCount(), tokenChecksAfterIssue);
+});
+
+test("backend sessions reject altered, expired, and revoked bearer tokens", () => {
+  const { context, tokenResponses, scriptPropertiesStore } =
+    createBackendContext();
+  tokenResponses.set("valid-session-token", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: "admin@example.com",
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  context.isEmailAllowed = () => true;
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  const login = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "valid-session-token",
+      }),
+    },
+  });
+  const request = (sessionToken) => context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken,
+      }),
+    },
+  });
+
+  const alteredToken = (login.sessionToken[0] === "f" ? "e" : "f") +
+    login.sessionToken.slice(1);
+  assert.equal(request(alteredToken).code, "AUTH_INVALID");
+  const propertyKey = context.backendSessionPropertyKey_(login.sessionToken);
+  const record = JSON.parse(scriptPropertiesStore.getProperty(propertyKey));
+  record.expiresAt = Math.floor(Date.now() / 1000) - 1;
+  scriptPropertiesStore.setProperty(propertyKey, JSON.stringify(record));
+  assert.equal(request(login.sessionToken).code, "AUTH_INVALID");
+
+  const freshLogin = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "valid-session-token",
+      }),
+    },
+  });
+  assert.equal(freshLogin.authorized, true);
+  const revoked = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "logout",
+        sessionToken: freshLogin.sessionToken,
+      }),
+    },
+  });
+  assert.equal(revoked.success, true);
+  assert.equal(request(freshLogin.sessionToken).code, "AUTH_INVALID");
+});
+
+test("removed allowlist access revokes the bearer and a removed account can revoke itself", () => {
+  const { context, tokenResponses, scriptPropertiesStore } =
+    createBackendContext();
+  tokenResponses.set("allowlist-session-login", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: "admin@example.com",
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  let allowed = true;
+  context.isEmailAllowed = () => allowed;
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  const login = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "allowlist-session-login",
+      }),
+    },
+  });
+  const sessionKey = context.backendSessionPropertyKey_(login.sessionToken);
+  assert.ok(scriptPropertiesStore.getProperty(sessionKey));
+
+  allowed = false;
+  const revoke = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "logout",
+        sessionToken: login.sessionToken,
+        preserveForSync: true,
+      }),
+    },
+  });
+  assert.equal(revoke.success, true);
+  assert.equal(revoke.revoked, true);
+  assert.equal(scriptPropertiesStore.getProperty(sessionKey), null);
+
+  allowed = true;
+  const revived = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken: login.sessionToken,
+      }),
+    },
+  });
+  assert.equal(revived.code, "AUTH_INVALID");
+
+  const secondLogin = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "allowlist-session-login",
+      }),
+    },
+  });
+  const secondKey = context.backendSessionPropertyKey_(secondLogin.sessionToken);
+  allowed = false;
+  const denied = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken: secondLogin.sessionToken,
+      }),
+    },
+  });
+  assert.equal(denied.code, "AUTH_DENIED");
+  assert.equal(scriptPropertiesStore.getProperty(secondKey), null);
+  allowed = true;
+  const deniedSessionRevived = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_attendance_dates",
+        sessionToken: secondLogin.sessionToken,
+      }),
+    },
+  });
+  assert.equal(deniedSessionRevived.code, "AUTH_INVALID");
+});
+
+test("logout restricts retained offline credentials to queue synchronization", () => {
+  const { context, tokenResponses } = createBackendContext();
+  tokenResponses.set("sync-session-login", {
+    aud: "test-client-id.apps.googleusercontent.com",
+    iss: "accounts.google.com",
+    email: "admin@example.com",
+    email_verified: "true",
+    exp: String(Math.floor(Date.now() / 1000) + 3600),
+  });
+  context.isEmailAllowed = () => true;
+  context.getAdminNameByEmail = () => "Test Admin";
+  context.syncOfflineEvents_ = () => ({ success: true, results: [] });
+  context.ContentService = {
+    MimeType: { JSON: "application/json" },
+    createTextOutput: (content) => ({
+      setMimeType: () => JSON.parse(content),
+    }),
+  };
+  const login = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "check_auth",
+        idToken: "sync-session-login",
+      }),
+    },
+  });
+  const logout = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "logout",
+        sessionToken: login.sessionToken,
+        preserveForSync: true,
+      }),
+    },
+  });
+  assert.equal(logout.success, true);
+  const request = (action) => context.doPost({
+    postData: {
+      contents: JSON.stringify({ action, sessionToken: login.sessionToken }),
+    },
+  });
+  assert.equal(request("get_roster").code, "AUTH_DENIED");
+  assert.equal(request("sync_offline_events").success, true);
 });
 
 test("cached roster includes the original QR token while retaining its attendee ID", () => {

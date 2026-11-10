@@ -383,7 +383,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v91/);
+  assert.match(serviceWorker, /lambas-bible-shell-v94/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
@@ -552,6 +552,291 @@ test("small API requests use keepalive while oversized payloads do not", async (
   await browserContext.apiCall("check_auth", { note: "x".repeat(61 * 1024) });
   assert.equal(requestOptions[0].keepalive, true);
   assert.equal(requestOptions[1].keepalive, false);
+});
+
+test("authenticated API requests prefer the backend session over a saved Google token", async () => {
+  let requestBody = null;
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: {},
+    sessionStorage: { getItem: () => "", removeItem() {} },
+    localStorage: { getItem: () => null, removeItem() {} },
+    AbortController,
+    Blob,
+    setTimeout,
+    clearTimeout,
+    fetch: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ success: true }) };
+    },
+  });
+  for (const script of ["app-state.js", "app-core.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.backendSessionToken = "opaque-server-session";
+  browserContext.googleIdToken = "old-google-id-token";
+  await browserContext.apiCall("get_attendance_dates");
+  assert.equal(requestBody.sessionToken, "opaque-server-session");
+  assert.equal(requestBody.idToken, "");
+});
+
+test("session credentials pass production feature and queue-sync gates", async () => {
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    console,
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    Blob,
+  });
+  for (const script of ["app-state.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.backendSessionToken = "valid-backend-session";
+  browserContext.googleIdToken = "";
+  const apiActions = [];
+  browserContext.apiCall = async (action) => {
+    apiActions.push(action);
+    if (action === "get_roster") {
+      return { success: true, roster: [] };
+    }
+    return {
+      success: true,
+      results: [{
+        eventId: "queued-event",
+        status: "complete",
+        result: { success: true, kind: "success" },
+      }],
+    };
+  };
+  browserContext.cacheRosterResponse = async () => {};
+  browserContext.notifyBirthdayRoster = () => {};
+  browserContext.getOfflineEvents = async () => [
+    {
+      eventId: "queued-event",
+      queuedBy: "admin@example.com",
+      syncMode: "offline",
+      status: "pending",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+  browserContext.hydrateOfflinePersonNames = async (events) => events;
+  browserContext.removeOfflineEvent = async () => {};
+  browserContext.clearBackgroundSyncCredentialsIfQueueEmpty = async () => {};
+  browserContext.updateOfflineStatus = async () => {};
+  browserContext.document = { getElementById: () => null };
+  browserContext.currentActiveViewId = "dashboardView";
+  browserContext.refreshCurrentAttendeesWindow = () => {};
+
+  assert.equal(browserContext.hasApiCredential_(), true);
+  assert.equal(await browserContext.refreshRosterCache(), true);
+  const synced = await browserContext.syncOfflineQueue("queued-event");
+  assert.deepEqual(synced, { success: true, kind: "success" });
+  const immediate = await browserContext.syncQueuedEventImmediately({
+    eventId: "queued-event",
+    queuedBy: "admin@example.com",
+  });
+  assert.deepEqual(immediate, { success: true, kind: "success" });
+  assert.deepEqual(apiActions, [
+    "get_roster",
+    "sync_offline_events",
+    "sync_offline_events",
+  ]);
+});
+
+test("session-backed guards cover roster, cards, and attendance features", () => {
+  const views = fs.readFileSync(path.join(frontendRoot, "js", "app-views.js"), "utf8");
+  const cards = fs.readFileSync(path.join(frontendRoot, "js", "app-cards-admin.js"), "utf8");
+  const scanner = fs.readFileSync(path.join(frontendRoot, "js", "app-scanner-search.js"), "utf8");
+  const offline = fs.readFileSync(path.join(frontendRoot, "js", "app-offline.js"), "utf8");
+
+  assert.match(views, /currentUser && !hasApiCredential_\(\)/);
+  assert.match(cards, /navigator\.onLine && !hasApiCredential_\(\)/);
+  assert.equal((scanner.match(/navigator\.onLine && !hasApiCredential_\(\)/g) || []).length, 2);
+  assert.match(offline, /navigator\.onLine \|\| !currentUser \|\| !hasApiCredential_\(\)/);
+  assert.match(offline, /while \(events\.length && navigator\.onLine && currentUser && hasApiCredential_\(\)\)/);
+});
+
+test("offline logout is blocked even with an empty queue until the session can be revoked", async () => {
+  let fetchBody = null;
+  let toastMessage = "";
+  const removedLocalKeys = [];
+  const removedSessionKeys = [];
+  const browserContext = vm.createContext({
+    window: {
+      LAMBAS_CONFIG: { apiUrl: "https://example.test/api" },
+      addEventListener() {},
+    },
+    navigator: { onLine: false },
+    localStorage: { getItem: () => null, removeItem: (key) => removedLocalKeys.push(key) },
+    sessionStorage: { getItem: () => null, removeItem: (key) => removedSessionKeys.push(key) },
+    console,
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    Blob,
+    fetch: async (_url, options) => {
+      fetchBody = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ success: true }) };
+    },
+  });
+  for (const script of ["app-state.js", "app-offline.js", "app-auth.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.backendSessionToken = "valid-backend-session";
+  browserContext.currentLang = "en";
+  browserContext.translations = {
+    en: {
+      offlineLogoutReconnect:
+        "Reconnect to sign out and revoke the app session.",
+      offlineLogoutNotAvailable:
+        "Sign-out is unavailable offline. Reconnect and try again.",
+      logoutSessionFailed:
+        "The server could not confirm sign-out. Your session is still active; try again.",
+    },
+  };
+  browserContext.showToast = (message) => {
+    toastMessage = message;
+  };
+  const logoutResult = await browserContext.logoutUser();
+  assert.equal(logoutResult, false);
+  assert.equal(browserContext.currentUser.email, "admin@example.com");
+  assert.equal(browserContext.backendSessionToken, "valid-backend-session");
+  assert.match(toastMessage, /Reconnect to sign out and revoke/);
+  assert.deepEqual(removedLocalKeys, []);
+  assert.deepEqual(removedSessionKeys, []);
+  assert.equal(fetchBody, null);
+});
+
+test("online logout waits for server confirmation and keeps the UI session on failure", async () => {
+  let fetchMode = "rejected";
+  let fetchBody = null;
+  const browserContext = vm.createContext({
+    window: {
+      LAMBAS_CONFIG: { apiUrl: "https://example.test/api" },
+      addEventListener() {},
+    },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, removeItem() {} },
+    sessionStorage: { getItem: () => null, removeItem() {} },
+    console,
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    Blob,
+    fetch: async (_url, options) => {
+      fetchBody = JSON.parse(options.body);
+      if (fetchMode === "network-error") throw new Error("network down");
+      if (fetchMode === "success")
+        return { ok: true, json: async () => ({ success: true, revoked: false }) };
+      return { ok: true, json: async () => ({ success: false, code: "AUTH_DENIED" }) };
+    },
+  });
+  for (const script of ["app-state.js", "app-offline.js", "app-auth.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.backendSessionToken = "valid-backend-session";
+  browserContext.currentLang = "en";
+  browserContext.translations = {
+    en: { logoutSessionFailed: "The server could not confirm sign-out." },
+  };
+  browserContext.stopLiveScanner = () => {};
+  browserContext.showView = () => {};
+  browserContext.dismissStartupScreen = () => {};
+  browserContext.showToast = (message) => {
+    browserContext.lastToast = message;
+  };
+
+  assert.equal(await browserContext.logoutUser(), false);
+  assert.equal(browserContext.currentUser.email, "admin@example.com");
+  assert.equal(browserContext.backendSessionToken, "valid-backend-session");
+  assert.match(browserContext.lastToast, /server could not confirm/);
+
+  fetchMode = "network-error";
+  assert.equal(await browserContext.logoutUser(), false);
+  assert.equal(browserContext.currentUser.email, "admin@example.com");
+  assert.equal(browserContext.backendSessionToken, "valid-backend-session");
+
+  fetchMode = "success";
+  browserContext.getOfflineEvents = async () => [{
+    queuedBy: "admin@example.com",
+    syncMode: "online",
+    status: "pending",
+    timestamp: "2026-01-01T00:00:00.000Z",
+  }];
+  assert.equal(await browserContext.logoutUser(), true);
+  assert.equal(fetchBody.action, "logout");
+  assert.equal(fetchBody.preserveForSync, true);
+  assert.equal(browserContext.currentUser, null);
+  assert.equal(browserContext.backendSessionToken, "");
+});
+
+test("offline event persistence prefers the session token for service-worker sync", async () => {
+  const persisted = {};
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    console,
+    setTimeout,
+    clearTimeout,
+  });
+  for (const script of ["app-state.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.currentUser = { email: "admin@example.com" };
+  browserContext.backendSessionToken = "valid-backend-session";
+  browserContext.googleIdToken = "stale-google-token";
+  browserContext.openOfflineDatabase = async () => ({
+    transaction() {
+      const transaction = {
+        objectStore(name) {
+          return {
+            put(value) {
+              persisted[name] = value;
+            },
+          };
+        },
+      };
+      queueMicrotask(() => transaction.oncomplete());
+      return transaction;
+    },
+  });
+
+  await browserContext.saveOfflineEvent({ eventId: "queued-event" }, false, true);
+  assert.equal(persisted.metadata.sessionToken, "valid-backend-session");
+  assert.equal(persisted.metadata.idToken, "");
+
+  const serviceWorker = fs.readFileSync(path.join(frontendRoot, "sw.js"), "utf8");
+  assert.match(serviceWorker, /idToken:\s*credentials\.sessionToken \? "" : credentials\.idToken/);
+  assert.match(serviceWorker, /sessionToken:\s*credentials\.sessionToken \|\| ""/);
 });
 
 test("read API calls return cached data before revalidating and notify the view", async () => {

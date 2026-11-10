@@ -293,6 +293,12 @@ function doPost(e) {
         adminName: authorized ? getAdminNameByEmail(identity.email) : "",
         isOwner: authorized && isSpreadsheetOwner_(identity.email),
       };
+    } else if (action === "verify_test_mode_password") {
+      result = verifyTestModePassword_(data.password);
+    } else if (action === "get_whatsapp_automation_status") {
+      result = getWhatsAppAutomationStatus_();
+    } else if (action === "validate_whatsapp_automation_intent") {
+      result = validateWhatsAppAutomationIntent_(data);
     } else if (action === "sync_offline_events") {
       result = syncOfflineEvents_(data.events, identity.email);
     } else if (action === "register_push_token") {
@@ -431,6 +437,175 @@ function doPost(e) {
   }
 
   return responseJSON_(result);
+}
+
+function verifyTestModePassword_(password) {
+  const configuredPassword = String(
+    PropertiesService.getScriptProperties().getProperty(
+      "TEST_MODE_PASSWORD",
+    ) || "",
+  );
+  const suppliedPassword = typeof password === "string" ? password : "";
+  if (
+    !configuredPassword ||
+    configuredPassword.length < 12 ||
+    suppliedPassword.length < 1 ||
+    suppliedPassword.length > 256
+  ) {
+    return {
+      success: false,
+      valid: false,
+      code: "TEST_MODE_PASSWORD_NOT_CONFIGURED",
+      message: "Test Mode access password is not configured.",
+    };
+  }
+  let difference = configuredPassword.length ^ suppliedPassword.length;
+  const length = Math.max(configuredPassword.length, suppliedPassword.length);
+  for (let index = 0; index < length; index++) {
+    difference |=
+      (configuredPassword.charCodeAt(index) || 0) ^
+      (suppliedPassword.charCodeAt(index) || 0);
+  }
+  return { success: true, valid: difference === 0 };
+}
+
+function getWhatsAppAutomationStatus_() {
+  const properties = PropertiesService.getScriptProperties();
+  const requiredPropertiesPresent = [
+    "TEST_WHATSAPP_BUSINESS_ACCOUNT_ID",
+    "TEST_WHATSAPP_PHONE_NUMBER_ID",
+    "TEST_WHATSAPP_ACCESS_TOKEN",
+    "TEST_WHATSAPP_APPROVED_TEMPLATE_NAMES",
+  ].every((key) => String(properties.getProperty(key) || "").trim());
+  let approvedTemplates = {};
+  try {
+    approvedTemplates = JSON.parse(
+      properties.getProperty("TEST_WHATSAPP_APPROVED_TEMPLATE_NAMES") || "{}",
+    );
+  } catch (error) {
+    approvedTemplates = {};
+  }
+  const configured = requiredPropertiesPresent &&
+    approvedTemplates &&
+    typeof approvedTemplates === "object" &&
+    !Array.isArray(approvedTemplates) &&
+    ["qr_unsent", "checkout_all", "birthday"].every((type) =>
+      typeof approvedTemplates[type] === "string" &&
+      /^[a-z0-9_]{1,128}$/i.test(approvedTemplates[type])
+    );
+  return {
+    success: true,
+    configured: configured,
+    enabled: properties.getProperty("TEST_WHATSAPP_AUTOMATION_ENABLED") ===
+      "true",
+    sendingEnabled: false,
+    schedulingEnabled: false,
+    providerImplemented: false,
+  };
+}
+
+function validateWhatsAppAutomationIntent_(data) {
+  const payload = data || {};
+  const campaignTypes = ["qr_unsent", "checkout_all", "birthday"];
+  const type = String(payload.type || "");
+  const templateName = String(payload.templateName || "");
+  const idempotencyKey = String(payload.idempotencyKey || "");
+  const personId = String(payload.personId || "").trim();
+  if (!campaignTypes.includes(type)) {
+    return {
+      success: false,
+      code: "WHATSAPP_INVALID_CAMPAIGN",
+      message: "Unsupported WhatsApp campaign.",
+    };
+  }
+  if (payload.optedIn !== true) {
+    return {
+      success: false,
+      code: "WHATSAPP_OPT_IN_REQUIRED",
+      message: "Recipient consent is required.",
+    };
+  }
+  if (!personId || !isWhatsAppConsentGranted_(personId)) {
+    return {
+      success: false,
+      code: "WHATSAPP_OPT_IN_REQUIRED",
+      message: "Recipient consent is not recorded for this test contact.",
+    };
+  }
+  if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(idempotencyKey)) {
+    return {
+      success: false,
+      code: "WHATSAPP_INVALID_IDEMPOTENCY_KEY",
+      message: "A valid idempotency key is required.",
+    };
+  }
+  const properties = PropertiesService.getScriptProperties();
+  let approvedTemplates = {};
+  try {
+    approvedTemplates = JSON.parse(
+      properties.getProperty("TEST_WHATSAPP_APPROVED_TEMPLATE_NAMES") || "{}",
+    );
+  } catch (error) {
+    approvedTemplates = {};
+  }
+  if (
+    !approvedTemplates ||
+    typeof approvedTemplates !== "object" ||
+    Array.isArray(approvedTemplates) ||
+    approvedTemplates[type] !== templateName
+  ) {
+    return {
+      success: false,
+      code: "WHATSAPP_TEMPLATE_NOT_APPROVED",
+      message: "Only an approved WhatsApp template may be selected.",
+    };
+  }
+  return {
+    success: false,
+    code: "WHATSAPP_PROVIDER_NOT_IMPLEMENTED",
+    message:
+      "WhatsApp automation is a disabled test scaffold; no message was sent.",
+  };
+}
+
+function isWhatsAppConsentGranted_(personId) {
+  if (!isActiveWhatsAppRecipient_(personId)) return false;
+  const sheet = getTestSpreadsheet_().getSheetByName("WhatsApp Consent");
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map((value) => String(value || "").trim());
+  const idColumn = headers.indexOf("Person ID");
+  const consentColumn = headers.indexOf("Opted In");
+  if (idColumn < 0 || consentColumn < 0) return false;
+  return values.slice(1).some((row) =>
+    String(row[idColumn] || "").trim() === personId &&
+    (row[consentColumn] === true ||
+      String(row[consentColumn] || "").trim().toLowerCase() === "true")
+  );
+}
+
+function isActiveWhatsAppRecipient_(personId) {
+  const sheet = getTestSpreadsheet_().getSheetByName("Roster");
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  const lastColumn = sheet.getLastColumn();
+  if (!lastColumn) return false;
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map(
+    (value) => String(value || "").trim().toLowerCase(),
+  );
+  const idColumn = headers.indexOf("id");
+  const phoneColumn = headers.indexOf("phone");
+  const statusColumn = headers.indexOf("status");
+  if (idColumn < 0 || phoneColumn < 0 || statusColumn < 0) return false;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastColumn)
+    .getValues();
+  return rows.some((row) => {
+    const phone = String(row[phoneColumn] || "").trim();
+    const digitCount = phone.replace(/\D/g, "").length;
+    return String(row[idColumn] || "").trim() === personId &&
+      String(row[statusColumn] || "").trim().toLowerCase() !== "inactive" &&
+      /^\+?[0-9][0-9\s().-]{5,31}$/.test(phone) &&
+      digitCount >= 7;
+  });
 }
 
 function responseJSON_(data) {

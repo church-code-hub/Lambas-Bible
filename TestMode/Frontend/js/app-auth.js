@@ -12,6 +12,8 @@ window.addEventListener("DOMContentLoaded", async function () {
     localStorage.removeItem("app_user");
   }
   const hasSavedUser = Boolean(savedUser && savedUser.email);
+  testModeServerVerified = false;
+  testModePasswordUnlocked = false;
   if (!navigator.onLine) {
     await clearTestModeCachedReadData();
     currentUser = null;
@@ -69,7 +71,10 @@ window.addEventListener("DOMContentLoaded", async function () {
     });
   });
   if (hasSavedUser) {
-    currentUser = { email: String(savedUser.email).toLowerCase().trim() };
+    currentUser = {
+      ...savedUser,
+      email: String(savedUser.email).toLowerCase().trim(),
+    };
     initializeGoogleSignIn(false);
     if (googleIdToken) {
       await validateSavedSession();
@@ -152,34 +157,12 @@ async function validateSavedSession() {
       );
       return;
     }
-    const authRes = await apiCall("check_auth", { email: expectedEmail });
-    if (
-      authRes &&
-      authRes.authorized &&
-      String(authRes.email || "")
-        .toLowerCase()
-        .trim() === expectedEmail
-    ) {
-      if (authRes.adminName) currentUser.name = authRes.adminName;
-      currentUser.isOwner = authRes.isOwner === true;
-      localStorage.setItem(OFFLINE_SESSION_KEY, expectedEmail);
-      localStorage.setItem("app_user", JSON.stringify(currentUser));
-      setupUserProfileUI();
-      dismissStartupScreen();
-      refreshUserDataAfterTutorial();
-      return;
-    }
-    if (authRes && authRes.code === "AUTH_INVALID") {
-      googleIdToken = "";
-      testModeServerVerified = false;
-      localStorage.removeItem("google_id_token");
-      sessionStorage.removeItem("google_id_token");
-      beginSessionRestore(expectedEmail);
-    } else if (authRes && authRes.success && !authRes.authorized) {
-      logoutUser("Please sign in again.");
-    } else if (authRes && authRes.authorized) {
-      logoutUser("Please sign in again.");
-    }
+    pendingTestModeIdentity = {
+      email: expectedEmail,
+      name: currentUser.name || "",
+      picture: currentUser.picture || "",
+    };
+    showTestModePasswordGate();
   } catch (error) {
     console.warn("Could not validate the saved Google session yet.", error);
     logoutUser("Test Mode access could not be verified. Check your connection.");
@@ -327,70 +310,14 @@ async function handleCredentialResponse(response) {
       );
       return;
     }
-    const authRes = await apiCall("check_auth", { email: payload.email });
     if (!restoringSavedAccount) hideLoader();
-    if (
-      authRes &&
-      authRes.authorized &&
-      String(authRes.email || "")
-        .toLowerCase()
-        .trim() === payload.email.toLowerCase().trim()
-    ) {
-      currentUser = {
-        email: payload.email.toLowerCase().trim(),
-        name: authRes.adminName || payload.name || payload.email,
-        picture:
-          payload.picture || "https://lh3.googleusercontent.com/a/default-user",
-        isOwner: authRes.isOwner === true,
-      };
-      sessionStorage.setItem("google_id_token", googleIdToken);
-      localStorage.setItem("google_id_token", googleIdToken);
-      localStorage.setItem("app_user", JSON.stringify(currentUser));
-      localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
-      setupUserProfileUI();
-      checkDirectUrlScan();
-      refreshUserDataAfterTutorial();
-    } else if (authRes && authRes.code === "AUTH_INVALID") {
-      googleIdToken = "";
-      localStorage.removeItem("google_id_token");
-      sessionStorage.removeItem("google_id_token");
-      testModeServerVerified = false;
-      if (restoringSavedAccount) {
-        showToast(
-          "Sign-in token could not be verified. Check the TEST_GOOGLE_CLIENT_ID property in the separate backend and redeploy it.",
-          "error",
-        );
-      } else {
-        showLoginError(
-          "Sign-in token could not be verified. Check the TEST_GOOGLE_CLIENT_ID property in the separate backend and redeploy it.",
-        );
-      }
-    } else if (authRes && authRes.code === "AUTH_REQUIRED") {
-      googleIdToken = "";
-      localStorage.removeItem("google_id_token");
-      sessionStorage.removeItem("google_id_token");
-      if (!restoringSavedAccount) showLoginError("Please sign in again.");
-    } else if (authRes && authRes.authorized) {
-      logoutUser("Please sign in again.");
-    } else if (authRes && authRes.success === false) {
-      if (restoringSavedAccount) {
-        showToast(
-          "Sign-in check failed on the server. Verify the latest Apps Script deployment.",
-          "error",
-        );
-      } else {
-        showLoginError(
-          "Sign-in check failed on the server. Verify the latest Apps Script deployment.",
-        );
-      }
-    } else {
-      googleIdToken = "";
-      localStorage.removeItem("google_id_token");
-      sessionStorage.removeItem("google_id_token");
-      showLoginError(
-        "Access denied. Your email address is not authorized to use Test Mode.",
-      );
-    }
+    pendingTestModeIdentity = {
+      email: payload.email.toLowerCase().trim(),
+      name: payload.name || payload.email,
+      picture:
+        payload.picture || "https://lh3.googleusercontent.com/a/default-user",
+    };
+    showTestModePasswordGate();
   } catch (e) {
     googleIdToken = "";
     testModeServerVerified = false;
@@ -403,6 +330,75 @@ async function handleCredentialResponse(response) {
     } else {
       console.warn("Could not refresh the saved account session.", e);
     }
+  }
+}
+
+function showTestModePasswordGate() {
+  const form = document.getElementById("testModePasswordForm");
+  const message = document.getElementById("testModePasswordError");
+  currentUser = null;
+  if (form) form.reset();
+  if (message) message.textContent = "";
+  showView("testModePasswordView", false);
+  dismissStartupScreen();
+  document.getElementById("testModePasswordInput")?.focus();
+}
+
+async function submitTestModePassword(event) {
+  if (event) event.preventDefault();
+  const input = document.getElementById("testModePasswordInput");
+  const submit = document.getElementById("testModePasswordSubmit");
+  const message = document.getElementById("testModePasswordError");
+  if (!input || !submit || !pendingTestModeIdentity || submit.disabled) return;
+  message.textContent = "";
+  submit.disabled = true;
+  submit.setAttribute("aria-busy", "true");
+  try {
+    const result = await apiCall("verify_test_mode_password", {
+      password: input.value,
+    });
+    input.value = "";
+    if (!result || result.success !== true || result.valid !== true) {
+      throw new Error(
+        result?.code === "TEST_MODE_PASSWORD_NOT_CONFIGURED"
+          ? translations[currentLang].testModePasswordNotConfigured
+          : translations[currentLang].testModePasswordIncorrect,
+      );
+    }
+    testModePasswordUnlocked = true;
+    const identity = pendingTestModeIdentity;
+    const authRes = await apiCall("check_auth", { email: identity.email });
+    if (
+      !authRes ||
+      !authRes.authorized ||
+      String(authRes.email || "").toLowerCase().trim() !== identity.email
+    ) {
+      testModePasswordUnlocked = false;
+      throw new Error(
+        authRes?.message || translations[currentLang].testModeAccountDenied,
+      );
+    }
+    currentUser = {
+      email: identity.email,
+      name: authRes.adminName || identity.name || identity.email,
+      picture: identity.picture,
+      isOwner: authRes.isOwner === true,
+    };
+    pendingTestModeIdentity = null;
+    localStorage.setItem("google_id_token", googleIdToken);
+    sessionStorage.setItem("google_id_token", googleIdToken);
+    localStorage.setItem("app_user", JSON.stringify(currentUser));
+    localStorage.setItem(OFFLINE_SESSION_KEY, currentUser.email);
+    setupUserProfileUI();
+    checkDirectUrlScan();
+    refreshUserDataAfterTutorial();
+  } catch (error) {
+    testModePasswordUnlocked = false;
+    message.textContent =
+      error.message || translations[currentLang].testModePasswordIncorrect;
+  } finally {
+    submit.disabled = false;
+    submit.removeAttribute("aria-busy");
   }
 }
 
@@ -851,6 +847,8 @@ function showTutorialSearchPreview(inputId, resultsId) {
 function setFirstRunTutorialActionTarget(targetId) {
   const target = document.getElementById(targetId);
   if (!target || !isFirstRunTutorialActive()) return;
+  const collapsedDetails = target.closest("details:not([open])");
+  if (collapsedDetails) collapsedDetails.open = true;
   tutorialHighlightedTarget?.classList.remove("tutorial-target-highlight");
   tutorialHighlightedTarget = target;
   if ("disabled" in target && target.disabled) {
@@ -1026,6 +1024,8 @@ function logoutUser(msg) {
   pendingSessionRestoreEmail = "";
   googleIdToken = "";
   testModeServerVerified = false;
+  testModePasswordUnlocked = false;
+  pendingTestModeIdentity = null;
   currentUser = null;
   currentAttendanceContext = null;
   verifiedPassword = "";

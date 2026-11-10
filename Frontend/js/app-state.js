@@ -4,11 +4,20 @@ const GOOGLE_SHEET_URL = APP_CONFIG.googleSheetUrl || "";
 const OFFLINE_SESSION_KEY = "app_offline_session_email";
 
 var currentUser = null;
+var backendSessionToken =
+  localStorage.getItem("app_session_token") ||
+  sessionStorage.getItem("app_session_token") ||
+  "";
+if (backendSessionToken)
+  localStorage.setItem("app_session_token", backendSessionToken);
 var googleIdToken =
   localStorage.getItem("google_id_token") ||
   sessionStorage.getItem("google_id_token") ||
   "";
 if (googleIdToken) localStorage.setItem("google_id_token", googleIdToken);
+function hasApiCredential_() {
+  return Boolean(backendSessionToken || googleIdToken);
+}
 var html5QrCode = null;
 var isScannerRunning = false;
 var isScannerStarting = false;

@@ -2546,7 +2546,7 @@ window.addEventListener("online", async () => {
     refreshAttendanceContext();
   }
   initializeGoogleSignIn();
-  if (currentUser && !googleIdToken) {
+  if (currentUser && !hasApiCredential_()) {
     beginSessionRestore(currentUser.email);
     return;
   }

@@ -19,6 +19,8 @@ function createBackendContext({
   productionSpreadsheetId = "production-spreadsheet",
   marker = "LAMBAS_TEST_ONLY",
   allowlist = ["Tester@Example.com"],
+  whatsappConsentRows = [],
+  whatsappRosterRows = [],
 } = {}) {
   const propertyValues = {
     TEST_MODE_ENABLED: enabled,
@@ -26,13 +28,41 @@ function createBackendContext({
     PRODUCTION_SPREADSHEET_ID: productionSpreadsheetId,
     TEST_GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
     TEST_QR_SECRET_KEY: "test-only-secret",
+    TEST_MODE_PASSWORD: "test-password-only-for-tests",
+    TEST_WHATSAPP_APPROVED_TEMPLATE_NAMES:
+      '{"qr_unsent":"qr-template","checkout_all":"checkout-template","birthday":"approved-test-template"}',
   };
   const openedSpreadsheetIds = [];
   const markerSheet = {
     getRange: () => ({ getValue: () => marker }),
   };
   const testSpreadsheet = {
-    getSheetByName: (name) => (name === "_TEST_MODE" ? markerSheet : null),
+    getSheetByName: (name) => {
+      if (name === "_TEST_MODE") return markerSheet;
+      if (name === "Roster") {
+        return {
+          getLastRow: () => whatsappRosterRows.length,
+          getLastColumn: () => 6,
+          getRange: (row, column, rowCount, columnCount) => ({
+            getValues: () =>
+              Array.from({ length: rowCount }, (_, rowOffset) =>
+                Array.from({ length: columnCount }, (_, columnOffset) =>
+                  whatsappRosterRows[row - 1 + rowOffset]?.[
+                    column - 1 + columnOffset
+                  ] ?? "",
+                ),
+              ),
+          }),
+        };
+      }
+      if (name === "WhatsApp Consent") {
+        return {
+          getLastRow: () => whatsappConsentRows.length,
+          getDataRange: () => ({ getValues: () => whatsappConsentRows }),
+        };
+      }
+      return null;
+    },
     getOwner: () => ({ getEmail: () => "owner@example.com" }),
   };
   const context = {
@@ -220,6 +250,87 @@ test("same production/test spreadsheet IDs are rejected before opening a sheet",
     spreadsheetId: "same-id",
     productionSpreadsheetId: "same-id",
   });
+
+  test("Test Mode password is checked only on the server and is not returned", () => {
+    const context = createBackendContext();
+    const valid = context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          action: "verify_test_mode_password",
+          idToken: "test-token",
+          password: "test-password-only-for-tests",
+        }),
+      },
+    });
+    const invalid = context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          action: "verify_test_mode_password",
+          idToken: "test-token",
+          password: "wrong",
+        }),
+      },
+    });
+    assert.deepEqual(valid, { success: true, valid: true });
+    assert.deepEqual(invalid, { success: true, valid: false });
+    assert.equal(JSON.stringify(valid).includes("test-password-only-for-tests"), false);
+  });
+
+  test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
+    const context = createBackendContext();
+    const status = post(
+      context,
+      "get_whatsapp_automation_status",
+      "test-token",
+    );
+    assert.equal(status.success, true);
+    assert.equal(status.configured, false);
+    assert.equal(status.sendingEnabled, false);
+    assert.equal(status.schedulingEnabled, false);
+    assert.equal(status.providerImplemented, false);
+
+    const rejected = context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          action: "validate_whatsapp_automation_intent",
+          idToken: "test-token",
+          type: "birthday",
+          personId: "7",
+          templateName: "approved-test-template",
+          idempotencyKey: "birthday:7:2026",
+          optedIn: false,
+        }),
+      },
+    });
+    assert.equal(rejected.success, false);
+    assert.equal(rejected.code, "WHATSAPP_OPT_IN_REQUIRED");
+    const consentedContext = createBackendContext({
+      whatsappConsentRows: [
+        ["Person ID", "Opted In"],
+        ["7", true],
+      ],
+      whatsappRosterRows: [
+        ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
+        ["7", "Test Person", "", "+15555550100", "", "Active"],
+      ],
+    });
+    const notSent = consentedContext.doPost({
+      postData: {
+        contents: JSON.stringify({
+          action: "validate_whatsapp_automation_intent",
+          idToken: "test-token",
+          type: "birthday",
+          personId: "7",
+          templateName: "approved-test-template",
+          idempotencyKey: "birthday:7:2026",
+          optedIn: true,
+        }),
+      },
+    });
+    assert.equal(notSent.success, false);
+    assert.equal(notSent.code, "WHATSAPP_PROVIDER_NOT_IMPLEMENTED");
+    assert.match(backendSource, /WHATSAPP_PROVIDER_NOT_IMPLEMENTED/);
+  });
   const response = post(context, "check_test_access", "test-token");
 
   assert.equal(response.code, "TEST_MODE_NOT_CONFIGURED");
@@ -403,6 +514,16 @@ test("test frontend blocks application API calls before allowlist verification",
   assert.equal(fetchCalls, 0);
 
   context.testModeServerVerified = true;
+  context.testModePasswordUnlocked = false;
+  context.navigator.onLine = true;
+  await assert.rejects(
+    context.apiCall("get_roster"),
+    /Unlock Test Mode before using its application APIs/,
+  );
+  await assert.rejects(
+    context.apiCall("check_auth"),
+    /Unlock Test Mode before using its application APIs/,
+  );
   context.navigator.onLine = false;
   await assert.rejects(
     context.apiCall("get_roster"),
@@ -441,11 +562,14 @@ test("test clone is visibly marked, has same-origin return, and no entry action"
   assert.match(html, /href="\.\.\/"/);
   assert.doesNotMatch(html, /beginTestModeEntry|class="test-mode-entry"/);
   assert.match(auth, /verifyTestModeBackend\(expectedEmail\)/);
+  assert.match(auth, /async function submitTestModePassword/);
   assert.match(auth, /clearTestModeCachedReadData\(\)/);
   assert.match(auth, /const clearStores = \["roster", "apiCache"\]/);
   assert.match(state, /LAMBAS_TEST_STORAGE_READY/);
   assert.match(appOffline, /lambas-test-mode-attendance-offline-v1/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v6/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v7/);
+  assert.match(auth, /verify_test_mode_password/);
+  assert.match(auth, /showTestModePasswordGate/);
   assert.doesNotMatch(serviceWorker, /lambas-attendance-offline/);
   assert.match(serviceWorker, /action: "check_test_access"/);
   assert.match(productionServiceWorker, /requestUrl\.pathname\.startsWith\(testModePath\)/);

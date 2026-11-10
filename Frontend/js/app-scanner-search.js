@@ -708,7 +708,7 @@ async function processAttendanceId(
   personName = "",
   eventContext = {},
 ) {
-  if (!currentUser || (navigator.onLine && !googleIdToken)) {
+  if (!currentUser || (navigator.onLine && !hasApiCredential_())) {
     const result = {
       kind: "error",
       title: "Sign-in required",
@@ -911,7 +911,7 @@ async function processScannedText(text, eventContext = {}) {
     );
     return;
   }
-  if (!currentUser || (navigator.onLine && !googleIdToken)) {
+  if (!currentUser || (navigator.onLine && !hasApiCredential_())) {
     if (!showPaymentScanFeedback({
       kind: "error",
       title: "Sign-in required",

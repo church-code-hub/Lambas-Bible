@@ -168,7 +168,7 @@ async function getCachedRosterMetadata() {
 }
 
 async function refreshRosterCache() {
-  if (!navigator.onLine || !currentUser || !googleIdToken) return false;
+  if (!navigator.onLine || !currentUser || !hasApiCredential_()) return false;
   try {
     const response = await apiCall("get_roster", {}, async (freshResponse) => {
       await cacheRosterResponse(freshResponse);
@@ -337,7 +337,10 @@ async function saveOfflineEvent(
   const database = await openOfflineDatabase();
   await new Promise((resolve, reject) => {
     const stores =
-      persistSyncCredentials && currentUser && googleIdToken && API_URL
+      persistSyncCredentials &&
+        currentUser &&
+        hasApiCredential_() &&
+        API_URL
         ? ["events", "metadata"]
         : ["events"];
     const transaction = database.transaction(stores, "readwrite");
@@ -346,7 +349,11 @@ async function saveOfflineEvent(
       transaction.objectStore("metadata").put({
         key: "syncCredentials",
         apiUrl: API_URL,
-        idToken: googleIdToken,
+        idToken: backendSessionToken ? "" : googleIdToken,
+        sessionToken:
+          typeof backendSessionToken !== "undefined"
+            ? backendSessionToken || ""
+            : "",
         email: currentUser.email,
       });
     }
@@ -430,6 +437,15 @@ async function getOfflineEventCount() {
   });
 }
 
+async function getBackgroundSyncEventCount(email = "") {
+  const events = await getOfflineEvents();
+  return events.filter(
+    (event) =>
+      event.status !== "complete" &&
+      (!email || event.queuedBy === email),
+  ).length;
+}
+
 async function removeOfflineEvent(eventId) {
   const database = await openOfflineDatabase();
   await new Promise((resolve, reject) => {
@@ -445,7 +461,10 @@ async function removeOfflineEvent(eventId) {
 async function queueOfflineEvent(event) {
   const finishUserAction = beginUserActionRequest();
   try {
-    if (!currentUser || (navigator.onLine && !googleIdToken)) {
+    if (
+      !currentUser ||
+      (navigator.onLine && !hasApiCredential_())
+    ) {
       throw new Error(
         "Offline actions require a previously authenticated session.",
       );
@@ -462,7 +481,7 @@ async function queueOfflineEvent(event) {
     updateOfflineStatus().catch((error) => {
       console.error("Could not refresh offline queue status.", error);
     });
-    if (googleIdToken && API_URL) registerPendingEventsSync();
+    if (hasApiCredential_() && API_URL) registerPendingEventsSync();
     return queuedEvent;
   } finally {
     finishUserAction();
@@ -712,7 +731,7 @@ async function syncQueuedEventImmediately(event) {
   try {
     for (const delay of [0, 750, 2000, 4000]) {
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-      if (!currentUser || !googleIdToken) break;
+      if (!currentUser || !hasApiCredential_()) break;
       try {
         const response = await apiCall("sync_offline_events", {
           events: [event],
@@ -847,7 +866,7 @@ async function syncOfflineQueue(
     isSyncingOfflineQueue ||
     !navigator.onLine ||
     !currentUser ||
-    !googleIdToken
+    !hasApiCredential_()
   )
     return null;
   isSyncingOfflineQueue = true;
@@ -873,7 +892,7 @@ async function syncOfflineQueue(
           )
         : events.filter((event) => event.queuedBy === currentUser.email);
     progress = showProgress ? createOfflineSyncProgress(progressEvents) : null;
-    while (events.length && navigator.onLine && currentUser && googleIdToken) {
+    while (events.length && navigator.onLine && currentUser && hasApiCredential_()) {
       const batch = getOfflineSyncBatch(
         events,
         targetEventId,
@@ -896,7 +915,7 @@ async function syncOfflineQueue(
       let response = null;
       for (const delay of [0, 750, 2000, 4000]) {
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-        if (!navigator.onLine || !currentUser || !googleIdToken) break;
+        if (!navigator.onLine || !currentUser || !hasApiCredential_()) break;
         response = await apiCall("sync_offline_events", {
           events: requestBatch,
         });
@@ -1039,7 +1058,7 @@ async function syncOfflineQueue(
         }
       }
     }
-    if (currentUser && googleIdToken)
+    if (currentUser && hasApiCredential_())
       showToast(translations[currentLang].offlineSyncFailed, "error");
   } finally {
     if (progress && progress.completed > 0) {
@@ -1188,7 +1207,7 @@ async function renderOfflineQueue() {
       !events.length ||
       !navigator.onLine ||
       !currentUser ||
-      !googleIdToken ||
+      !hasApiCredential_() ||
       isSyncingOfflineQueue;
   } catch (error) {
     container.replaceChildren();
