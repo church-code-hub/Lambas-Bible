@@ -26,6 +26,10 @@ const styles = fs.readFileSync(
   path.join(frontend, "css", "03-feedback.css"),
   "utf8",
 );
+const foundationStyles = fs.readFileSync(
+  path.join(frontend, "css", "01-foundation.css"),
+  "utf8",
+);
 
 function createElement() {
   return {
@@ -197,6 +201,10 @@ test("startup dismisses after initialization instead of using a fixed wait", () 
 });
 
 test("startup screen remains visible through its exit transition", () => {
+  assert.doesNotMatch(
+    foundationStyles,
+    /\.startup-screen\.is-exiting\s*\{[^}]*pointer-events:\s*none/,
+  );
   const source = auth.match(
     /function dismissStartupScreen\(\) \{[\s\S]*?\n\}/,
   )?.[0];
@@ -230,8 +238,21 @@ test("startup screen remains visible through its exit transition", () => {
   assert.equal(startupScreen.attributes["aria-hidden"], "true");
 });
 
-test("Test Mode uses supplied video and does not cache the media file", () => {
-  assert.match(html, /<video[\s\S]*?controls[\s\S]*?preload="metadata"[\s\S]*?<source src="Assets\/video\.mp4"/);
+test("Test Mode uses the video as a non-interactive login backdrop", () => {
+  const loginView = html.match(
+    /<div id="loginView" class="login-view">[\s\S]*?<\/div>\s*<\/div>/,
+  )?.[0];
+  assert.ok(loginView, "login view should contain its background and sign-in panel");
+  assert.match(loginView, /class="login-background-video"[\s\S]*?autoplay[\s\S]*?muted[\s\S]*?loop[\s\S]*?playsinline/);
+  assert.match(loginView, /<source src="Assets\/video\.mp4"/);
+  assert.doesNotMatch(loginView, /<video[^>]*controls/);
+  assert.doesNotMatch(html, /class="dashboard-video"/);
+  const layoutStyles = fs.readFileSync(
+    path.join(frontend, "css", "06-app-layout.css"),
+    "utf8",
+  );
+  assert.match(layoutStyles, /\.login-view\s*\{[^}]*position:\s*fixed[^}]*pointer-events:\s*auto/);
+  assert.match(layoutStyles, /\.login-background-video\s*\{[^}]*pointer-events:\s*none/);
   assert.match(html, /data-design="current"/);
   const serviceWorker = fs.readFileSync(
     path.join(frontend, "sw.js"),

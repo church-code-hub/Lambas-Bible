@@ -12,32 +12,6 @@
   -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
 
-.dashboard-video {
-  display: grid;
-  gap: 12px;
-  margin-block-start: 24px;
-  padding: clamp(14px, 3vw, 22px);
-  border: 1px solid var(--card-border);
-  border-radius: 22px;
-  background: var(--glass-surface);
-  box-shadow: var(--shadow);
-}
-
-.dashboard-video h2 {
-  margin: 0;
-  color: var(--text-main);
-  font-size: 18px;
-}
-
-.dashboard-video video {
-  display: block;
-  width: 100%;
-  max-height: min(68vh, 680px);
-  border-radius: 16px;
-  background: #000;
-  object-fit: contain;
-}
-
 .dashboard-heading-actions {
   display: flex;
   width: 100%;

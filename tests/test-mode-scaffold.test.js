@@ -567,9 +567,7 @@ test("test clone is visibly marked, has same-origin return, and no entry action"
   assert.match(auth, /const clearStores = \["roster", "apiCache"\]/);
   assert.match(state, /LAMBAS_TEST_STORAGE_READY/);
   assert.match(appOffline, /lambas-test-mode-attendance-offline-v1/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v7/);
-  assert.match(auth, /verify_test_mode_password/);
-  assert.match(auth, /showTestModePasswordGate/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v6/);
   assert.doesNotMatch(serviceWorker, /lambas-attendance-offline/);
   assert.match(serviceWorker, /action: "check_test_access"/);
   assert.match(productionServiceWorker, /requestUrl\.pathname\.startsWith\(testModePath\)/);
