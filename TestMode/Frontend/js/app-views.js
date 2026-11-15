@@ -844,6 +844,176 @@ function updateAttendanceWindowState(windowOpen) {
   currentAttendeesWindowOpen = windowOpen;
 }
 
+const DASHBOARD_TILE_IDS = [
+  "tutorialScanAction",
+  "tutorialSearchAction",
+  "tutorialAddAction",
+  "tutorialRosterAction",
+  "currentAttendeesTile",
+  "birthdaysAction",
+  "individualSearchAction",
+  "tutorialShareAction",
+  "tutorialReportsAction",
+  "tutorialFollowupAction",
+  "tutorialSheetAction",
+  "tutorialScheduleAction",
+];
+let currentDashboardPreferences = {
+  layout: "two",
+  order: DASHBOARD_TILE_IDS.slice(),
+  hidden: [],
+  size: "standard",
+  showLabels: true,
+};
+let dashboardEditDraft = null;
+let dashboardEditAccountEmail = "";
+let dashboardPointerDrag = null;
+
+function defaultDashboardPreferences() {
+  return {
+    layout: "two",
+    order: DASHBOARD_TILE_IDS.slice(),
+    hidden: [],
+    size: "standard",
+    showLabels: true,
+  };
+}
+
+function dashboardPreferenceKey() {
+  const email = String(currentUser?.email || "").trim().toLowerCase();
+  return `app_dashboard_preferences_${encodeURIComponent(email || "anonymous")}`;
+}
+
+function normalizeDashboardPreferences(value) {
+  const defaults = defaultDashboardPreferences();
+  const input = value && typeof value === "object" ? value : {};
+  const order = Array.isArray(input.order)
+    ? input.order.filter((id, index, list) =>
+        DASHBOARD_TILE_IDS.includes(id) && list.indexOf(id) === index)
+    : [];
+  DASHBOARD_TILE_IDS.forEach((id) => {
+    if (!order.includes(id)) order.push(id);
+  });
+  return {
+    layout: ["one", "two", "three"].includes(input.layout)
+      ? input.layout
+      : defaults.layout,
+    order,
+    hidden: Array.isArray(input.hidden)
+      ? [...new Set(input.hidden.filter((id) => DASHBOARD_TILE_IDS.includes(id)))]
+      : [],
+    size: ["compact", "standard", "wide"].includes(input.size)
+      ? input.size
+      : defaults.size,
+    showLabels: input.showLabels !== false,
+  };
+}
+
+function loadDashboardPreferencesForAccount() {
+  if (dashboardEditDraft) cancelDashboardEdit();
+  if (!currentUser?.email) {
+    currentDashboardPreferences = defaultDashboardPreferences();
+    applyDashboardPreferences();
+    return;
+  }
+  const accountKey = dashboardPreferenceKey();
+  let saved;
+  try {
+    saved = localStorage.getItem(accountKey);
+  } catch (error) {
+    currentDashboardPreferences = defaultDashboardPreferences();
+    console.warn("Could not read dashboard preferences.", error);
+    applyDashboardPreferences();
+    return;
+  }
+  if (saved !== null) {
+    try {
+      currentDashboardPreferences = normalizeDashboardPreferences(JSON.parse(saved));
+    } catch (error) {
+      currentDashboardPreferences = defaultDashboardPreferences();
+      console.warn("Could not parse account dashboard preferences.", error);
+    }
+    // The former preference was shared by accounts on this device. Once this
+    // account has its own value, do not let that legacy value leak to another.
+    try {
+      localStorage.removeItem("app_dashboard_layout");
+    } catch (error) {
+      console.warn("Could not remove the legacy dashboard preference.", error);
+    }
+  } else {
+    currentDashboardPreferences = defaultDashboardPreferences();
+    let legacyLayout = null;
+    try {
+      legacyLayout = localStorage.getItem("app_dashboard_layout");
+    } catch (error) {
+      console.warn("Could not read the legacy dashboard preference.", error);
+    }
+    if (["one", "two", "three"].includes(legacyLayout)) {
+      currentDashboardPreferences.layout = legacyLayout;
+      try {
+        localStorage.setItem(accountKey, JSON.stringify(currentDashboardPreferences));
+        localStorage.removeItem("app_dashboard_layout");
+      } catch (error) {
+        console.warn("Could not migrate the legacy dashboard preference.", error);
+      }
+    }
+  }
+  applyDashboardPreferences();
+}
+
+function saveDashboardPreferences(preferences) {
+  currentDashboardPreferences = normalizeDashboardPreferences(preferences);
+  if (currentUser?.email) {
+    try {
+      localStorage.setItem(
+        dashboardPreferenceKey(),
+        JSON.stringify(currentDashboardPreferences),
+      );
+    } catch (error) {
+      console.warn("Could not save dashboard preferences.", error);
+    }
+  }
+  applyDashboardPreferences();
+}
+
+function applyDashboardPreferences() {
+  const dashboard = document.getElementById("dashboardView");
+  if (!dashboard) return;
+  const preferences = currentDashboardPreferences;
+  dashboard.dataset.layout = preferences.layout;
+  dashboard.querySelectorAll("[data-dashboard-layout]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.dashboardLayout === preferences.layout));
+  });
+  dashboard.dataset.tileSize = preferences.size;
+  dashboard.classList.toggle("dashboard-labels-hidden", !preferences.showLabels);
+  const primaryGrid = dashboard.querySelector(":scope > .dashboard-actions-grid");
+  const moreDetails = document.getElementById("dashboardMoreActions");
+  const moreGrid = moreDetails?.querySelector(".dashboard-actions-grid");
+  if (!primaryGrid || !moreGrid) return;
+  const tileById = new Map(
+    DASHBOARD_TILE_IDS.map((id) => [id, document.getElementById(id)]),
+  );
+  primaryGrid.replaceChildren();
+  moreGrid.replaceChildren();
+  const visibleTiles = preferences.order
+    .filter((id) => !preferences.hidden.includes(id))
+    .map((id) => tileById.get(id))
+    .filter(Boolean);
+  visibleTiles.forEach((tile, index) => {
+    tile.hidden = false;
+    (index < 5 ? primaryGrid : moreGrid).appendChild(tile);
+  });
+  tileById.forEach((tile, id) => {
+    if (tile && preferences.hidden.includes(id)) tile.hidden = true;
+  });
+  moreDetails.hidden = visibleTiles.length <= 5;
+  const labelToggle = document.getElementById("dashboardLabelsToggle");
+  if (labelToggle) labelToggle.checked = preferences.showLabels;
+  document.querySelectorAll("[data-dashboard-size]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.dashboardSize === preferences.size));
+  });
+}
+
 function setDashboardLayout(layout) {
   const availableLayouts = ["one", "two", "three"];
   const selectedLayout = availableLayouts.includes(layout) ? layout : "two";
@@ -856,7 +1026,235 @@ function setDashboardLayout(layout) {
       String(button.dataset.dashboardLayout === selectedLayout),
     );
   });
-  localStorage.setItem("app_dashboard_layout", selectedLayout);
+  if (dashboardEditDraft) {
+    dashboardEditDraft.layout = selectedLayout;
+  } else {
+    saveDashboardPreferences({
+      ...(currentDashboardPreferences || defaultDashboardPreferences()),
+      layout: selectedLayout,
+    });
+  }
+}
+
+function enterDashboardEditMode() {
+  if (dashboardEditDraft) return;
+  dashboardEditDraft = normalizeDashboardPreferences(currentDashboardPreferences);
+  dashboardEditAccountEmail = String(currentUser?.email || "").trim().toLowerCase();
+  const dashboard = document.getElementById("dashboardView");
+  const editor = document.getElementById("dashboardEditor");
+  const list = document.getElementById("dashboardEditorList");
+  if (!dashboard || !editor || !list) {
+    dashboardEditDraft = null;
+    return;
+  }
+  document.getElementById("dashboardEditButton").hidden = true;
+  dashboard.querySelector(".dashboard-layout-switcher").hidden = true;
+  document.getElementById("dashboardMoreActions").hidden = true;
+  editor.hidden = false;
+  dashboardPointerDrag = null;
+  dashboardEditDraft.order.forEach((id) => {
+    const tile = document.getElementById(id);
+    if (!tile) return;
+    const item = document.createElement("div");
+    item.className = "dashboard-editor-item";
+    item.dataset.tileId = id;
+    const reorder = document.createElement("div");
+    reorder.className = "dashboard-editor-reorder";
+    const drag = document.createElement("button");
+    drag.type = "button";
+    drag.className = "dashboard-editor-drag";
+    drag.setAttribute("data-i18n-aria-label", "dashboardDragShortcut");
+    drag.setAttribute("aria-label", translations[currentLang].dashboardDragShortcut);
+    const dragIcon = document.createElement("i");
+    dragIcon.className = "fa-solid fa-grip-lines";
+    dragIcon.setAttribute("aria-hidden", "true");
+    drag.appendChild(dragIcon);
+    drag.addEventListener("pointerdown", (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      event.preventDefault();
+      dashboardPointerDrag = { id, pointerId: event.pointerId };
+      item.classList.add("is-dragging");
+    });
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "dashboard-editor-move";
+    up.setAttribute("data-i18n-aria-label", "dashboardMoveUp");
+    up.setAttribute("aria-label", translations[currentLang].dashboardMoveUp);
+    up.textContent = "↑";
+    up.onclick = () => moveDashboardShortcut(id, -1);
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "dashboard-editor-move";
+    down.setAttribute("data-i18n-aria-label", "dashboardMoveDown");
+    down.setAttribute("aria-label", translations[currentLang].dashboardMoveDown);
+    down.textContent = "↓";
+    down.onclick = () => moveDashboardShortcut(id, 1);
+    reorder.append(drag, up, down);
+    const visibleToggle = document.createElement("button");
+    visibleToggle.type = "button";
+    visibleToggle.className = "dashboard-editor-visibility";
+    visibleToggle.setAttribute("data-i18n", dashboardEditDraft.hidden.includes(id)
+      ? "dashboardShowShortcut"
+      : "dashboardHideShortcut");
+    visibleToggle.onclick = () => toggleDashboardShortcut(id);
+    item.append(reorder, tile, visibleToggle);
+    list.appendChild(item);
+    tile.hidden = false;
+    item.dataset.originalDisabled = String(tile.disabled);
+    tile.disabled = true;
+  });
+  document.addEventListener("pointermove", moveDashboardPointer, { passive: false });
+  document.addEventListener("pointerup", endDashboardPointer);
+  document.addEventListener("pointercancel", endDashboardPointer);
+  applyDashboardEditorDraft();
+}
+
+function moveDashboardPointer(event) {
+  if (!dashboardPointerDrag || event.pointerId !== dashboardPointerDrag.pointerId) return;
+  const list = document.getElementById("dashboardEditorList");
+  const dragged = list?.querySelector(`[data-tile-id="${dashboardPointerDrag.id}"]`);
+  const target = document.elementFromPoint(event.clientX, event.clientY)
+    ?.closest(".dashboard-editor-item");
+  if (!list || !dragged || !target || target === dragged || !list.contains(target)) return;
+  event.preventDefault();
+  const rect = target.getBoundingClientRect();
+  const insertAfter = event.clientY > rect.top + rect.height / 2;
+  list.insertBefore(dragged, insertAfter ? target.nextSibling : target);
+  dashboardEditDraft.order = [...list.querySelectorAll(".dashboard-editor-item")]
+    .map((item) => item.dataset.tileId);
+}
+
+function endDashboardPointer(event) {
+  if (!dashboardPointerDrag || event.pointerId !== dashboardPointerDrag.pointerId) return;
+  document.querySelector(".dashboard-editor-item.is-dragging")?.classList.remove("is-dragging");
+  dashboardPointerDrag = null;
+}
+
+function moveDashboardShortcut(id, offset) {
+  if (!dashboardEditDraft) return;
+  const list = document.getElementById("dashboardEditorList");
+  const item = list?.querySelector(`[data-tile-id="${id}"]`);
+  const sibling = item?.[offset < 0 ? "previousElementSibling" : "nextElementSibling"];
+  if (!item || !sibling) return;
+  list.insertBefore(item, offset < 0 ? sibling : sibling.nextSibling);
+  dashboardEditDraft.order = [...list.querySelectorAll(".dashboard-editor-item")]
+    .map((entry) => entry.dataset.tileId);
+}
+
+function toggleDashboardShortcut(id) {
+  if (!dashboardEditDraft) return;
+  const hidden = new Set(dashboardEditDraft.hidden);
+  if (hidden.has(id)) hidden.delete(id);
+  else hidden.add(id);
+  dashboardEditDraft.hidden = [...hidden];
+  const item = document.querySelector(`#dashboardEditorList [data-tile-id="${id}"]`);
+  const toggle = item?.querySelector(".dashboard-editor-visibility");
+  if (toggle) {
+    const key = hidden.has(id) ? "dashboardShowShortcut" : "dashboardHideShortcut";
+    toggle.setAttribute("data-i18n", key);
+    toggle.textContent = translations[currentLang][key];
+  }
+  item?.classList.toggle("is-hidden-shortcut", hidden.has(id));
+}
+
+function setDashboardDraftSize(size) {
+  if (!dashboardEditDraft || !["compact", "standard", "wide"].includes(size)) return;
+  dashboardEditDraft.size = size;
+  document.getElementById("dashboardView").dataset.tileSize = size;
+  document.querySelectorAll("[data-dashboard-size]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.dashboardSize === size));
+  });
+}
+
+function setDashboardDraftLabels(visible) {
+  if (!dashboardEditDraft) return;
+  dashboardEditDraft.showLabels = Boolean(visible);
+  document.getElementById("dashboardView")
+    .classList.toggle("dashboard-labels-hidden", !dashboardEditDraft.showLabels);
+}
+
+function applyDashboardEditorDraft() {
+  if (!dashboardEditDraft) return;
+  const dashboard = document.getElementById("dashboardView");
+  dashboard.dataset.tileSize = dashboardEditDraft.size;
+  dashboard.classList.toggle("dashboard-labels-hidden", !dashboardEditDraft.showLabels);
+  document.getElementById("dashboardLabelsToggle").checked = dashboardEditDraft.showLabels;
+  document.querySelectorAll("[data-dashboard-size]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.dashboardSize === dashboardEditDraft.size));
+  });
+  document.querySelectorAll("#dashboardEditorList .dashboard-editor-item").forEach((item) => {
+    item.classList.toggle("is-hidden-shortcut", dashboardEditDraft.hidden.includes(item.dataset.tileId));
+  });
+}
+
+function finishDashboardEdit() {
+  const dashboard = document.getElementById("dashboardView");
+  const editor = document.getElementById("dashboardEditor");
+  const list = document.getElementById("dashboardEditorList");
+  list?.querySelectorAll(".dashboard-editor-item").forEach((item) => {
+    const tile = item.querySelector(".tile");
+    if (tile) {
+      tile.disabled = item.dataset.originalDisabled === "true";
+      dashboard?.querySelector(":scope > .dashboard-actions-grid")?.appendChild(tile);
+    }
+  });
+  list?.replaceChildren();
+  document.removeEventListener("pointermove", moveDashboardPointer);
+  document.removeEventListener("pointerup", endDashboardPointer);
+  document.removeEventListener("pointercancel", endDashboardPointer);
+  dashboardPointerDrag = null;
+  if (editor) editor.hidden = true;
+  if (dashboard) {
+    dashboard.querySelector(".dashboard-layout-switcher").hidden = false;
+    document.getElementById("dashboardMoreActions").hidden = false;
+    document.getElementById("dashboardEditButton").hidden = false;
+  }
+  dashboardEditDraft = null;
+  dashboardEditAccountEmail = "";
+  applyDashboardPreferences();
+}
+
+function saveDashboardEdit() {
+  if (!dashboardEditDraft) return;
+  const activeEmail = String(currentUser?.email || "").trim().toLowerCase();
+  if (!activeEmail || activeEmail !== dashboardEditAccountEmail) {
+    finishDashboardEdit();
+    return;
+  }
+  dashboardEditDraft.order = [...document.querySelectorAll("#dashboardEditorList .dashboard-editor-item")]
+    .map((item) => item.dataset.tileId);
+  currentDashboardPreferences = normalizeDashboardPreferences(dashboardEditDraft);
+  if (currentUser?.email) {
+    try {
+      localStorage.setItem(dashboardPreferenceKey(), JSON.stringify(currentDashboardPreferences));
+    } catch (error) {
+      console.warn("Could not save dashboard preferences.", error);
+    }
+  }
+  finishDashboardEdit();
+}
+
+function cancelDashboardEdit() {
+  if (!dashboardEditDraft) return;
+  finishDashboardEdit();
+}
+
+function resetDashboardDraft() {
+  if (!dashboardEditDraft ||
+      !window.confirm(translations[currentLang].confirmDashboardReset)) return;
+  dashboardEditDraft = defaultDashboardPreferences();
+  setDashboardLayout(dashboardEditDraft.layout);
+  const list = document.getElementById("dashboardEditorList");
+  dashboardEditDraft.order.forEach((id) => {
+    const item = list.querySelector(`[data-tile-id="${id}"]`);
+    if (item) list.appendChild(item);
+    const toggle = item?.querySelector(".dashboard-editor-visibility");
+    if (toggle) {
+      toggle.setAttribute("data-i18n", "dashboardHideShortcut");
+      toggle.textContent = translations[currentLang].dashboardHideShortcut;
+    }
+  });
+  applyDashboardEditorDraft();
 }
 
 async function loadRosterManagement() {
@@ -2728,6 +3126,9 @@ function resetView(viewId) {
   } else if (viewId === "scanView") {
     clearScanFeedback();
     stopLiveScanner();
+    stopLaptopKioskClock();
+    if (document.fullscreenElement === document.getElementById("scanView"))
+      document.exitFullscreen?.().catch(() => {});
   } else if (viewId === "addView") {
     document.getElementById("newStudentName").value = "";
     document.getElementById("addResult").innerHTML = "";

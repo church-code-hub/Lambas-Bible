@@ -142,7 +142,7 @@ The attendee profile in Test Mode also shows an attendance percentage chart
 with folded detailed records. Its exports use the existing server-side XLSX
 report path and a local PNG chart export.
 
-## Pending branding and dashboard designs
+## Branding and dashboard customization
 
 The current app icon is referenced from `Frontend/Assets/icons/icon-192.png`,
 `icon-512.png`, and `icon-maskable-512.png`; the startup mark, top bar,
@@ -157,11 +157,35 @@ app controls beneath it. The video is not precached by the service worker, so
 playback requires a network connection; it is hidden when reduced motion is
 preferred.
 
-App Settings already provides a responsive one-, two-, or three-column
-dashboard layout switcher, and the existing light/dark theme remains separate.
-The dashboard root has a `data-design="current"` hook. Final dashboard skins
-are pending owner-provided design references; do not add speculative
-alternatives. When approved references arrive, extend the design allowlist and
-provide a design choice beside the layout switcher, scoping each supplied
-design through the existing dashboard root and numbered CSS modules rather
-than duplicating the dashboard markup.
+The dashboard keeps the existing one-, two-, and three-column layouts and
+provides a **Customize Dashboard** editor. A signed-in Test Mode account can
+reorder its existing action shortcuts using pointer dragging or the move
+buttons, show or hide shortcuts, choose compact, standard, or wide tiles, and
+toggle visible labels. Saving stores preferences in Test Mode's namespaced
+browser storage under the account email; the previous shared layout setting is
+migrated when an account has no saved dashboard preferences. Cancel discards
+the current edit session, and reset requires confirmation.
+
+## Laptop attendance scanner
+
+Laptop Scan Mode upgrades the existing QR scanner rather than adding a second
+scanner. It provides fullscreen controls, camera selection, sound settings,
+and resolution preferences (1920×1080 ideal, with 1280×720 and 640×480
+fallback options). The scanner processes the full camera frame in Laptop Mode;
+Regular Scan Mode retains its smaller QR region. Focus and zoom controls are
+shown only when the active camera reports the corresponding capability.
+
+Camera resolution, focus, zoom, and practical QR scanning distance depend on
+the connected camera, QR print quality, lighting, and browser support. Zoom is
+only applied when the camera exposes a zoom capability; the app does not
+promise optical zoom. The scanner suppresses repeat decodes of the same QR
+while it remains detectable and rearms after 1.5 seconds without a successful
+decode. That absence interval is a heuristic, not proof that the card has
+physically left the camera frame; a visible but temporarily unreadable QR may
+be accepted again. No physical camera or QR-distance testing has been
+performed. Test Mode's service-worker shell includes the bundled QR scanner
+library for offline startup.
+
+These are Test Mode frontend experiments only. No production frontend,
+backend, or data is used by these controls, and this documentation does not
+deploy or publish either application.

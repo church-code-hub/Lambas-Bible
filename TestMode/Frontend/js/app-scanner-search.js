@@ -16,6 +16,24 @@ function setCameraStatus(translationKey) {
       : "error";
   document.getElementById("restartCameraPlaceholderButton").hidden =
     isActive || translationKey === "cameraStarting";
+  const laptopState = document.getElementById("laptopScannerState");
+  if (laptopState) {
+    laptopState.setAttribute("data-i18n", isActive ? "laptopStatusReady" : translationKey);
+    laptopState.textContent = translations[currentLang][isActive ? "laptopStatusReady" : translationKey] ||
+      translations[currentLang][translationKey];
+  }
+  if (translationKey === "cameraStarting") {
+    const capabilities = document.getElementById("laptopCameraCapabilities");
+    if (capabilities) {
+      capabilities.textContent = "";
+      capabilities.hidden = true;
+    }
+    const zoomControl = document.getElementById("laptopZoomControl");
+    if (zoomControl) zoomControl.hidden = true;
+    laptopZoomDefault = null;
+    const cameraSelect = document.getElementById("laptopCameraSelect");
+    if (cameraSelect) cameraSelect.disabled = true;
+  }
 }
 
 function loadQrLibrary() {
@@ -41,6 +59,7 @@ function loadQrLibrary() {
 }
 
 function preparePaymentScanAudio() {
+  if (!isScanSoundEnabled) return null;
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return null;
   try {
@@ -54,6 +73,7 @@ function preparePaymentScanAudio() {
 }
 
 function playPaymentScanTone(result) {
+  if (!isScanSoundEnabled) return;
   const audioContext = preparePaymentScanAudio();
   if (!audioContext) return;
   try {
@@ -107,7 +127,19 @@ function showPaymentScanFeedback(result, expectedGeneration) {
   ].filter(Boolean).join(" · ");
   const resultPanel = document.getElementById("paymentScanResult");
   if (!resultPanel) return false;
+  const feedbackQrText = activeScannedQrText;
+  if (feedbackQrText) rememberScannedQrForDebounce(feedbackQrText);
   hideScanProcessing();
+  const laptopState = document.getElementById("laptopScannerState");
+  if (laptopState) {
+    const statusKey = queued
+      ? "laptopStatusQueued"
+      : success
+        ? "laptopStatusSuccess"
+        : "laptopStatusResult";
+    laptopState.setAttribute("data-i18n", statusKey);
+    laptopState.textContent = translations[currentLang][statusKey];
+  }
   const icon = document.createElement("i");
   icon.className = `fa-solid ${
     success
@@ -145,6 +177,7 @@ function showPaymentScanFeedback(result, expectedGeneration) {
     resultPanel.closest(".camera-wrapper")?.classList.remove("has-scan-result");
     paymentFeedbackTimer = 0;
     isProcessingScan = false;
+    if (activeScannedQrText === feedbackQrText) activeScannedQrText = "";
     if (currentActiveViewId === "scanView") startLiveScanner();
   }, 2000);
   return true;
@@ -154,6 +187,9 @@ function clearScanFeedback() {
   scanRequestGeneration++;
   window.clearTimeout(paymentFeedbackTimer);
   paymentFeedbackTimer = 0;
+  cancelScannedQrAbsenceTimer();
+  lastDetectedQrText = "";
+  activeScannedQrText = "";
   hideScanProcessing();
   const resultPanel = document.getElementById("paymentScanResult");
   if (resultPanel) {
@@ -175,6 +211,11 @@ function showScanProcessing(name = "") {
   const nameElement = document.getElementById("scanProcessingName");
   nameElement.textContent = name;
   overlay.hidden = false;
+  const laptopState = document.getElementById("laptopScannerState");
+  if (laptopState) {
+    laptopState.setAttribute("data-i18n", "laptopStatusProcessing");
+    laptopState.textContent = translations[currentLang].laptopStatusProcessing;
+  }
 }
 
 function hideScanProcessing() {
@@ -201,10 +242,175 @@ function setScanModePreference(mode) {
     "aria-pressed",
     String(isLaptopScanMode),
   );
+  updateScanSoundButton();
+  if (isLaptopScanMode && currentActiveViewId === "scanView") startLaptopKioskClock();
+  else stopLaptopKioskClock();
   if (isLaptopScanMode) preparePaymentScanAudio();
   if (currentActiveViewId === "scanView") {
     stopLiveScanner(false).finally(() => startLiveScanner());
   }
+}
+
+function laptopScannerPreferenceKey(name) {
+  const email = String(currentUser?.email || "").trim().toLowerCase();
+  return `app_laptop_scanner_${encodeURIComponent(email || "anonymous")}_${name}`;
+}
+
+const LAPTOP_SCAN_RESOLUTIONS = [
+  { value: "1920x1080", width: 1920, height: 1080 },
+  { value: "1280x720", width: 1280, height: 720 },
+  { value: "640x480", width: 640, height: 480 },
+];
+
+function laptopResolutionProfile(value) {
+  return LAPTOP_SCAN_RESOLUTIONS.find((profile) => profile.value === value) ||
+    LAPTOP_SCAN_RESOLUTIONS[0];
+}
+
+function buildLaptopVideoConstraints(profile) {
+  return {
+    ...(selectedLaptopCameraId
+      ? { deviceId: { exact: selectedLaptopCameraId } }
+      : { facingMode: { ideal: "environment" } }),
+    width: { ideal: profile.width },
+    height: { ideal: profile.height },
+  };
+}
+
+function loadLaptopScannerPreferences() {
+  try {
+    selectedLaptopCameraId = currentUser?.email
+      ? localStorage.getItem(laptopScannerPreferenceKey("camera")) || ""
+      : "";
+    const savedResolution = currentUser?.email
+      ? localStorage.getItem(laptopScannerPreferenceKey("resolution"))
+      : null;
+    preferredLaptopResolution = LAPTOP_SCAN_RESOLUTIONS.some(
+      (profile) => profile.value === savedResolution,
+    )
+      ? savedResolution
+      : LAPTOP_SCAN_RESOLUTIONS[0].value;
+    isScanSoundEnabled = currentUser?.email
+      ? localStorage.getItem(laptopScannerPreferenceKey("sound")) !== "false"
+      : true;
+  } catch (error) {
+    selectedLaptopCameraId = "";
+    preferredLaptopResolution = LAPTOP_SCAN_RESOLUTIONS[0].value;
+    isScanSoundEnabled = true;
+  }
+  const resolutionSelect = document.getElementById("laptopResolutionSelect");
+  if (resolutionSelect) resolutionSelect.value = preferredLaptopResolution;
+  updateScanSoundButton();
+}
+
+function setLaptopResolutionPreference(value) {
+  if (!isLaptopScanMode || isProcessingScan) {
+    const select = document.getElementById("laptopResolutionSelect");
+    if (select) select.value = preferredLaptopResolution;
+    return;
+  }
+  if (!LAPTOP_SCAN_RESOLUTIONS.some((profile) => profile.value === value)) return;
+  preferredLaptopResolution = value;
+  const select = document.getElementById("laptopResolutionSelect");
+  if (select) select.value = value;
+  try {
+    if (currentUser?.email)
+      localStorage.setItem(laptopScannerPreferenceKey("resolution"), value);
+  } catch (error) {
+    console.warn("Could not save laptop camera resolution preference.", error);
+  }
+  if (currentActiveViewId === "scanView") {
+    stopLiveScanner(false).then(() => {
+      if (currentActiveViewId === "scanView" && isLaptopScanMode)
+        startLiveScanner();
+    });
+  }
+}
+
+function updateScanSoundButton() {
+  const button = document.getElementById("laptopSoundToggle");
+  if (!button) return;
+  const key = isScanSoundEnabled ? "scanSoundOn" : "scanSoundOff";
+  button.setAttribute("data-i18n", key);
+  button.textContent = translations[currentLang][key];
+  button.setAttribute("aria-pressed", String(isScanSoundEnabled));
+}
+
+function toggleScanSound() {
+  isScanSoundEnabled = !isScanSoundEnabled;
+  try {
+    if (currentUser?.email)
+      localStorage.setItem(laptopScannerPreferenceKey("sound"), String(isScanSoundEnabled));
+  } catch (error) {
+    console.warn("Could not save scanner sound preference.", error);
+  }
+  if (isScanSoundEnabled) preparePaymentScanAudio();
+  updateScanSoundButton();
+}
+
+function updateLaptopClock() {
+  const clock = document.getElementById("laptopClock");
+  if (clock) clock.textContent = new Intl.DateTimeFormat(
+    currentLang === "ar" ? "ar" : "en",
+    { hour: "2-digit", minute: "2-digit", second: "2-digit" },
+  ).format(new Date());
+  const connectivity = document.getElementById("laptopConnectivity");
+  if (connectivity) {
+    const key = navigator.onLine ? "laptopOnline" : "laptopOffline";
+    connectivity.setAttribute("data-i18n", key);
+    connectivity.textContent = translations[currentLang][key];
+  }
+}
+
+function startLaptopKioskClock() {
+  updateLaptopClock();
+  if (laptopScannerClockTimer) return;
+  laptopScannerClockTimer = window.setInterval(updateLaptopClock, 1000);
+  if (!laptopScannerOnlineHandler) {
+    laptopScannerOnlineHandler = updateLaptopClock;
+    window.addEventListener("online", laptopScannerOnlineHandler);
+    window.addEventListener("offline", laptopScannerOnlineHandler);
+    document.addEventListener("fullscreenchange", updateScannerFullscreenButton);
+    document.addEventListener("keydown", handleScannerEscape);
+  }
+}
+
+function stopLaptopKioskClock() {
+  window.clearInterval(laptopScannerClockTimer);
+  laptopScannerClockTimer = 0;
+}
+
+function updateScannerFullscreenButton() {
+  const button = document.getElementById("laptopFullscreenToggle");
+  if (!button) return;
+  const fullscreen = document.fullscreenElement === document.getElementById("scanView");
+  const key = fullscreen ? "exitFullscreen" : "enterFullscreen";
+  button.setAttribute("data-i18n", key);
+  button.textContent = translations[currentLang][key];
+  button.setAttribute("aria-pressed", String(fullscreen));
+}
+
+function handleScannerEscape(event) {
+  if (event.key === "Escape" && document.fullscreenElement) {
+    // Let the browser complete its standard fullscreen exit, then sync the control.
+    window.setTimeout(updateScannerFullscreenButton, 0);
+  }
+}
+
+async function toggleScannerFullscreen() {
+  const scanView = document.getElementById("scanView");
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else if (scanView?.requestFullscreen) {
+      await scanView.requestFullscreen();
+    } else {
+      showToast(translations[currentLang].fullscreenUnavailable, "error");
+    }
+  } catch (error) {
+    showToast(translations[currentLang].fullscreenUnavailable, "error");
+  }
+  updateScannerFullscreenButton();
 }
 
 function loadWhatsAppMessageTemplate() {
@@ -241,85 +447,318 @@ async function loadWhatsAppAutomationStatus() {
   }
 }
 
-async function startLiveScanner() {
-  if (isScannerRunning || isScannerStarting) return;
+function startLiveScanner() {
+  if (isScannerRunning) return Promise.resolve();
+  if (isScannerStarting) return scannerStartPromise || Promise.resolve();
+  if (currentActiveViewId !== "scanView" || isProcessingScan) return Promise.resolve();
+  if (isLaptopScanMode) startLaptopKioskClock();
   if (!currentAttendanceContext && currentUser) refreshAttendanceContext();
   const generation = ++scannerStartGeneration;
   isScannerStarting = true;
   setCameraStatus("cameraStarting");
-  const qrboxSize = isLaptopScanMode
-    ? Math.max(220, Math.min(460, window.innerWidth - 80))
-    : 220;
-  const config = {
-    fps: isLaptopScanMode ? 12 : 10,
-    qrbox: { width: qrboxSize, height: qrboxSize },
-  };
-
-  try {
-    await loadQrLibrary();
-    if (
-      generation !== scannerStartGeneration ||
-      currentActiveViewId !== "scanView"
-    )
-      return;
-    if (!html5QrCode) html5QrCode = new Html5Qrcode("qr-reader");
+  const operation = (async () => {
     try {
-      await html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        onScanSuccess,
-        onScanError,
+      await loadQrLibrary();
+      if (generation !== scannerStartGeneration || currentActiveViewId !== "scanView") return;
+      if (!html5QrCode) html5QrCode = new Html5Qrcode("qr-reader");
+      const config = {
+        fps: isLaptopScanMode ? 15 : 10,
+        disableFlip: isLaptopScanMode,
+      };
+      if (!isLaptopScanMode) config.qrbox = { width: 220, height: 220 };
+      if (isLaptopScanMode) {
+        let cameraStarted = false;
+        const preferredIndex = LAPTOP_SCAN_RESOLUTIONS.findIndex(
+          (profile) => profile.value === preferredLaptopResolution,
+        );
+        const fallbackProfiles = LAPTOP_SCAN_RESOLUTIONS.slice(
+          Math.max(0, preferredIndex),
+        );
+        const initialCamera = selectedLaptopCameraId || { facingMode: "environment" };
+        for (const profile of fallbackProfiles) {
+          const resolutionConfig = {
+            ...config,
+            videoConstraints: buildLaptopVideoConstraints(profile),
+          };
+          try {
+            await html5QrCode.start(
+              initialCamera,
+              resolutionConfig,
+              onScanSuccess,
+              onScanError,
+            );
+            cameraStarted = true;
+            break;
+          } catch (resolutionError) {
+            if (generation !== scannerStartGeneration ||
+                currentActiveViewId !== "scanView") return;
+            if (
+              resolutionError?.name === "NotAllowedError" ||
+              /permission denied|not allowed/i.test(
+                String(resolutionError?.message || resolutionError),
+              )
+            ) {
+              throw resolutionError;
+            }
+          }
+        }
+        if (!cameraStarted) {
+          if (selectedLaptopCameraId) {
+            selectedLaptopCameraId = "";
+            try {
+              if (currentUser?.email)
+                localStorage.removeItem(laptopScannerPreferenceKey("camera"));
+            } catch (error) {}
+          }
+          try {
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              config,
+              onScanSuccess,
+              onScanError,
+            );
+          } catch (environmentFallbackError) {
+            if (generation !== scannerStartGeneration ||
+                currentActiveViewId !== "scanView") return;
+            await html5QrCode.start(
+              { facingMode: "user" },
+              config,
+              onScanSuccess,
+              onScanError,
+            );
+          }
+        }
+      } else {
+        try {
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            onScanError,
+          );
+        } catch (environmentCameraError) {
+          if (generation !== scannerStartGeneration ||
+              currentActiveViewId !== "scanView") return;
+          await html5QrCode.start(
+            { facingMode: "user" },
+            config,
+            onScanSuccess,
+            onScanError,
+          );
+        }
+      }
+
+      isScannerRunning = true;
+      if (generation !== scannerStartGeneration || currentActiveViewId !== "scanView") {
+        await stopRunningScanner();
+        return;
+      }
+      setCameraStatus("cameraActive");
+      if (isLaptopScanMode)
+        inspectLaptopCamera().catch((error) =>
+          console.warn("Could not inspect laptop camera capabilities.", error),
+        );
+    } catch (err) {
+      isScannerRunning = false;
+      if (generation !== scannerStartGeneration || currentActiveViewId !== "scanView") return;
+      const permissionDenied = err?.name === "NotAllowedError" ||
+        /permission denied|not allowed/i.test(String(err?.message || ""));
+      setCameraStatus(
+        permissionDenied
+          ? "cameraPermissionDenied"
+          : window.Html5Qrcode
+            ? "cameraUnavailable"
+            : "cameraError",
       );
-    } catch (environmentCameraError) {
-      await html5QrCode.start(
-        { facingMode: "user" },
-        config,
-        onScanSuccess,
-        onScanError,
-      );
+    } finally {
+      isScannerStarting = false;
+      if (scannerStartPromise === operation) scannerStartPromise = null;
+      if (
+        generation !== scannerStartGeneration &&
+        currentActiveViewId === "scanView" &&
+        !isProcessingScan
+      ) {
+        window.setTimeout(startLiveScanner, 0);
+      }
     }
-    isScannerRunning = true;
-    setCameraStatus("cameraActive");
-  } catch (err) {
-    isScannerRunning = false;
-    const permissionDenied = err?.name === "NotAllowedError" ||
-      /permission denied|not allowed/i.test(String(err?.message || ""));
-    setCameraStatus(
-      permissionDenied
-        ? "cameraPermissionDenied"
-        : window.Html5Qrcode
-          ? "cameraUnavailable"
-          : "cameraError",
-    );
-  } finally {
-    isScannerStarting = false;
-    if (
-      generation !== scannerStartGeneration &&
-      currentActiveViewId === "scanView"
-    ) {
-      window.setTimeout(startLiveScanner, 0);
-    }
-  }
+  })();
+  scannerStartPromise = operation;
+  return operation;
 }
 
 function stopLiveScanner(restart = true) {
   scannerStartGeneration++;
-  if (html5QrCode && isScannerRunning) {
-    return html5QrCode
-      .stop()
-      .then(() => {
-        isScannerRunning = false;
-      })
-      .catch(() => {
-        isScannerRunning = false;
-      })
-      .finally(() => {
-        if (restart && currentActiveViewId === "scanView") {
-          window.setTimeout(startLiveScanner, 150);
-        }
-      });
+  const pendingStart = scannerStartPromise;
+  return Promise.resolve(pendingStart)
+    .catch(() => {})
+    .then(() => stopRunningScanner())
+    .finally(() => {
+      if (restart && currentActiveViewId === "scanView" && !isProcessingScan) {
+        window.setTimeout(startLiveScanner, 150);
+      }
+    });
+}
+
+function stopRunningScanner() {
+  if (scannerStopPromise) return scannerStopPromise;
+  if (!html5QrCode || !isScannerRunning) return Promise.resolve();
+  let stopping;
+  try {
+    stopping = html5QrCode.stop();
+  } catch (error) {
+    isScannerRunning = false;
+    return Promise.resolve();
   }
-  return Promise.resolve();
+  const operation = Promise.resolve(stopping)
+    .catch(() => {})
+    .finally(() => {
+      isScannerRunning = false;
+      if (scannerStopPromise === operation) scannerStopPromise = null;
+    });
+  scannerStopPromise = operation;
+  return operation;
+}
+
+async function inspectLaptopCamera() {
+  const capabilitiesElement = document.getElementById("laptopCameraCapabilities");
+  const cameraSelect = document.getElementById("laptopCameraSelect");
+  const zoomControl = document.getElementById("laptopZoomControl");
+  if (!isLaptopScanMode || !html5QrCode || !isScannerRunning) return;
+  let capabilities = {};
+  let settings = {};
+  try {
+    if (typeof html5QrCode.getRunningTrackCapabilities === "function")
+      capabilities = html5QrCode.getRunningTrackCapabilities() || {};
+    if (typeof html5QrCode.getRunningTrackSettings === "function")
+      settings = html5QrCode.getRunningTrackSettings() || {};
+  } catch (error) {
+    if (capabilitiesElement) {
+      capabilitiesElement.textContent = translations[currentLang].cameraCapabilitiesUnavailable;
+      capabilitiesElement.hidden = false;
+    }
+    return;
+  }
+
+  const information = [];
+  if (settings.width && settings.height) {
+    information.push(`${translations[currentLang].cameraResolution}: ${settings.width}×${settings.height}`);
+  }
+  if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
+    information.push(translations[currentLang].cameraContinuousFocus);
+    try {
+      await html5QrCode.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] });
+    } catch (error) {
+      // Camera capabilities can be advertised but still reject a runtime focus request.
+    }
+  }
+  const zoom = capabilities.zoom;
+  if (zoom && Number.isFinite(zoom.min) && Number.isFinite(zoom.max) && zoom.max > zoom.min) {
+    const input = document.getElementById("laptopZoom");
+    const reportedDefault = Number.isFinite(zoom.default)
+      ? zoom.default
+      : Number.isFinite(settings.zoom)
+        ? settings.zoom
+        : zoom.min;
+    laptopZoomDefault = Math.min(zoom.max, Math.max(zoom.min, reportedDefault));
+    const currentZoom = Number.isFinite(settings.zoom)
+      ? Math.min(zoom.max, Math.max(zoom.min, settings.zoom))
+      : laptopZoomDefault;
+    input.min = String(zoom.min);
+    input.max = String(zoom.max);
+    input.step = String(Math.max(0.1, (zoom.max - zoom.min) / 40));
+    input.value = String(currentZoom);
+    zoomControl.hidden = false;
+    updateLaptopZoomOutput(input.value);
+    information.push(translations[currentLang].cameraZoomAvailable);
+  } else {
+    laptopZoomDefault = null;
+    zoomControl.hidden = true;
+  }
+  if (capabilitiesElement) {
+    capabilitiesElement.textContent = information.join(" · ") ||
+      translations[currentLang].cameraNoExtraCapabilities;
+    capabilitiesElement.hidden = false;
+  }
+
+  if (!cameraSelect) return;
+  try {
+    if (typeof Html5Qrcode.getCameras !== "function") return;
+    const cameras = await Html5Qrcode.getCameras();
+    if (!Array.isArray(cameras) || cameras.length === 0) return;
+    const currentDeviceId = settings.deviceId || selectedLaptopCameraId;
+    cameraSelect.replaceChildren();
+    cameras.forEach((camera, index) => {
+      const option = document.createElement("option");
+      option.value = camera.id;
+      option.textContent = camera.label || `${translations[currentLang].cameraSelection} ${index + 1}`;
+      cameraSelect.appendChild(option);
+    });
+    cameraSelect.disabled = false;
+    if (currentDeviceId && cameras.some((camera) => camera.id === currentDeviceId))
+      cameraSelect.value = currentDeviceId;
+    else if (settings.deviceId)
+      cameraSelect.value = settings.deviceId;
+  } catch (error) {
+    cameraSelect.disabled = true;
+  }
+}
+
+function updateLaptopZoomOutput(value) {
+  const output = document.getElementById("laptopZoomValue");
+  if (output) output.value = `${Number(value).toFixed(1)}×`;
+}
+
+function resetLaptopZoom() {
+  const input = document.getElementById("laptopZoom");
+  if (!input || !Number.isFinite(laptopZoomDefault)) return;
+  input.value = String(laptopZoomDefault);
+  applyLaptopZoom(input.value);
+}
+
+async function applyLaptopZoom(value) {
+  const input = document.getElementById("laptopZoom");
+  if (!input || input.closest("[hidden]") || !html5QrCode ||
+      typeof html5QrCode.getRunningTrackCapabilities !== "function") return;
+  let capabilities;
+  try {
+    capabilities = html5QrCode.getRunningTrackCapabilities() || {};
+  } catch (error) {
+    return;
+  }
+  const zoom = capabilities.zoom;
+  const desiredZoom = Number(value);
+  if (
+    !zoom ||
+    !Number.isFinite(zoom.min) ||
+    !Number.isFinite(zoom.max) ||
+    !Number.isFinite(desiredZoom)
+  ) return;
+  const safeZoom = Math.min(zoom.max, Math.max(zoom.min, desiredZoom));
+  input.value = String(safeZoom);
+  updateLaptopZoomOutput(safeZoom);
+  try {
+    if (typeof html5QrCode.applyVideoConstraints !== "function")
+      throw new Error("Runtime camera constraints are unavailable.");
+    await html5QrCode.applyVideoConstraints({ advanced: [{ zoom: safeZoom }] });
+  } catch (error) {
+    const zoomControl = document.getElementById("laptopZoomControl");
+    if (zoomControl) zoomControl.hidden = true;
+    console.warn("The camera rejected its reported zoom capability.", error);
+  }
+}
+
+function selectLaptopCamera(deviceId) {
+  if (!deviceId || !isLaptopScanMode) return;
+  selectedLaptopCameraId = deviceId;
+  try {
+    if (currentUser?.email)
+      localStorage.setItem(laptopScannerPreferenceKey("camera"), deviceId);
+  } catch (error) {
+    console.warn("Could not save camera selection.", error);
+  }
+  stopLiveScanner(false).then(() => {
+    if (currentActiveViewId === "scanView") startLiveScanner();
+  });
 }
 
 function restartScanner() {
@@ -329,8 +768,57 @@ function restartScanner() {
   });
 }
 
+const SCAN_QR_DEBOUNCE_MS = 4000;
+const SCAN_QR_DEBOUNCE_MAX_ENTRIES = 40;
+const SCAN_QR_ABSENCE_MS = 1500;
+
+function cancelScannedQrAbsenceTimer() {
+  if (scanQrAbsenceTimer) window.clearTimeout(scanQrAbsenceTimer);
+  scanQrAbsenceTimer = 0;
+}
+
+function clearScannedQrDebounceEntry(qrText) {
+  const entry = scanQrDebounceEntries.get(qrText);
+  if (!entry) return;
+  window.clearTimeout(entry.timerId);
+  scanQrDebounceEntries.delete(qrText);
+}
+
+function isScannedQrWithinDebounce(qrText) {
+  const key = String(qrText ?? "");
+  if (!key) return false;
+  const entry = scanQrDebounceEntries.get(key);
+  if (!entry) return false;
+  if (entry.expiresAt > Date.now()) return true;
+  clearScannedQrDebounceEntry(key);
+  return false;
+}
+
+function rememberScannedQrForDebounce(qrText) {
+  const key = String(qrText ?? "");
+  if (!key) return;
+  clearScannedQrDebounceEntry(key);
+  if (scanQrDebounceEntries.size >= SCAN_QR_DEBOUNCE_MAX_ENTRIES) {
+    const oldestKey = scanQrDebounceEntries.keys().next().value;
+    if (oldestKey !== undefined) clearScannedQrDebounceEntry(oldestKey);
+  }
+  const expiresAt = Date.now() + SCAN_QR_DEBOUNCE_MS;
+  const timerId = window.setTimeout(() => {
+    const entry = scanQrDebounceEntries.get(key);
+    if (entry?.expiresAt === expiresAt) scanQrDebounceEntries.delete(key);
+  }, SCAN_QR_DEBOUNCE_MS);
+  scanQrDebounceEntries.set(key, { expiresAt, timerId });
+}
+
 function onScanSuccess(text) {
-  if (isProcessingScan) return;
+  const detectedQrText = String(text ?? "");
+  cancelScannedQrAbsenceTimer();
+  lastDetectedQrText = detectedQrText;
+  const isDebounced = isScannedQrWithinDebounce(detectedQrText);
+  if (isDebounced) rememberScannedQrForDebounce(detectedQrText);
+  if (isProcessingScan || isDebounced) return;
+  activeScannedQrText = detectedQrText;
+  rememberScannedQrForDebounce(activeScannedQrText);
   isProcessingScan = true;
   const requestGeneration = ++scanRequestGeneration;
   preparePaymentScanAudio();
@@ -362,11 +850,34 @@ function onScanSuccess(text) {
       if (!paymentFeedbackTimer) {
         hideScanProcessing();
         isProcessingScan = false;
+        rememberScannedQrForDebounce(activeScannedQrText);
+        activeScannedQrText = "";
         if (currentActiveViewId === "scanView") startLiveScanner();
       }
     });
 }
-function onScanError(err) {}
+function onScanError(err) {
+  if (
+    isProcessingScan ||
+    currentActiveViewId !== "scanView" ||
+    !isScannerRunning ||
+    !lastDetectedQrText ||
+    scanQrAbsenceTimer
+  ) return;
+
+  const absentQrText = lastDetectedQrText;
+  scanQrAbsenceTimer = window.setTimeout(() => {
+    scanQrAbsenceTimer = 0;
+    if (
+      isProcessingScan ||
+      currentActiveViewId !== "scanView" ||
+      !isScannerRunning ||
+      lastDetectedQrText !== absentQrText
+    ) return;
+    clearScannedQrDebounceEntry(absentQrText);
+    lastDetectedQrText = "";
+  }, SCAN_QR_ABSENCE_MS);
+}
 
 function runTutorialScanDemo() {
   if (

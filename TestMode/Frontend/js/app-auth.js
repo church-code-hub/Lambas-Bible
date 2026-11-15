@@ -1,7 +1,7 @@
 window.addEventListener("DOMContentLoaded", async function () {
   setLanguage(currentLang);
   applyTheme(currentThemeMode);
-  setDashboardLayout(localStorage.getItem("app_dashboard_layout") || "two");
+  applyDashboardPreferences();
   setScanModePreference(localStorage.getItem("app_scan_mode") || "regular");
   loadWhatsAppMessageTemplate();
   let savedUser = null;
@@ -404,6 +404,8 @@ async function submitTestModePassword(event) {
 
 function setupUserProfileUI() {
   if (!currentUser) return;
+  loadDashboardPreferencesForAccount();
+  loadLaptopScannerPreferences();
   document.getElementById("uName").innerText = currentUser.name;
   document.getElementById("uEmail").innerText = currentUser.email;
   const welcomeName = document.getElementById("dashboardWelcomeName");
@@ -1017,6 +1019,7 @@ function finishFirstRunTutorial() {
 }
 
 function logoutUser(msg) {
+  if (dashboardEditDraft) cancelDashboardEdit();
   localStorage.removeItem("app_user");
   localStorage.removeItem(OFFLINE_SESSION_KEY);
   localStorage.removeItem("google_id_token");

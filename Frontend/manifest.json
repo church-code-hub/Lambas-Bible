@@ -1,6 +1,6 @@
 {
-  "name": "Lambas Bible",
-  "short_name": "Lambas Bible",
+  "name": "Lampas Bible",
+  "short_name": "Lampas Bible",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

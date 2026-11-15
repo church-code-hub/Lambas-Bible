@@ -30,7 +30,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=87" />
+    <link rel="stylesheet" href="./css/styles.css?v=88" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -273,6 +273,8 @@
                   <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
                 </button>
               </div>
+            <button id="dashboardEditButton" class="btn secondary dashboard-edit-button" type="button"
+              onclick="enterDashboardEditMode()" data-i18n="editDashboard">Edit dashboard</button>
           </div>
         </section>
         <div class="grid dashboard-actions-grid">
@@ -331,6 +333,34 @@
           </button>
           </div>
         </details>
+        <section id="dashboardEditor" class="dashboard-editor" aria-labelledby="dashboardEditorTitle" hidden>
+          <div class="dashboard-editor-heading">
+            <div>
+              <h2 id="dashboardEditorTitle" data-i18n="dashboardEditorTitle">Customize dashboard</h2>
+              <p class="report-note" data-i18n="dashboardEditorHint">Reorder, show or hide shortcuts. Changes apply when saved.</p>
+            </div>
+            <div class="dashboard-editor-actions">
+              <button id="dashboardResetButton" class="btn secondary" type="button" onclick="resetDashboardDraft()" data-i18n="resetDashboard">Reset</button>
+              <button id="dashboardCancelButton" class="btn secondary" type="button" onclick="cancelDashboardEdit()" data-i18n="cancelDashboardEdit">Cancel</button>
+              <button id="dashboardSaveButton" class="btn" type="button" onclick="saveDashboardEdit()" data-i18n="saveDashboardEdit">Save</button>
+            </div>
+          </div>
+          <div class="dashboard-editor-options">
+            <fieldset>
+              <legend data-i18n="dashboardTileSize">Shortcut size</legend>
+              <div class="dashboard-size-options" role="group" data-i18n-aria-label="dashboardTileSize">
+                <button type="button" data-dashboard-size="compact" aria-pressed="false" onclick="setDashboardDraftSize('compact')" data-i18n="dashboardSizeCompact">Compact</button>
+                <button type="button" data-dashboard-size="standard" aria-pressed="true" onclick="setDashboardDraftSize('standard')" data-i18n="dashboardSizeStandard">Standard</button>
+                <button type="button" data-dashboard-size="wide" aria-pressed="false" onclick="setDashboardDraftSize('wide')" data-i18n="dashboardSizeWide">Wide</button>
+              </div>
+            </fieldset>
+            <label class="dashboard-label-toggle">
+              <input id="dashboardLabelsToggle" type="checkbox" checked onchange="setDashboardDraftLabels(this.checked)" />
+              <span data-i18n="dashboardShowLabels">Show shortcut labels</span>
+            </label>
+          </div>
+          <div id="dashboardEditorList" class="dashboard-editor-list" aria-live="polite"></div>
+        </section>
       </div>
 
       <div id="appSettingsView" style="display: none">
@@ -876,6 +906,39 @@
           <i class="fa-solid fa-qrcode"></i>
           <span data-i18n="scanQrTitle">مسح QR</span>
         </h2>
+        <section id="laptopScannerPanel" class="laptop-scanner-panel" data-i18n-aria-label="laptopScanControls">
+          <div class="laptop-scanner-status">
+            <strong><span class="laptop-status-indicator" aria-hidden="true"></span><span id="laptopScannerState" data-i18n="cameraStarting">Starting camera...</span></strong>
+            <span id="laptopClock" data-i18n-aria-label="currentTime"></span>
+            <span id="laptopConnectivity" role="status" aria-live="polite"></span>
+          </div>
+          <div class="laptop-scanner-controls">
+            <label class="laptop-camera-control" for="laptopResolutionSelect">
+              <span data-i18n="cameraResolutionChoice">Image resolution</span>
+              <select id="laptopResolutionSelect" onchange="setLaptopResolutionPreference(this.value)">
+                <option value="1920x1080" data-i18n="cameraResolutionFullHd">1920 × 1080 (Full HD)</option>
+                <option value="1280x720" data-i18n="cameraResolutionHd">1280 × 720 (HD)</option>
+                <option value="640x480" data-i18n="cameraResolutionSd">640 × 480</option>
+              </select>
+            </label>
+            <label class="laptop-camera-control" for="laptopCameraSelect">
+              <span data-i18n="cameraSelection">Camera</span>
+              <select id="laptopCameraSelect" onchange="selectLaptopCamera(this.value)" data-i18n-aria-label="cameraSelection" disabled>
+                <option value="" data-i18n="cameraSelectDefault">Default camera</option>
+              </select>
+            </label>
+            <div class="laptop-camera-control laptop-zoom-control" id="laptopZoomControl" hidden>
+              <label for="laptopZoom" data-i18n="cameraZoom">Zoom</label>
+              <input id="laptopZoom" type="range" min="1" max="1" step="0.1" value="1" oninput="applyLaptopZoom(this.value)" />
+              <output id="laptopZoomValue" for="laptopZoom">1×</output>
+              <button id="laptopZoomReset" class="btn secondary" type="button" onclick="resetLaptopZoom()" data-i18n="cameraZoomReset">Reset zoom</button>
+            </div>
+            <button id="laptopSoundToggle" class="btn secondary" type="button" aria-pressed="true"
+              onclick="toggleScanSound()" data-i18n="scanSoundOn">Sound on</button>
+            <button id="laptopFullscreenToggle" class="btn secondary" type="button" aria-pressed="false"
+              onclick="toggleScannerFullscreen()" data-i18n="enterFullscreen">Enter fullscreen</button>
+          </div>
+        </section>
         <div class="camera-wrapper scan-camera-frame">
           <div id="qr-reader"></div>
           <div id="scanCameraPlaceholder" class="scan-camera-placeholder" role="status" aria-live="polite">
@@ -898,6 +961,7 @@
             <span class="payment-scan-result-message"></span>
           </div>
         </div>
+        <p id="laptopCameraCapabilities" class="laptop-camera-capabilities" aria-live="polite" hidden></p>
         <div class="camera-status" id="cameraStatusText" data-i18n="cameraStarting" aria-live="polite">
           جاري تشغيل الكاميرا...
         </div>
@@ -1383,14 +1447,14 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=78"></script>
-  <script src="./js/app-i18n.js?v=87"></script>
+  <script src="./js/app-state.js?v=79"></script>
+  <script src="./js/app-i18n.js?v=88"></script>
   <script src="./js/app-core.js?v=77"></script>
   <script src="./js/app-offline.js?v=78"></script>
-  <script src="./js/app-views.js?v=89"></script>
+  <script src="./js/app-views.js?v=90"></script>
   <script src="./js/app-individual.js?v=2"></script>
-  <script src="./js/app-auth.js?v=79"></script>
-  <script src="./js/app-scanner-search.js?v=78"></script>
+  <script src="./js/app-auth.js?v=80"></script>
+  <script src="./js/app-scanner-search.js?v=79"></script>
   <script src="./js/app-cards-admin.js?v=77"></script>
   </body>
 </html>

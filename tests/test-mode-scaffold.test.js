@@ -13,6 +13,63 @@ const productionEntrySource = fs.readFileSync(
   "utf8",
 );
 
+function createFrontendTestContext(storageValues = new Map(), overrides = {}) {
+  const timers = new Map();
+  let nextTimerId = 1;
+  const storage = {
+    getItem(key) {
+      return storageValues.has(key) ? storageValues.get(key) : null;
+    },
+    setItem(key, value) {
+      storageValues.set(key, String(value));
+    },
+    removeItem(key) {
+      storageValues.delete(key);
+    },
+  };
+  const window = {
+    LAMBAS_TEST_STORAGE_READY: true,
+    LAMBAS_CONFIG: {},
+    addEventListener() {},
+    setTimeout(callback, delay) {
+      const id = nextTimerId++;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+    ...overrides.window,
+  };
+  const context = vm.createContext({
+    window,
+    document: {
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      addEventListener() {},
+      removeEventListener() {},
+      ...overrides.document,
+    },
+    navigator: { onLine: true, ...overrides.navigator },
+    localStorage: storage,
+    sessionStorage: storage,
+    console: { warn() {}, error() {}, log() {} },
+    ...overrides.globals,
+  });
+  return { context, storageValues, timers };
+}
+
+function loadFrontendScripts(context, scripts) {
+  for (const script of scripts) {
+    vm.runInContext(
+      fs.readFileSync(path.join(testModeRoot, "Frontend", "js", script), "utf8"),
+      context,
+      { filename: script },
+    );
+  }
+}
+
 function createBackendContext({
   enabled = "true",
   spreadsheetId = "test-spreadsheet",
@@ -567,8 +624,158 @@ test("test clone is visibly marked, has same-origin return, and no entry action"
   assert.match(auth, /const clearStores = \["roster", "apiCache"\]/);
   assert.match(state, /LAMBAS_TEST_STORAGE_READY/);
   assert.match(appOffline, /lambas-test-mode-attendance-offline-v1/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v6/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v8/);
   assert.doesNotMatch(serviceWorker, /lambas-attendance-offline/);
   assert.match(serviceWorker, /action: "check_test_access"/);
   assert.match(productionServiceWorker, /requestUrl\.pathname\.startsWith\(testModePath\)/);
+});
+
+test("dashboard migrates legacy layout and discards drafts on account changes and logout", () => {
+  const storageValues = new Map([["app_dashboard_layout", "three"]]);
+  const { context } = createFrontendTestContext(storageValues);
+  loadFrontendScripts(context, ["app-state.js", "app-i18n.js", "app-views.js"]);
+  context.applyDashboardPreferences = () => {};
+  context.currentUser = { email: "First@example.com" };
+
+  context.loadDashboardPreferencesForAccount();
+  const firstKey = "app_dashboard_preferences_first%40example.com";
+  assert.equal(JSON.parse(storageValues.get(firstKey)).layout, "three");
+  assert.equal(storageValues.has("app_dashboard_layout"), false);
+
+  vm.runInContext('dashboardEditDraft = { layout: "one" }', context);
+  let cancelledOnAccountSwitch = false;
+  let draftWasPresentWhenPreferencesApplied = true;
+  context.cancelDashboardEdit = () => {
+    cancelledOnAccountSwitch = true;
+    vm.runInContext("dashboardEditDraft = null", context);
+  };
+  context.applyDashboardPreferences = () => {
+    draftWasPresentWhenPreferencesApplied = Boolean(
+      vm.runInContext("dashboardEditDraft", context),
+    );
+  };
+  context.currentUser = { email: "second@example.com" };
+  context.loadDashboardPreferencesForAccount();
+  assert.equal(cancelledOnAccountSwitch, true);
+  assert.equal(draftWasPresentWhenPreferencesApplied, false);
+  assert.equal(vm.runInContext("currentDashboardPreferences.layout", context), "two");
+
+  storageValues.set("app_dashboard_layout", "one");
+  context.currentUser = null;
+  context.loadDashboardPreferencesForAccount();
+  assert.equal(storageValues.has("app_dashboard_preferences_anonymous"), false);
+  assert.equal(storageValues.get("app_dashboard_layout"), "one");
+
+  const authSource = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-auth.js"),
+    "utf8",
+  );
+  const logoutFunction = authSource.match(/function logoutUser\(msg\) \{[\s\S]*?\n\}/);
+  assert.ok(logoutFunction, "logoutUser should be present");
+  let logoutCancelledAs = "";
+  context.currentUser = { email: "first@example.com" };
+  vm.runInContext('dashboardEditDraft = { layout: "one" }', context);
+  context.cancelDashboardEdit = () => {
+    logoutCancelledAs = context.currentUser.email;
+    vm.runInContext("dashboardEditDraft = null", context);
+  };
+  context.stopLiveScanner = () => {};
+  context.showView = () => {};
+  context.dismissStartupScreen = () => {};
+  vm.runInContext(logoutFunction[0], context);
+  context.logoutUser();
+  assert.equal(logoutCancelledAs, "first@example.com");
+  assert.equal(context.currentUser, null);
+});
+
+test("continuous QR presence stays suppressed until no-detection rearms it", () => {
+  let fakeNow = 100000;
+  let uuidCount = 0;
+  class FakeDate extends Date {
+    constructor(...args) {
+      super(...(args.length ? args : [fakeNow]));
+    }
+    static now() {
+      return fakeNow;
+    }
+  }
+  const resultWrapper = { classList: { remove() {} } };
+  const resultPanel = {
+    hidden: false,
+    closest: () => resultWrapper,
+  };
+  const { context, timers } = createFrontendTestContext(new Map(), {
+    document: {
+      getElementById: (id) => id === "paymentScanResult" ? resultPanel : null,
+    },
+    globals: {
+      Date: FakeDate,
+      crypto: {
+        randomUUID() {
+          uuidCount += 1;
+          return `test-event-${uuidCount}`;
+        },
+      },
+    },
+  });
+  loadFrontendScripts(context, ["app-state.js", "app-scanner-search.js"]);
+  context.currentActiveViewId = "scanView";
+  context.isScannerRunning = true;
+  context.preparePaymentScanAudio = () => {};
+  context.showScanProcessing = () => {};
+  context.stopLiveScanner = () => new Promise(() => {});
+
+  context.onScanSuccess("same-card-qr");
+  assert.equal(uuidCount, 1);
+  context.isProcessingScan = false;
+  context.activeScannedQrText = "";
+  fakeNow += 2000;
+  context.onScanSuccess("same-card-qr");
+  assert.equal(uuidCount, 1, "same QR should not create a second request context during cooldown");
+
+  fakeNow += 2000;
+  context.onScanSuccess("same-card-qr");
+  assert.equal(uuidCount, 1, "repeated detections should extend suppression while the QR stays in view");
+
+  fakeNow += 2000;
+  context.onScanSuccess("same-card-qr");
+  assert.equal(uuidCount, 1, "continuous presence remains suppressed beyond the original debounce");
+
+  context.onScanError("no decode");
+  const transientAbsenceTimer = context.scanQrAbsenceTimer;
+  assert.ok(transientAbsenceTimer);
+  context.onScanSuccess("same-card-qr");
+  assert.equal(context.scanQrAbsenceTimer, 0, "a success cancels a pending absence timer");
+  assert.equal(uuidCount, 1, "a success during debounce must not create another request");
+
+  context.onScanError("no decode");
+  const leaveFrameTimer = context.scanQrAbsenceTimer;
+  assert.equal(timers.get(leaveFrameTimer).delay, 1500);
+  const absenceCallback = timers.get(leaveFrameTimer).callback;
+  fakeNow += 1500;
+  absenceCallback();
+  assert.equal(context.scanQrAbsenceTimer, 0);
+  assert.equal(context.lastDetectedQrText, "");
+  assert.equal(context.scanQrDebounceEntries.has("same-card-qr"), false);
+
+  context.onScanSuccess("same-card-qr");
+  assert.equal(uuidCount, 2, "the same QR is accepted after it has left the frame");
+});
+
+test("dashboard editor move controls keep vertical semantics at desktop widths", () => {
+  const styles = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "css", "09-sync-progress.css"),
+    "utf8",
+  );
+  assert.match(styles, /\.dashboard-editor-list\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.doesNotMatch(styles, /\.dashboard-editor-list\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
+});
+
+test("fullscreen scanner uses the existing background gradient token", () => {
+  const styles = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "css", "09-sync-progress.css"),
+    "utf8",
+  );
+  assert.match(styles, /#scanView:fullscreen\s*\{[^}]*background:\s*var\(--bg-gradient\)/);
+  assert.doesNotMatch(styles, /#scanView:fullscreen\s*\{[^}]*var\(--app-bg\)/);
 });
