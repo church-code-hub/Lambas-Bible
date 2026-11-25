@@ -628,6 +628,65 @@
   min-height: 100px;
 }
 
+.dashboard-actions-grid .dashboard-tile-compact {
+  min-height: 82px;
+  padding-block: 10px;
+}
+
+.dashboard-actions-grid .dashboard-tile-wide {
+  grid-column: span 2;
+  min-height: 150px;
+}
+
+.dashboard-actions-grid .dashboard-tile-tall {
+  min-height: 190px;
+}
+
+.dashboard-editor-item {
+  position: relative;
+}
+
+.dashboard-resize-handle {
+  position: absolute;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.dashboard-resize-east {
+  inset-block: 50% auto;
+  inset-inline-end: -9px;
+  width: 18px;
+  height: 54px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+  border-inline-end: 3px solid var(--accent-gold);
+  border-radius: 0 8px 8px 0;
+}
+
+.dashboard-resize-south {
+  inset-inline: 50% auto;
+  inset-block-end: -9px;
+  width: 54px;
+  height: 18px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+  border-block-end: 3px solid var(--accent-gold);
+  border-radius: 0 0 8px 8px;
+}
+
+.dashboard-resize-corner {
+  inset-inline-end: -6px;
+  inset-block-end: -6px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+}
+
 #scanView:not(.laptop-mode) #laptopScannerPanel,
 #scanView:not(.laptop-mode) .laptop-camera-capabilities {
   display: none;

@@ -1,8 +1,8 @@
-const CACHE_NAME = "lambas-test-mode-shell-v9";
+const CACHE_NAME = "lambas-test-mode-shell-v14";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=89",
+  "./css/styles.css?v=90",
   "./css/01-foundation.css",
   "./css/02-app-chrome.css",
   "./css/03-feedback.css",
@@ -12,14 +12,14 @@ const APP_SHELL = [
   "./css/07-dashboard.css",
   "./css/08-scanner-controls.css",
   "./css/09-sync-progress.css",
-  "./js/app-state.js?v=79",
+  "./js/app-state.js?v=82",
   "./js/storage-namespace.js",
-  "./js/app-i18n.js?v=89",
-  "./js/app-core.js?v=78",
-  "./js/app-offline.js?v=78",
-  "./js/app-views.js?v=90",
+  "./js/app-i18n.js?v=92",
+  "./js/app-core.js?v=80",
+  "./js/app-offline.js?v=79",
+  "./js/app-views.js?v=92",
   "./js/app-individual.js?v=2",
-  "./js/app-auth.js?v=80",
+  "./js/app-auth.js?v=84",
   "./js/app-scanner-search.js?v=79",
   "./js/app-cards-admin.js?v=77",
   "./vendor/html5-qrcode.min.js",
@@ -224,7 +224,13 @@ async function syncPendingEvents() {
   const database = await openOfflineDatabase();
   try {
     const { events, credentials } = await readSyncData(database);
-    if (!credentials || !credentials.apiUrl || !credentials.idToken || !credentials.email) {
+    if (
+      !credentials ||
+      !credentials.apiUrl ||
+      !credentials.idToken ||
+      !credentials.testModeSessionToken ||
+      !credentials.email
+    ) {
       if (events.some((event) => event.status !== "complete")) {
         throw new Error("Background sync credentials are unavailable.");
       }
@@ -264,12 +270,16 @@ async function syncPendingEvents() {
         body: JSON.stringify({
           action: "sync_offline_events",
           idToken: credentials.idToken,
+          testModeSessionToken: credentials.testModeSessionToken,
           requestId: `sw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           events: batch,
         }),
       });
       if (!response.ok) throw new Error(`Background sync returned HTTP ${response.status}.`);
       const result = await response.json();
+      if (result && result.code === "TEST_MODE_SESSION_REQUIRED") {
+        throw new Error("Test Mode unlock expired. Sign in again to resume background sync.");
+      }
       if (!result || !result.success || !Array.isArray(result.results)) {
         throw new Error("Background sync returned an invalid response.");
       }

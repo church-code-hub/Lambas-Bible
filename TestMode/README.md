@@ -105,9 +105,20 @@ app entry asks for the password stored only in the separate GAS project's
 `TEST_MODE_PASSWORD` Script Property. Set a unique random value of at least
 12 characters through the Apps Script project settings; never put it in
 `config.js`, HTML, source control, URL parameters, or a frontend variable.
-The backend checks it for every new page session and does not issue or cache a
-password credential. Test Mode API requests remain protected by the Google ID
-token and backend allowlist; the password does not replace either check.
+The backend validates the password and issues separate identity-bound,
+six-hour cache tokens: one for app actions and one restricted to
+`sync_offline_events`. The app token stays in page memory; only the sync-only
+token is stored with queued Test Mode sync credentials in the isolated
+Test Mode IndexedDB. Normal online logout revokes the app token; the distinct
+sync-only token is retained for pending background queue work and expires
+within six hours. Manual logout stays active until online revocation succeeds;
+automatic access-denial cleanup still clears local credentials. Password
+attempts are limited to eight failures per tester within a rolling 15-minute
+window. Every application API action, including
+`check_auth` and GET requests, requires a valid server token as well as a
+verified Google ID token and backend allowlist match. Cache eviction can
+expire a token early, requiring the tester to sign in and unlock again. The
+password itself is never returned to the client or stored in browser storage.
 
 ## WhatsApp Business automation scaffold
 

@@ -1,4 +1,12 @@
 window.addEventListener("DOMContentLoaded", async function () {
+  window.__testModeStartupFallback = window.setTimeout(() => {
+    const startupScreen = document.getElementById("startupScreen");
+    if (startupScreen && !startupScreen.hidden) {
+      showLoginError(
+        "Test Mode did not finish starting. Check the isolated backend and sign-in configuration.",
+      );
+    }
+  }, 8000);
   setLanguage(currentLang);
   applyAppearancePreference(
     normalizeAppearancePreference(appearancePreference),
@@ -17,6 +25,8 @@ window.addEventListener("DOMContentLoaded", async function () {
   const hasSavedUser = Boolean(savedUser && savedUser.email);
   testModeServerVerified = false;
   testModePasswordUnlocked = false;
+  testModeSessionToken = "";
+  testModeSyncSessionToken = "";
   if (!navigator.onLine) {
     await clearTestModeCachedReadData();
     currentUser = null;
@@ -198,6 +208,10 @@ function restoreTutorialDisabledTargets() {
 
 function dismissStartupScreen() {
   const startupScreen = document.getElementById("startupScreen");
+  if (window.__testModeStartupFallback) {
+    window.clearTimeout(window.__testModeStartupFallback);
+    window.__testModeStartupFallback = 0;
+  }
   if (!startupScreen || startupScreen.hidden) return;
   startupScreen.classList.add("is-exiting");
   window.requestAnimationFrame(() => {
@@ -297,6 +311,9 @@ async function handleCredentialResponse(response) {
   }
 
   googleIdToken = response.credential;
+  testModeSessionToken = "";
+  testModeSyncSessionToken = "";
+  testModePasswordUnlocked = false;
   if (!restoringSavedAccount) showLoader("Verifying your Google account...");
   try {
     const testAccess = await verifyTestModeBackend(payload.email);
@@ -365,9 +382,19 @@ async function submitTestModePassword(event) {
       throw new Error(
         result?.code === "TEST_MODE_PASSWORD_NOT_CONFIGURED"
           ? translations[currentLang].testModePasswordNotConfigured
-          : translations[currentLang].testModePasswordIncorrect,
+          : result?.code === "TEST_MODE_PASSWORD_RATE_LIMITED"
+            ? translations[currentLang].testModePasswordRateLimited
+            : translations[currentLang].testModePasswordIncorrect,
       );
     }
+    if (typeof result.sessionToken !== "string" || !result.sessionToken) {
+      throw new Error(translations[currentLang].testModeSessionExpired);
+    }
+    if (typeof result.syncSessionToken !== "string" || !result.syncSessionToken) {
+      throw new Error(translations[currentLang].testModeSessionExpired);
+    }
+    testModeSessionToken = result.sessionToken;
+    testModeSyncSessionToken = result.syncSessionToken;
     testModePasswordUnlocked = true;
     const identity = pendingTestModeIdentity;
     const authRes = await apiCall("check_auth", { email: identity.email });
@@ -377,6 +404,8 @@ async function submitTestModePassword(event) {
       String(authRes.email || "").toLowerCase().trim() !== identity.email
     ) {
       testModePasswordUnlocked = false;
+      testModeSessionToken = "";
+      testModeSyncSessionToken = "";
       throw new Error(
         authRes?.message || translations[currentLang].testModeAccountDenied,
       );
@@ -397,6 +426,8 @@ async function submitTestModePassword(event) {
     refreshUserDataAfterTutorial();
   } catch (error) {
     testModePasswordUnlocked = false;
+    testModeSessionToken = "";
+    testModeSyncSessionToken = "";
     message.textContent =
       error.message || translations[currentLang].testModePasswordIncorrect;
   } finally {
@@ -1021,24 +1052,75 @@ function finishFirstRunTutorial() {
   if (currentActiveViewId === "dashboardView") refreshCurrentAttendeesWindow();
 }
 
-function logoutUser(msg) {
-  if (dashboardEditDraft) cancelDashboardEdit();
-  localStorage.removeItem("app_user");
-  localStorage.removeItem(OFFLINE_SESSION_KEY);
-  localStorage.removeItem("google_id_token");
-  sessionStorage.removeItem("google_id_token");
-  pendingSessionRestoreEmail = "";
-  googleIdToken = "";
-  testModeServerVerified = false;
-  testModePasswordUnlocked = false;
-  pendingTestModeIdentity = null;
-  currentUser = null;
-  currentAttendanceContext = null;
-  verifiedPassword = "";
-  stopLiveScanner();
-  if (msg) showLoginError(msg);
-  showView("loginView", false);
-  dismissStartupScreen();
+async function revokeTestModeSessionOnLogout() {
+  if (!testModeSessionToken) return true;
+  if (!navigator.onLine || !API_URL || !googleIdToken) return false;
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "logout_test_mode",
+        idToken: googleIdToken,
+        testModeSessionToken: testModeSessionToken,
+      }),
+      keepalive: true,
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const result = await response.json();
+    if (
+      result &&
+      (result.success === true ||
+        [
+          "AUTH_INVALID",
+          "TEST_MODE_ACCESS_DENIED",
+          "TEST_MODE_NOT_CONFIGURED",
+          "TEST_MODE_SESSION_REQUIRED",
+        ].includes(result.code))
+    ) {
+      return true;
+    }
+    console.warn("Could not revoke the Test Mode app session.", result);
+  } catch (error) {
+    console.warn("Could not revoke the Test Mode app session.", error);
+  }
+  return false;
+}
+
+async function logoutUser(msg) {
+  if (testModeLogoutInProgress) return;
+  testModeLogoutInProgress = true;
+  const logoutButton = document.querySelector(".toolbar-menu-logout");
+  if (logoutButton) logoutButton.disabled = true;
+  try {
+    if (!msg && !(await revokeTestModeSessionOnLogout())) {
+      showToast(translations[currentLang].testModeLogoutFailed, "error");
+      return;
+    }
+    if (dashboardEditDraft) cancelDashboardEdit();
+    localStorage.removeItem("app_user");
+    localStorage.removeItem(OFFLINE_SESSION_KEY);
+    localStorage.removeItem("google_id_token");
+    sessionStorage.removeItem("google_id_token");
+    pendingSessionRestoreEmail = "";
+    googleIdToken = "";
+    testModeServerVerified = false;
+    testModePasswordUnlocked = false;
+    testModeSessionToken = "";
+    testModeSyncSessionToken = "";
+    pendingTestModeIdentity = null;
+    currentUser = null;
+    currentAttendanceContext = null;
+    verifiedPassword = "";
+    stopLiveScanner();
+    if (msg) showLoginError(msg);
+    showView("loginView", false);
+    dismissStartupScreen();
+  } finally {
+    testModeLogoutInProgress = false;
+    if (logoutButton) logoutButton.disabled = false;
+  }
 }
 
 function showLoginError(msg) {

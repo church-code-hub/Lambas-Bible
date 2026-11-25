@@ -216,6 +216,12 @@ function doGet(e) {
     return responseJSON_(testModeAccessDenied_());
   const configurationError = testModeConfigurationError_();
   if (configurationError) return responseJSON_(configurationError);
+  const sessionError = requireTestModeSession_(
+    params.testModeSessionToken,
+    identity.email,
+    action,
+  );
+  if (sessionError) return responseJSON_(sessionError);
 
   let result = {
     success: false,
@@ -277,6 +283,14 @@ function doPost(e) {
       return responseJSON_(testModeAccessDenied_());
     const configurationError = testModeConfigurationError_();
     if (configurationError) return responseJSON_(configurationError);
+    if (!["check_test_access", "verify_test_mode_password"].includes(action)) {
+      const sessionError = requireTestModeSession_(
+        data.testModeSessionToken,
+        identity.email,
+        action,
+      );
+      if (sessionError) return responseJSON_(sessionError);
+    }
 
     if (action === "check_test_access") {
       result = {
@@ -284,6 +298,11 @@ function doPost(e) {
         authorized: true,
         email: identity.email,
       };
+    } else if (action === "logout_test_mode") {
+      result = revokeTestModeSession_(
+        data.testModeSessionToken,
+        identity.email,
+      );
     } else if (action === "check_auth") {
       const authorized = isEmailAllowed(identity.email);
       result = {
@@ -294,7 +313,9 @@ function doPost(e) {
         isOwner: authorized && isSpreadsheetOwner_(identity.email),
       };
     } else if (action === "verify_test_mode_password") {
-      result = verifyTestModePassword_(data.password);
+      result = withScriptLock_(() =>
+        verifyTestModePassword_(data.password, identity.email),
+      );
     } else if (action === "get_whatsapp_automation_status") {
       result = getWhatsAppAutomationStatus_();
     } else if (action === "validate_whatsapp_automation_intent") {
@@ -439,7 +460,76 @@ function doPost(e) {
   return responseJSON_(result);
 }
 
-function verifyTestModePassword_(password) {
+function requireTestModeSession_(sessionToken, email, action) {
+  const token = typeof sessionToken === "string" ? sessionToken.trim() : "";
+  if (
+    !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(token)
+  ) {
+    return testModeSessionRequired_();
+  }
+  const sessionRecord = CacheService.getScriptCache().get(
+    "TEST_MODE_SESSION_" + token.toLowerCase(),
+  );
+  const [scope, sessionEmail] = String(sessionRecord || "").split("|");
+  if (
+    !sessionEmail ||
+    (scope !== "APP" && scope !== "SYNC") ||
+    (scope === "SYNC" && action !== "sync_offline_events") ||
+    String(sessionEmail).toLowerCase().trim() !==
+      String(email || "").toLowerCase().trim()
+  ) {
+    return testModeSessionRequired_();
+  }
+  return null;
+}
+
+function createTestModeSession_(email, scope) {
+  const sessionToken = Utilities.getUuid().toLowerCase();
+  CacheService.getScriptCache().put(
+    "TEST_MODE_SESSION_" + sessionToken,
+    scope + "|" + String(email || "").toLowerCase().trim(),
+    21600,
+  );
+  return sessionToken;
+}
+
+function testModePasswordAttemptKey_(email) {
+  const normalizedEmail = String(email || "").toLowerCase().trim();
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    normalizedEmail,
+  );
+  return "TEST_MODE_PASSWORD_ATTEMPTS_" +
+    Utilities.base64EncodeWebSafe(digest);
+}
+
+function revokeTestModeSession_(sessionToken, email) {
+  const token = typeof sessionToken === "string" ? sessionToken.trim() : "";
+  const cache = CacheService.getScriptCache();
+  const key = "TEST_MODE_SESSION_" + token.toLowerCase();
+  const sessionRecord = String(cache.get(key) || "");
+  const [scope, sessionEmail] = sessionRecord.split("|");
+  if (
+    scope !== "APP" ||
+    !sessionEmail ||
+    String(sessionEmail).toLowerCase().trim() !==
+      String(email || "").toLowerCase().trim()
+  ) {
+    return testModeSessionRequired_();
+  }
+  cache.remove(key);
+  return { success: true };
+}
+
+function testModeSessionRequired_() {
+  return {
+    success: false,
+    code: "TEST_MODE_SESSION_REQUIRED",
+    message: "Test Mode unlock is required or has expired.",
+  };
+}
+
+function verifyTestModePassword_(password, email) {
   const configuredPassword = String(
     PropertiesService.getScriptProperties().getProperty(
       "TEST_MODE_PASSWORD",
@@ -459,6 +549,20 @@ function verifyTestModePassword_(password) {
       message: "Test Mode access password is not configured.",
     };
   }
+  const cache = CacheService.getScriptCache();
+  const attemptKey = testModePasswordAttemptKey_(email);
+  const cachedAttempts = Number(cache.get(attemptKey) || 0);
+  const attempts = Number.isFinite(cachedAttempts) && cachedAttempts > 0
+    ? cachedAttempts
+    : 0;
+  if (attempts >= 8) {
+    return {
+      success: false,
+      valid: false,
+      code: "TEST_MODE_PASSWORD_RATE_LIMITED",
+      message: "Too many password attempts. Try again later.",
+    };
+  }
   let difference = configuredPassword.length ^ suppliedPassword.length;
   const length = Math.max(configuredPassword.length, suppliedPassword.length);
   for (let index = 0; index < length; index++) {
@@ -466,7 +570,17 @@ function verifyTestModePassword_(password) {
       (configuredPassword.charCodeAt(index) || 0) ^
       (suppliedPassword.charCodeAt(index) || 0);
   }
-  return { success: true, valid: difference === 0 };
+  if (difference !== 0) {
+    cache.put(attemptKey, String(attempts + 1), 900);
+    return { success: true, valid: false };
+  }
+  cache.remove(attemptKey);
+  return {
+    success: true,
+    valid: true,
+    sessionToken: createTestModeSession_(email, "APP"),
+    syncSessionToken: createTestModeSession_(email, "SYNC"),
+  };
 }
 
 function getWhatsAppAutomationStatus_() {

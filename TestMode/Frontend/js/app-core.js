@@ -467,6 +467,7 @@ async function performApiCall(
     ...payload,
     action: action,
     idToken: googleIdToken,
+    testModeSessionToken: testModeSessionToken,
     requestId:
       "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
   };
@@ -527,12 +528,21 @@ async function performApiCall(
       googleIdToken = "";
       testModeServerVerified = false;
       testModePasswordUnlocked = false;
+      testModeSessionToken = "";
+      testModeSyncSessionToken = "";
       localStorage.removeItem("google_id_token");
       sessionStorage.removeItem("google_id_token");
       if (currentUser) beginSessionRestore(currentUser.email);
       else logoutUser(result.message || "❌ Unauthorized account.");
     } else if (result.code === "AUTH_DENIED") {
       logoutUser(result.message || "❌ Unauthorized account.");
+    } else if (result.code === "TEST_MODE_SESSION_REQUIRED") {
+      testModeSessionToken = "";
+      testModePasswordUnlocked = false;
+      testModeSyncSessionToken = "";
+      if (currentUser) {
+        logoutUser(translations[currentLang].testModeSessionExpired);
+      }
     }
     if (
       !isReadApiAction(action) &&

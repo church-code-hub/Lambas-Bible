@@ -864,10 +864,12 @@ let currentDashboardPreferences = {
   hidden: [],
   size: "standard",
   showLabels: true,
+  tileSizes: {},
 };
 let dashboardEditDraft = null;
 let dashboardEditAccountEmail = "";
 let dashboardPointerDrag = null;
+let dashboardResize = null;
 
 function defaultDashboardPreferences() {
   return {
@@ -876,6 +878,7 @@ function defaultDashboardPreferences() {
     hidden: [],
     size: "standard",
     showLabels: true,
+    tileSizes: {},
   };
 }
 
@@ -887,6 +890,14 @@ function dashboardPreferenceKey() {
 function normalizeDashboardPreferences(value) {
   const defaults = defaultDashboardPreferences();
   const input = value && typeof value === "object" ? value : {};
+  const tileSizes = {};
+  if (input.tileSizes && typeof input.tileSizes === "object") {
+    DASHBOARD_TILE_IDS.forEach((id) => {
+      if (["compact", "standard", "wide", "tall"].includes(input.tileSizes[id])) {
+        tileSizes[id] = input.tileSizes[id];
+      }
+    });
+  }
   const order = Array.isArray(input.order)
     ? input.order.filter((id, index, list) =>
         DASHBOARD_TILE_IDS.includes(id) && list.indexOf(id) === index)
@@ -899,13 +910,12 @@ function normalizeDashboardPreferences(value) {
       ? input.layout
       : defaults.layout,
     order,
-    hidden: Array.isArray(input.hidden)
-      ? [...new Set(input.hidden.filter((id) => DASHBOARD_TILE_IDS.includes(id)))]
-      : [],
+    hidden: [],
     size: ["compact", "standard", "wide"].includes(input.size)
       ? input.size
       : defaults.size,
     showLabels: input.showLabels !== false,
+    tileSizes,
   };
 }
 
@@ -987,26 +997,25 @@ function applyDashboardPreferences() {
   dashboard.dataset.tileSize = preferences.size;
   dashboard.classList.toggle("dashboard-labels-hidden", !preferences.showLabels);
   const primaryGrid = dashboard.querySelector(":scope > .dashboard-actions-grid");
-  const moreDetails = document.getElementById("dashboardMoreActions");
-  const moreGrid = moreDetails?.querySelector(".dashboard-actions-grid");
-  if (!primaryGrid || !moreGrid) return;
+  if (!primaryGrid) return;
   const tileById = new Map(
     DASHBOARD_TILE_IDS.map((id) => [id, document.getElementById(id)]),
   );
-  primaryGrid.replaceChildren();
-  moreGrid.replaceChildren();
+  const allGrid = [];
   const visibleTiles = preferences.order
-    .filter((id) => !preferences.hidden.includes(id))
     .map((id) => tileById.get(id))
     .filter(Boolean);
-  visibleTiles.forEach((tile, index) => {
+  visibleTiles.forEach((tile) => {
     tile.hidden = false;
-    (index < 5 ? primaryGrid : moreGrid).appendChild(tile);
+    allGrid.push(tile);
   });
-  tileById.forEach((tile, id) => {
-    if (tile && preferences.hidden.includes(id)) tile.hidden = true;
+  allGrid.forEach((tile) => {
+    const id = tile.id;
+    tile.classList.remove("dashboard-tile-compact", "dashboard-tile-standard", "dashboard-tile-wide", "dashboard-tile-tall");
+    const size = preferences.tileSizes[id] || "standard";
+    tile.classList.add(`dashboard-tile-${size}`);
+    primaryGrid.appendChild(tile);
   });
-  moreDetails.hidden = visibleTiles.length <= 5;
   const labelToggle = document.getElementById("dashboardLabelsToggle");
   if (labelToggle) labelToggle.checked = preferences.showLabels;
   document.querySelectorAll("[data-dashboard-size]").forEach((button) => {
@@ -1048,8 +1057,9 @@ function enterDashboardEditMode() {
     return;
   }
   document.getElementById("dashboardEditButton").hidden = true;
-  dashboard.querySelector(".dashboard-layout-switcher").hidden = true;
-  document.getElementById("dashboardMoreActions").hidden = true;
+  dashboard.querySelectorAll(".dashboard-layout-switcher").forEach((control) => {
+    control.hidden = true;
+  });
   editor.hidden = false;
   dashboardPointerDrag = null;
   dashboardEditDraft.order.forEach((id) => {
@@ -1090,14 +1100,40 @@ function enterDashboardEditMode() {
     down.textContent = "↓";
     down.onclick = () => moveDashboardShortcut(id, 1);
     reorder.append(drag, up, down);
-    const visibleToggle = document.createElement("button");
-    visibleToggle.type = "button";
-    visibleToggle.className = "dashboard-editor-visibility";
-    visibleToggle.setAttribute("data-i18n", dashboardEditDraft.hidden.includes(id)
-      ? "dashboardShowShortcut"
-      : "dashboardHideShortcut");
-    visibleToggle.onclick = () => toggleDashboardShortcut(id);
-    item.append(reorder, tile, visibleToggle);
+    const resizeEast = document.createElement("button");
+    resizeEast.type = "button";
+    resizeEast.className = "dashboard-resize-handle dashboard-resize-east";
+    resizeEast.setAttribute("data-i18n-aria-label", "dashboardResizeWidth");
+    resizeEast.setAttribute("aria-label", translations[currentLang].dashboardResizeWidth);
+    resizeEast.addEventListener("pointerdown", (event) =>
+      startDashboardResize(event, id, "east"),
+    );
+    resizeEast.addEventListener("keydown", (event) =>
+      resizeDashboardWithKeyboard(event, id, "east"),
+    );
+    const resizeSouth = document.createElement("button");
+    resizeSouth.type = "button";
+    resizeSouth.className = "dashboard-resize-handle dashboard-resize-south";
+    resizeSouth.setAttribute("data-i18n-aria-label", "dashboardResizeHeight");
+    resizeSouth.setAttribute("aria-label", translations[currentLang].dashboardResizeHeight);
+    resizeSouth.addEventListener("pointerdown", (event) =>
+      startDashboardResize(event, id, "south"),
+    );
+    resizeSouth.addEventListener("keydown", (event) =>
+      resizeDashboardWithKeyboard(event, id, "south"),
+    );
+    const resizeCorner = document.createElement("button");
+    resizeCorner.type = "button";
+    resizeCorner.className = "dashboard-resize-handle dashboard-resize-corner";
+    resizeCorner.setAttribute("data-i18n-aria-label", "dashboardResizeShortcut");
+    resizeCorner.setAttribute("aria-label", translations[currentLang].dashboardResizeShortcut);
+    resizeCorner.addEventListener("pointerdown", (event) =>
+      startDashboardResize(event, id, "corner"),
+    );
+    resizeCorner.addEventListener("keydown", (event) =>
+      resizeDashboardWithKeyboard(event, id, "corner"),
+    );
+    item.append(reorder, tile, resizeEast, resizeSouth, resizeCorner);
     list.appendChild(item);
     tile.hidden = false;
     item.dataset.originalDisabled = String(tile.disabled);
@@ -1130,6 +1166,90 @@ function endDashboardPointer(event) {
   dashboardPointerDrag = null;
 }
 
+function resizeDashboardWithKeyboard(event, id, axis) {
+  const horizontalSize = {
+    ArrowLeft: "compact",
+    ArrowRight: "wide",
+  };
+  const verticalSize = {
+    ArrowUp: "standard",
+    ArrowDown: "tall",
+  };
+  const size = axis === "east"
+    ? horizontalSize[event.key]
+    : axis === "south"
+      ? verticalSize[event.key]
+      : horizontalSize[event.key] || verticalSize[event.key];
+  if (!size) return;
+  event.preventDefault();
+  setDashboardTileSize(id, size);
+}
+
+function setDashboardTileSize(id, size) {
+  if (!dashboardEditDraft || !["compact", "standard", "wide", "tall"].includes(size)) return;
+  dashboardEditDraft.tileSizes[id] = size;
+  const tile = document.getElementById(id);
+  if (!tile) return;
+  tile.classList.remove(
+    "dashboard-tile-compact",
+    "dashboard-tile-standard",
+    "dashboard-tile-wide",
+    "dashboard-tile-tall",
+  );
+  tile.classList.add(`dashboard-tile-${size}`);
+}
+
+function startDashboardResize(event, id, axis) {
+  if (event.button !== undefined && event.button !== 0) return;
+  event.preventDefault();
+  const tile = document.getElementById(id);
+  if (!tile) return;
+  dashboardResize = {
+    id,
+    axis,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    tile,
+  };
+  tile.classList.add("is-resizing");
+  document.addEventListener("pointermove", moveDashboardResize, { passive: false });
+  document.addEventListener("pointerup", endDashboardResize);
+  document.addEventListener("pointercancel", endDashboardResize);
+}
+
+function moveDashboardResize(event) {
+  if (
+    !dashboardResize ||
+    event.pointerId !== dashboardResize.pointerId
+  ) return;
+  event.preventDefault();
+  const deltaX = event.clientX - dashboardResize.startX;
+  const deltaY = event.clientY - dashboardResize.startY;
+  const size = dashboardEditDraft.tileSizes[dashboardResize.id] || "standard";
+  let nextSize = size;
+  if (dashboardResize.axis === "east" || dashboardResize.axis === "corner") {
+    if (deltaX > 60) nextSize = "wide";
+    else if (deltaX < -60) nextSize = "compact";
+  }
+  if (dashboardResize.axis === "south" || dashboardResize.axis === "corner") {
+    if (deltaY > 40) nextSize = "tall";
+    else if (deltaY < -40) nextSize = "standard";
+  }
+  if (nextSize !== size) {
+    setDashboardTileSize(dashboardResize.id, nextSize);
+  }
+}
+
+function endDashboardResize(event) {
+  if (!dashboardResize || event.pointerId !== dashboardResize.pointerId) return;
+  dashboardResize.tile.classList.remove("is-resizing");
+  document.removeEventListener("pointermove", moveDashboardResize);
+  document.removeEventListener("pointerup", endDashboardResize);
+  document.removeEventListener("pointercancel", endDashboardResize);
+  dashboardResize = null;
+}
+
 function moveDashboardShortcut(id, offset) {
   if (!dashboardEditDraft) return;
   const list = document.getElementById("dashboardEditorList");
@@ -1139,22 +1259,6 @@ function moveDashboardShortcut(id, offset) {
   list.insertBefore(item, offset < 0 ? sibling : sibling.nextSibling);
   dashboardEditDraft.order = [...list.querySelectorAll(".dashboard-editor-item")]
     .map((entry) => entry.dataset.tileId);
-}
-
-function toggleDashboardShortcut(id) {
-  if (!dashboardEditDraft) return;
-  const hidden = new Set(dashboardEditDraft.hidden);
-  if (hidden.has(id)) hidden.delete(id);
-  else hidden.add(id);
-  dashboardEditDraft.hidden = [...hidden];
-  const item = document.querySelector(`#dashboardEditorList [data-tile-id="${id}"]`);
-  const toggle = item?.querySelector(".dashboard-editor-visibility");
-  if (toggle) {
-    const key = hidden.has(id) ? "dashboardShowShortcut" : "dashboardHideShortcut";
-    toggle.setAttribute("data-i18n", key);
-    toggle.textContent = translations[currentLang][key];
-  }
-  item?.classList.toggle("is-hidden-shortcut", hidden.has(id));
 }
 
 function setDashboardDraftSize(size) {
@@ -1178,12 +1282,12 @@ function applyDashboardEditorDraft() {
   const dashboard = document.getElementById("dashboardView");
   dashboard.dataset.tileSize = dashboardEditDraft.size;
   dashboard.classList.toggle("dashboard-labels-hidden", !dashboardEditDraft.showLabels);
-  document.getElementById("dashboardLabelsToggle").checked = dashboardEditDraft.showLabels;
-  document.querySelectorAll("[data-dashboard-size]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.dashboardSize === dashboardEditDraft.size));
-  });
   document.querySelectorAll("#dashboardEditorList .dashboard-editor-item").forEach((item) => {
-    item.classList.toggle("is-hidden-shortcut", dashboardEditDraft.hidden.includes(item.dataset.tileId));
+    const tile = item.querySelector(".tile");
+    if (!tile) return;
+    tile.classList.remove("dashboard-tile-compact", "dashboard-tile-standard", "dashboard-tile-wide", "dashboard-tile-tall");
+    const size = dashboardEditDraft.tileSizes[item.dataset.tileId] || "standard";
+    tile.classList.add(`dashboard-tile-${size}`);
   });
 }
 
@@ -1203,10 +1307,12 @@ function finishDashboardEdit() {
   document.removeEventListener("pointerup", endDashboardPointer);
   document.removeEventListener("pointercancel", endDashboardPointer);
   dashboardPointerDrag = null;
+  document.removeEventListener("pointermove", moveDashboardResize);
+  document.removeEventListener("pointerup", endDashboardResize);
+  document.removeEventListener("pointercancel", endDashboardResize);
+  dashboardResize = null;
   if (editor) editor.hidden = true;
   if (dashboard) {
-    dashboard.querySelector(".dashboard-layout-switcher").hidden = false;
-    document.getElementById("dashboardMoreActions").hidden = false;
     document.getElementById("dashboardEditButton").hidden = false;
   }
   dashboardEditDraft = null;
@@ -1248,11 +1354,6 @@ function resetDashboardDraft() {
   dashboardEditDraft.order.forEach((id) => {
     const item = list.querySelector(`[data-tile-id="${id}"]`);
     if (item) list.appendChild(item);
-    const toggle = item?.querySelector(".dashboard-editor-visibility");
-    if (toggle) {
-      toggle.setAttribute("data-i18n", "dashboardHideShortcut");
-      toggle.textContent = translations[currentLang].dashboardHideShortcut;
-    }
   });
   applyDashboardEditorDraft();
 }

@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
   --app-bar-height: 64px;
+  --surface-solid: #172333;
+  --surface-minimal: #111827;
   --bg-gradient: linear-gradient(
     135deg,
     #111827 0%,
@@ -124,6 +126,8 @@
 body.theme-light,
 :root.theme-light {
   color-scheme: light;
+  --surface-solid: #edf3f7;
+  --surface-minimal: #f4f5f2;
   --bg-gradient: linear-gradient(135deg, #edf3f7 0%, #f4f5f2 48%, #e8f1f2 100%);
   --login-video-overlay: linear-gradient(
     135deg,
@@ -278,6 +282,7 @@ body[data-palette="royal"][data-theme="light"] {
 
 :root[data-visual-style="solid"],
 body[data-visual-style="solid"] {
+  --bg-gradient: linear-gradient(145deg, var(--surface-solid), var(--surface-solid));
   --card-bg: var(--select-option-bg);
   --glass-surface: var(--select-option-bg);
   --glass-edge: var(--chip-border);
@@ -291,6 +296,7 @@ body[data-visual-style="solid"] {
 
 :root[data-visual-style="minimal"],
 body[data-visual-style="minimal"] {
+  --bg-gradient: var(--surface-minimal);
   --card-bg: var(--select-option-bg);
   --glass-surface: var(--select-option-bg);
   --glass-edge: var(--chip-border);

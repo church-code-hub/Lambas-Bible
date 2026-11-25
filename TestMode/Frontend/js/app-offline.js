@@ -337,7 +337,11 @@ async function saveOfflineEvent(
   const database = await openOfflineDatabase();
   await new Promise((resolve, reject) => {
     const stores =
-      persistSyncCredentials && currentUser && googleIdToken && API_URL
+      persistSyncCredentials &&
+      currentUser &&
+      googleIdToken &&
+      testModeSyncSessionToken &&
+      API_URL
         ? ["events", "metadata"]
         : ["events"];
     const transaction = database.transaction(stores, "readwrite");
@@ -347,6 +351,7 @@ async function saveOfflineEvent(
         key: "syncCredentials",
         apiUrl: API_URL,
         idToken: googleIdToken,
+        testModeSessionToken: testModeSyncSessionToken,
         email: currentUser.email,
       });
     }

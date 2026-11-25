@@ -47,7 +47,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=89" />
+    <link rel="stylesheet" href="./css/styles.css?v=90" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -275,21 +275,6 @@
           </h1>
           <p class="dashboard-welcome-copy" data-i18n="dashboardWelcomeCopy">Everything you need for today, in one place.</p>
           <div class="dashboard-heading-actions">
-            <div class="dashboard-layout-switcher" role="group" data-i18n-aria-label="dashboardLayoutSwitcher"
-              aria-label="Dashboard layout">
-              <button type="button" data-dashboard-layout="one" data-i18n-title="dashboardLayoutOne"
-                data-i18n-aria-label="dashboardLayoutOne" aria-pressed="false" onclick="setDashboardLayout('one')">
-                <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i><span>1</span>
-              </button>
-              <button type="button" data-dashboard-layout="two" data-i18n-title="dashboardLayoutTwo"
-                data-i18n-aria-label="dashboardLayoutTwo" aria-pressed="true" onclick="setDashboardLayout('two')">
-                <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span>2</span>
-              </button>
-              <button type="button" data-dashboard-layout="three" data-i18n-title="dashboardLayoutThree"
-                  data-i18n-aria-label="dashboardLayoutThree" aria-pressed="false" onclick="setDashboardLayout('three')">
-                  <i class="fa-solid fa-border-all" aria-hidden="true"></i><span>3</span>
-                </button>
-              </div>
             <button id="dashboardEditButton" class="btn secondary dashboard-edit-button" type="button"
               onclick="enterDashboardEditMode()" data-i18n="editDashboard">Edit dashboard</button>
           </div>
@@ -316,10 +301,6 @@
             ><span data-i18n="currentAttendeesTitle">الحضور الحالي</span>
             <span id="currentAttendeesClosedBadge" class="current-attendees-tile-status" data-i18n="attendanceWindowClosedBadge" hidden>مغلق</span>
           </button>
-        </div>
-        <details id="dashboardMoreActions" class="dashboard-more-actions">
-          <summary data-i18n="moreActions">More actions</summary>
-          <div class="grid dashboard-actions-grid">
           <button id="birthdaysAction" class="tile" data-online-only onclick="openBirthdaysView()">
             <span class="ico"><i class="fa-solid fa-cake-candles"></i></span
             ><span data-i18n="birthdaysTitle">أعياد الميلاد</span>
@@ -348,33 +329,18 @@
             <span class="ico"><i class="fa-solid fa-gear"></i></span
             ><span data-i18n="meetingSchedule">مواعيد الاجتماع</span>
           </button>
-          </div>
-        </details>
+        </div>
         <section id="dashboardEditor" class="dashboard-editor" aria-labelledby="dashboardEditorTitle" hidden>
           <div class="dashboard-editor-heading">
             <div>
               <h2 id="dashboardEditorTitle" data-i18n="dashboardEditorTitle">Customize dashboard</h2>
-              <p class="report-note" data-i18n="dashboardEditorHint">Reorder, show or hide shortcuts. Changes apply when saved.</p>
+              <p class="report-note" data-i18n="dashboardEditorHint">Drag shortcuts and resize from their edges. Changes apply when saved.</p>
             </div>
             <div class="dashboard-editor-actions">
               <button id="dashboardResetButton" class="btn secondary" type="button" onclick="resetDashboardDraft()" data-i18n="resetDashboard">Reset</button>
               <button id="dashboardCancelButton" class="btn secondary" type="button" onclick="cancelDashboardEdit()" data-i18n="cancelDashboardEdit">Cancel</button>
               <button id="dashboardSaveButton" class="btn" type="button" onclick="saveDashboardEdit()" data-i18n="saveDashboardEdit">Save</button>
             </div>
-          </div>
-          <div class="dashboard-editor-options">
-            <fieldset>
-              <legend data-i18n="dashboardTileSize">Shortcut size</legend>
-              <div class="dashboard-size-options" role="group" data-i18n-aria-label="dashboardTileSize">
-                <button type="button" data-dashboard-size="compact" aria-pressed="false" onclick="setDashboardDraftSize('compact')" data-i18n="dashboardSizeCompact">Compact</button>
-                <button type="button" data-dashboard-size="standard" aria-pressed="true" onclick="setDashboardDraftSize('standard')" data-i18n="dashboardSizeStandard">Standard</button>
-                <button type="button" data-dashboard-size="wide" aria-pressed="false" onclick="setDashboardDraftSize('wide')" data-i18n="dashboardSizeWide">Wide</button>
-              </div>
-            </fieldset>
-            <label class="dashboard-label-toggle">
-              <input id="dashboardLabelsToggle" type="checkbox" checked onchange="setDashboardDraftLabels(this.checked)" />
-              <span data-i18n="dashboardShowLabels">Show shortcut labels</span>
-            </label>
           </div>
           <div id="dashboardEditorList" class="dashboard-editor-list" aria-live="polite"></div>
         </section>
@@ -1513,13 +1479,13 @@
       </div>
     </div>
 
-  <script src="./js/app-state.js?v=79"></script>
-  <script src="./js/app-i18n.js?v=89"></script>
-  <script src="./js/app-core.js?v=78"></script>
-  <script src="./js/app-offline.js?v=78"></script>
-  <script src="./js/app-views.js?v=90"></script>
+  <script src="./js/app-state.js?v=82"></script>
+  <script src="./js/app-i18n.js?v=92"></script>
+  <script src="./js/app-core.js?v=80"></script>
+  <script src="./js/app-offline.js?v=79"></script>
+  <script src="./js/app-views.js?v=92"></script>
   <script src="./js/app-individual.js?v=2"></script>
-  <script src="./js/app-auth.js?v=80"></script>
+  <script src="./js/app-auth.js?v=84"></script>
   <script src="./js/app-scanner-search.js?v=79"></script>
   <script src="./js/app-cards-admin.js?v=77"></script>
   </body>

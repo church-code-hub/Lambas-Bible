@@ -155,8 +155,18 @@ function createBackendContext() {
     TEST_SPREADSHEET_ID: "only-test-spreadsheet",
     PRODUCTION_SPREADSHEET_ID: "never-open-this",
     TEST_EXPORT_FOLDER_ID: "only-test-export-folder",
+    TEST_MODE_PASSWORD: "test-password-for-test",
   };
+  const testModeSessions = new Map();
+  let testModeSessionId = 0;
   const context = {
+    CacheService: {
+      getScriptCache: () => ({
+        get: (key) => testModeSessions.get(key) || null,
+        put: (key, value) => testModeSessions.set(key, value),
+        remove: (key) => testModeSessions.delete(key),
+      }),
+    },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (key) => properties[key] || null,
@@ -228,6 +238,8 @@ function createBackendContext() {
       }),
     },
     Utilities: {
+      getUuid: () =>
+        `00000000-0000-4000-8000-${String(++testModeSessionId).padStart(12, "0")}`,
       formatDate(date, _timeZone, format) {
         const year = date.getUTCFullYear();
         const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -242,6 +254,7 @@ function createBackendContext() {
       base64Encode: (bytes) => Buffer.from(bytes).toString("base64"),
       base64Decode: (value) => [...Buffer.from(value, "base64")],
       computeDigest: () => [],
+      base64EncodeWebSafe: () => "tester",
       DigestAlgorithm: { SHA_256: "SHA-256" },
     },
     Session: { getScriptTimeZone: () => "UTC" },
@@ -294,9 +307,26 @@ function createBackendContext() {
 }
 
 function post(context, action, values = {}, idToken = "test-token") {
+  const testModeSessionToken = idToken === "test-token"
+    ? context.testModeSessionToken || context.doPost({
+      postData: {
+        contents: JSON.stringify({
+          action: "verify_test_mode_password",
+          idToken: "test-token",
+          password: "test-password-for-test",
+        }),
+      },
+    }).sessionToken
+    : "";
+  if (testModeSessionToken) context.testModeSessionToken = testModeSessionToken;
   return context.doPost({
     postData: {
-      contents: JSON.stringify({ action, idToken, ...values }),
+      contents: JSON.stringify({
+        action,
+        idToken,
+        testModeSessionToken,
+        ...values,
+      }),
     },
   });
 }

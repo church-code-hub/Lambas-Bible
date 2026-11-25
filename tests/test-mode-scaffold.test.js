@@ -90,6 +90,17 @@ function createBackendContext({
       '{"qr_unsent":"qr-template","checkout_all":"checkout-template","birthday":"approved-test-template"}',
   };
   const openedSpreadsheetIds = [];
+  const testModeSessions = new Map();
+  const testModeCacheTtls = new Map();
+  let testModeSessionId = 0;
+  const scriptCache = {
+    get: (key) => testModeSessions.get(key) || null,
+    put: (key, value, ttl) => {
+      testModeSessions.set(key, value);
+      testModeCacheTtls.set(key, ttl);
+    },
+    remove: (key) => testModeSessions.delete(key),
+  };
   const markerSheet = {
     getRange: () => ({ getValue: () => marker }),
   };
@@ -123,6 +134,23 @@ function createBackendContext({
     getOwner: () => ({ getEmail: () => "owner@example.com" }),
   };
   const context = {
+    CacheService: {
+      getScriptCache: () => scriptCache,
+    },
+    Utilities: {
+      getUuid: () =>
+        `00000000-0000-4000-8000-${String(++testModeSessionId).padStart(12, "0")}`,
+      computeDigest: (_algorithm, value) => [...Buffer.from(String(value))],
+      base64EncodeWebSafe: (bytes) =>
+        Buffer.from(bytes).toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, ""),
+      DigestAlgorithm: { SHA_256: "SHA-256" },
+    },
+    LockService: {
+      getScriptLock: () => ({ waitLock() {}, releaseLock() {} }),
+    },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperties: () => ({ ...propertyValues }),
@@ -161,6 +189,8 @@ function createBackendContext({
     },
     console: { error() {}, warn() {}, log() {} },
     openedSpreadsheetIds,
+    testModeSessions,
+    testModeCacheTtls,
   };
   context.scriptProperties = propertyValues;
   vm.createContext(context);
@@ -194,7 +224,9 @@ function createBackendContext({
       success: true,
       email: token === "test-token"
         ? " tESTER@example.com "
-        : "outsider@example.com",
+        : token === "second-token"
+          ? "second@example.com"
+          : "outsider@example.com",
     };
   };
   context.isEmailAllowed = () => {
@@ -203,10 +235,33 @@ function createBackendContext({
   return context;
 }
 
-function post(context, action, idToken) {
+function post(context, action, idToken, payload = {}) {
+  const data = { ...payload, action, idToken };
+  if (!["check_test_access", "verify_test_mode_password"].includes(action) &&
+      idToken === "test-token") {
+    data.testModeSessionToken =
+      context.testModeSessionToken || issueTestModeSession(context);
+  }
   return context.doPost({
-    postData: { contents: JSON.stringify({ action, idToken }) },
+    postData: { contents: JSON.stringify(data) },
   });
+}
+
+function issueTestModeSession(context, password = "test-password-only-for-tests") {
+  const result = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "verify_test_mode_password",
+        idToken: "test-token",
+        password,
+      }),
+    },
+  });
+  if (result.valid === true) {
+    context.testModeSessionToken = result.sessionToken;
+    context.testModeSyncSessionToken = result.syncSessionToken;
+  }
+  return result.sessionToken;
 }
 
 test("server-side allowlist trims and ignores case; outsider is denied", () => {
@@ -313,7 +368,7 @@ test("same production/test spreadsheet IDs are rejected before opening a sheet",
   assert.deepEqual(context.openedSpreadsheetIds, []);
 });
 
-test("Test Mode password is checked only on the server and is not returned", () => {
+test("Test Mode password is checked server-side and never returned", () => {
   const context = createBackendContext();
   const valid = context.doPost({
     postData: {
@@ -333,9 +388,139 @@ test("Test Mode password is checked only on the server and is not returned", () 
       }),
     },
   });
-  assert.deepEqual(valid, { success: true, valid: true });
+  assert.equal(valid.success, true);
+  assert.equal(valid.valid, true);
+  assert.match(valid.sessionToken, /^[0-9a-f-]{36}$/);
+  assert.match(valid.syncSessionToken, /^[0-9a-f-]{36}$/);
   assert.deepEqual(invalid, { success: true, valid: false });
   assert.equal(JSON.stringify(valid).includes("test-password-only-for-tests"), false);
+});
+
+test("Test Mode application APIs require a valid identity-bound password session", () => {
+  const context = createBackendContext({
+    allowlist: ["Tester@Example.com", "second@example.com"],
+  });
+  const request = (action, data = {}) => context.doPost({
+    postData: {
+      contents: JSON.stringify({ action, idToken: "test-token", ...data }),
+    },
+  });
+  const bypass = request("get_whatsapp_automation_status");
+  assert.equal(bypass.code, "TEST_MODE_SESSION_REQUIRED");
+  assert.equal(context.testSpreadsheetCalls, 1);
+
+  const deniedPassword = request("verify_test_mode_password", {
+    password: "wrong",
+  });
+  assert.equal(deniedPassword.valid, false);
+  assert.equal(deniedPassword.sessionToken, undefined);
+
+  const sessionToken = issueTestModeSession(context);
+  assert.match(sessionToken, /^[0-9a-f-]{36}$/);
+  assert.equal(
+    context.testModeCacheTtls.get(`TEST_MODE_SESSION_${sessionToken}`),
+    21600,
+  );
+  assert.equal(
+    context.testModeCacheTtls.get(
+      `TEST_MODE_SESSION_${context.testModeSyncSessionToken}`,
+    ),
+    21600,
+  );
+  const authorized = request("get_whatsapp_automation_status", {
+    testModeSessionToken: sessionToken,
+  });
+  assert.equal(authorized.success, true);
+
+  context.verifyGoogleIdToken_ = (token) => ({
+    success: true,
+    email: token === "second-token" ? "second@example.com" : " tESTER@example.com ",
+  });
+  const otherIdentity = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "get_whatsapp_automation_status",
+        idToken: "second-token",
+        testModeSessionToken: sessionToken,
+      }),
+    },
+  });
+  assert.equal(otherIdentity.code, "TEST_MODE_SESSION_REQUIRED");
+
+  const syncCannotRead = request("get_whatsapp_automation_status", {
+    testModeSessionToken: context.testModeSyncSessionToken,
+  });
+  assert.equal(syncCannotRead.code, "TEST_MODE_SESSION_REQUIRED");
+  context.syncOfflineEvents_ = () => ({ success: true, results: [] });
+  const syncOnlyAction = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "sync_offline_events",
+        idToken: "test-token",
+        testModeSessionToken: context.testModeSyncSessionToken,
+        events: [],
+      }),
+    },
+  });
+  assert.equal(syncOnlyAction.success, true);
+
+  const loggedOut = post(context, "logout_test_mode", "test-token");
+  assert.equal(loggedOut.success, true);
+  const expired = request("get_whatsapp_automation_status", {
+    testModeSessionToken: sessionToken,
+  });
+  assert.equal(expired.code, "TEST_MODE_SESSION_REQUIRED");
+
+  const stillSyncOnly = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "sync_offline_events",
+        idToken: "test-token",
+        testModeSessionToken: context.testModeSyncSessionToken,
+        events: [],
+      }),
+    },
+  });
+  assert.equal(stillSyncOnly.success, true);
+
+  const expiredContext = createBackendContext();
+  const expiringSession = issueTestModeSession(expiredContext);
+  expiredContext.testModeSessions.delete(
+    `TEST_MODE_SESSION_${expiringSession}`,
+  );
+  const expiredResult = post(
+    expiredContext,
+    "get_whatsapp_automation_status",
+    "test-token",
+  );
+  assert.equal(expiredResult.code, "TEST_MODE_SESSION_REQUIRED");
+
+  const getWithoutSession = context.doGet({
+    parameter: { action: "get_settings", idToken: "test-token" },
+  });
+  assert.equal(getWithoutSession.code, "TEST_MODE_SESSION_REQUIRED");
+});
+
+test("Test Mode password verification rate-limits repeated failures", () => {
+  const context = createBackendContext();
+  const verify = (password) => context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "verify_test_mode_password",
+        idToken: "test-token",
+        password,
+      }),
+    },
+  });
+  for (let attempt = 0; attempt < 8; attempt++) {
+    assert.equal(verify("incorrect").valid, false);
+  }
+  const limited = verify("test-password-only-for-tests");
+  assert.equal(limited.code, "TEST_MODE_PASSWORD_RATE_LIMITED");
+  assert.equal(limited.sessionToken, undefined);
+  const attemptCacheEntry = [...context.testModeCacheTtls.entries()]
+    .find(([key]) => key.startsWith("TEST_MODE_PASSWORD_ATTEMPTS_"));
+  assert.equal(attemptCacheEntry[1], 900);
 });
 
 test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
@@ -351,19 +536,18 @@ test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
   assert.equal(status.schedulingEnabled, false);
   assert.equal(status.providerImplemented, false);
 
-  const rejected = context.doPost({
-    postData: {
-      contents: JSON.stringify({
-        action: "validate_whatsapp_automation_intent",
-        idToken: "test-token",
-        type: "birthday",
-        personId: "7",
-        templateName: "approved-test-template",
-        idempotencyKey: "birthday:7:2026",
-        optedIn: false,
-      }),
+  const rejected = post(
+    context,
+    "validate_whatsapp_automation_intent",
+    "test-token",
+    {
+      type: "birthday",
+      personId: "7",
+      templateName: "approved-test-template",
+      idempotencyKey: "birthday:7:2026",
+      optedIn: false,
     },
-  });
+  );
   assert.equal(rejected.success, false);
   assert.equal(rejected.code, "WHATSAPP_OPT_IN_REQUIRED");
   const consentedContext = createBackendContext({
@@ -376,19 +560,18 @@ test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
       ["7", "Test Person", "", "+15555550100", "", "Active"],
     ],
   });
-  const notSent = consentedContext.doPost({
-    postData: {
-      contents: JSON.stringify({
-        action: "validate_whatsapp_automation_intent",
-        idToken: "test-token",
-        type: "birthday",
-        personId: "7",
-        templateName: "approved-test-template",
-        idempotencyKey: "birthday:7:2026",
-        optedIn: true,
-      }),
+  const notSent = post(
+    consentedContext,
+    "validate_whatsapp_automation_intent",
+    "test-token",
+    {
+      type: "birthday",
+      personId: "7",
+      templateName: "approved-test-template",
+      idempotencyKey: "birthday:7:2026",
+      optedIn: true,
     },
-  });
+  );
   assert.equal(notSent.success, false);
   assert.equal(notSent.code, "WHATSAPP_PROVIDER_NOT_IMPLEMENTED");
   assert.match(backendSource, /WHATSAPP_PROVIDER_NOT_IMPLEMENTED/);
@@ -589,6 +772,156 @@ test("test frontend blocks application API calls before allowlist verification",
   assert.equal(fetchCalls, 0);
 });
 
+test("Test Mode API requests carry the server-issued unlock token", async () => {
+  let requestBody;
+  const context = {
+    testModeServerVerified: true,
+    testModePasswordUnlocked: true,
+    testModeSessionToken: "00000000-0000-4000-8000-000000000001",
+    backendReachabilityState: null,
+    API_URL: "https://test.example/exec",
+    googleIdToken: "test-google-token",
+    keepaliveRequestBytes: 0,
+    activeApiRequestCount: 0,
+    navigator: { onLine: true },
+    fetch: async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ success: true }) };
+    },
+    updateOfflineStatus: async () => {},
+    console,
+    Blob,
+    AbortController,
+    setTimeout,
+    clearTimeout,
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(
+      path.join(testModeRoot, "Frontend", "js", "app-core.js"),
+      "utf8",
+    ),
+    context,
+  );
+
+  await context.performApiCall("get_whatsapp_automation_status");
+  assert.equal(requestBody.testModeSessionToken, context.testModeSessionToken);
+  assert.equal(requestBody.idToken, "test-google-token");
+});
+
+test("Test Mode logout revokes the app-scoped token", async () => {
+  const auth = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-auth.js"),
+    "utf8",
+  );
+  const revokeFunction = auth.match(
+    /async function revokeTestModeSessionOnLogout\(\) \{[\s\S]*?\n\}/,
+  );
+  assert.ok(revokeFunction);
+  let requestUrl = "";
+  let requestBody = null;
+  const context = {
+    navigator: { onLine: true },
+    API_URL: "https://test.example/exec",
+    googleIdToken: "test-google-token",
+    testModeSessionToken: "app-session-token",
+    testModeSyncSessionToken: "sync-session-token",
+    fetch: async (url, options) => {
+      requestUrl = url;
+      requestBody = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ success: true }) };
+    },
+    console: { warn() {} },
+  };
+  vm.createContext(context);
+  vm.runInContext(revokeFunction[0], context);
+  await context.revokeTestModeSessionOnLogout();
+
+  assert.equal(requestUrl, "https://test.example/exec");
+  assert.equal(requestBody.action, "logout_test_mode");
+  assert.equal(requestBody.idToken, "test-google-token");
+  assert.equal(requestBody.testModeSessionToken, "app-session-token");
+  assert.notEqual(requestBody.testModeSessionToken, "sync-session-token");
+});
+
+test("Test Mode manual logout stays active while offline until revocation is possible", async () => {
+  const auth = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-auth.js"),
+    "utf8",
+  );
+  const revokeFunction = auth.match(
+    /async function revokeTestModeSessionOnLogout\(\) \{[\s\S]*?\n\}/,
+  );
+  const logoutFunction = auth.match(
+    /async function logoutUser\(msg\) \{[\s\S]*?\n\}/,
+  );
+  assert.ok(revokeFunction);
+  assert.ok(logoutFunction);
+  const button = { disabled: false };
+  const messages = [];
+  const context = {
+    navigator: { onLine: false },
+    API_URL: "https://test.example/exec",
+    googleIdToken: "test-google-token",
+    testModeSessionToken: "app-session-token",
+    testModeSyncSessionToken: "sync-session-token",
+    testModeLogoutInProgress: false,
+    currentUser: { email: "tester@example.com" },
+    document: { querySelector: () => button },
+    translations: { en: { testModeLogoutFailed: "Secure sign-out failed." } },
+    currentLang: "en",
+    showToast: (message) => messages.push(message),
+    fetch: async () => {
+      throw new Error("offline logout must not call fetch");
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(revokeFunction[0], context);
+  vm.runInContext(logoutFunction[0], context);
+
+  await context.logoutUser();
+
+  assert.deepEqual(messages, ["Secure sign-out failed."]);
+  assert.equal(context.currentUser.email, "tester@example.com");
+  assert.equal(context.testModeSessionToken, "app-session-token");
+  assert.equal(button.disabled, false);
+});
+
+test("failed Test Mode logout keeps the current session available for retry", async () => {
+  const auth = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-auth.js"),
+    "utf8",
+  );
+  const logoutFunction = auth.match(
+    /async function logoutUser\(msg\) \{[\s\S]*?\n\}/,
+  );
+  assert.ok(logoutFunction);
+  const button = { disabled: false };
+  const messages = [];
+  const context = {
+    testModeLogoutInProgress: false,
+    testModeSessionToken: "app-session-token",
+    testModeSyncSessionToken: "sync-session-token",
+    currentUser: { email: "tester@example.com" },
+    document: { querySelector: () => button },
+    navigator: { onLine: true },
+    translations: { en: { testModeLogoutFailed: "Secure sign-out failed." } },
+    currentLang: "en",
+    showToast: (message) => messages.push(message),
+    revokeTestModeSessionOnLogout: async () => false,
+  };
+  vm.createContext(context);
+  vm.runInContext(logoutFunction[0], context);
+
+  await context.logoutUser();
+
+  assert.deepEqual(messages, ["Secure sign-out failed."]);
+  assert.equal(context.currentUser.email, "tester@example.com");
+  assert.equal(context.testModeSessionToken, "app-session-token");
+  assert.equal(button.disabled, false);
+  assert.equal(context.testModeLogoutInProgress, false);
+});
+
 test("test clone is visibly marked, has same-origin return, and no entry action", () => {
   const html = fs.readFileSync(
     path.join(testModeRoot, "Frontend", "index.html"),
@@ -624,13 +957,15 @@ test("test clone is visibly marked, has same-origin return, and no entry action"
   assert.match(auth, /const clearStores = \["roster", "apiCache"\]/);
   assert.match(state, /LAMBAS_TEST_STORAGE_READY/);
   assert.match(appOffline, /lambas-test-mode-attendance-offline-v1/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v9/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v14/);
   assert.doesNotMatch(serviceWorker, /lambas-attendance-offline/);
   assert.match(serviceWorker, /action: "check_test_access"/);
+  assert.match(appOffline, /testModeSessionToken:\s*testModeSyncSessionToken/);
+  assert.match(serviceWorker, /testModeSessionToken:\s*credentials\.testModeSessionToken/);
   assert.match(productionServiceWorker, /requestUrl\.pathname\.startsWith\(testModePath\)/);
 });
 
-test("dashboard migrates legacy layout and discards drafts on account changes and logout", () => {
+test("dashboard migrates legacy layout and discards drafts on account changes and logout", async () => {
   const storageValues = new Map([["app_dashboard_layout", "three"]]);
   const { context } = createFrontendTestContext(storageValues);
   loadFrontendScripts(context, ["app-state.js", "app-i18n.js", "app-views.js"]);
@@ -670,8 +1005,14 @@ test("dashboard migrates legacy layout and discards drafts on account changes an
     path.join(testModeRoot, "Frontend", "js", "app-auth.js"),
     "utf8",
   );
-  const logoutFunction = authSource.match(/function logoutUser\(msg\) \{[\s\S]*?\n\}/);
+  const logoutFunction = authSource.match(
+    /async function logoutUser\(msg\) \{[\s\S]*?\n\}/,
+  );
   assert.ok(logoutFunction, "logoutUser should be present");
+  const revokeFunction = authSource.match(
+    /async function revokeTestModeSessionOnLogout\(\) \{[\s\S]*?\n\}/,
+  );
+  assert.ok(revokeFunction, "the Test Mode app session should be revocable");
   let logoutCancelledAs = "";
   context.currentUser = { email: "first@example.com" };
   vm.runInContext('dashboardEditDraft = { layout: "one" }', context);
@@ -682,8 +1023,9 @@ test("dashboard migrates legacy layout and discards drafts on account changes an
   context.stopLiveScanner = () => {};
   context.showView = () => {};
   context.dismissStartupScreen = () => {};
+  vm.runInContext(revokeFunction[0], context);
   vm.runInContext(logoutFunction[0], context);
-  context.logoutUser();
+  await context.logoutUser();
   assert.equal(logoutCancelledAs, "first@example.com");
   assert.equal(context.currentUser, null);
 });
@@ -809,7 +1151,69 @@ test("Test Mode Theme Studio offers palettes, styles, system mode and isolated p
   assert.match(foundation, /data-palette="emerald"\]\[data-theme="light"/);
   assert.match(foundation, /data-palette="pearl"\]\[data-theme="dark"/);
   assert.match(foundation, /data-palette="royal"\]\[data-theme="light"/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v9/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v14/);
+});
+
+test("Test Mode dashboard has one edit mode with drag and border resize", () => {
+  const html = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "index.html"),
+    "utf8",
+  );
+  const views = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-views.js"),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "css", "09-sync-progress.css"),
+    "utf8",
+  );
+  assert.match(html, /id="dashboardEditButton"/);
+  assert.equal((html.match(/class="grid dashboard-actions-grid/g) || []).length, 1);
+  assert.doesNotMatch(html, /id="dashboardMoreActions"|dashboard-layout-switcher|dashboard-editor-visibility|dashboardLabelsToggle/);
+  assert.match(views, /dashboardResize-handle|dashboard-resize-east|dashboard-resize-south|dashboard-resize-corner/);
+  assert.match(views, /tileSizes/);
+  assert.match(views, /resizeDashboardWithKeyboard/);
+  assert.match(views, /data-i18n-aria-label", "dashboardResizeWidth"/);
+  assert.match(styles, /dashboard-resize-east/);
+  assert.match(styles, /dashboard-resize-south/);
+  assert.match(styles, /dashboard-resize-corner/);
+});
+
+test("legacy dashboard visibility preferences cannot hide shortcuts", () => {
+  const views = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-views.js"),
+    "utf8",
+  );
+  const start = views.indexOf("const DASHBOARD_TILE_IDS = [");
+  const end = views.indexOf("\nfunction loadDashboardPreferencesForAccount", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const context = vm.createContext({});
+  vm.runInContext(views.slice(start, end), context);
+
+  const preferences = context.normalizeDashboardPreferences({
+    order: ["tutorialSearchAction"],
+    hidden: ["tutorialScanAction", "tutorialAddAction"],
+  });
+
+  assert.equal(preferences.hidden.length, 0);
+  assert.deepEqual(
+    Array.from(preferences.order),
+    [
+      "tutorialSearchAction",
+      "tutorialScanAction",
+      "tutorialAddAction",
+      "tutorialRosterAction",
+      "currentAttendeesTile",
+      "birthdaysAction",
+      "individualSearchAction",
+      "tutorialShareAction",
+      "tutorialReportsAction",
+      "tutorialFollowupAction",
+      "tutorialSheetAction",
+      "tutorialScheduleAction",
+    ],
+  );
 });
 
 test("fullscreen scanner uses the existing background gradient token", () => {
