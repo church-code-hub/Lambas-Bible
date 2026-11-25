@@ -1,6 +1,9 @@
 window.addEventListener("DOMContentLoaded", async function () {
   setLanguage(currentLang);
-  applyTheme(currentThemeMode);
+  applyAppearancePreference(
+    normalizeAppearancePreference(appearancePreference),
+    true,
+  );
   applyDashboardPreferences();
   setScanModePreference(localStorage.getItem("app_scan_mode") || "regular");
   loadWhatsAppMessageTemplate();

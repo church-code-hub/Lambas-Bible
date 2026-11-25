@@ -383,7 +383,7 @@ test("dashboard shows all actions in one selectable, full-page grid", () => {
   assert.match(styles, /#dashboardView\[data-layout="two"\][\s\S]*?nth-child\(2n \+ 1\)[\s\S]*?grid-column:\s*1 \/ -1/);
   assert.match(styles, /nth-last-child\(2\):nth-child\(3n \+ 1\)[\s\S]*?grid-column:\s*span 3/);
   assert.match(html, /css\/styles\.css\?v=81/);
-  assert.match(serviceWorker, /lambas-bible-shell-v94/);
+  assert.match(serviceWorker, /lambas-bible-shell-v1/);
   assert.match(serviceWorker, /css\/styles\.css\?v=81/);
   assert.equal((dashboard.match(/data-dashboard-layout=/g) || []).length, 3);
   assert.match(dashboard, /onclick="setDashboardLayout\('one'\)"/);
@@ -746,6 +746,8 @@ test("online logout waits for server confirmation and keeps the UI session on fa
       if (fetchMode === "network-error") throw new Error("network down");
       if (fetchMode === "success")
         return { ok: true, json: async () => ({ success: true, revoked: false }) };
+      if (fetchMode === "contradictory")
+        return { ok: true, json: async () => ({ success: true, revoked: true }) };
       return { ok: true, json: async () => ({ success: false, code: "AUTH_DENIED" }) };
     },
   });
@@ -765,6 +767,10 @@ test("online logout waits for server confirmation and keeps the UI session on fa
   browserContext.stopLiveScanner = () => {};
   browserContext.showView = () => {};
   browserContext.dismissStartupScreen = () => {};
+  let clearedOfflineAccount = null;
+  browserContext.clearOfflineDataForAccount = async (accountEmail, preservePendingQueue) => {
+    clearedOfflineAccount = { accountEmail, preservePendingQueue };
+  };
   browserContext.showToast = (message) => {
     browserContext.lastToast = message;
   };
@@ -775,6 +781,11 @@ test("online logout waits for server confirmation and keeps the UI session on fa
   assert.match(browserContext.lastToast, /server could not confirm/);
 
   fetchMode = "network-error";
+  assert.equal(await browserContext.logoutUser(), false);
+  assert.equal(browserContext.currentUser.email, "admin@example.com");
+  assert.equal(browserContext.backendSessionToken, "valid-backend-session");
+
+  fetchMode = "contradictory";
   assert.equal(await browserContext.logoutUser(), false);
   assert.equal(browserContext.currentUser.email, "admin@example.com");
   assert.equal(browserContext.backendSessionToken, "valid-backend-session");
@@ -791,6 +802,149 @@ test("online logout waits for server confirmation and keeps the UI session on fa
   assert.equal(fetchBody.preserveForSync, true);
   assert.equal(browserContext.currentUser, null);
   assert.equal(browserContext.backendSessionToken, "");
+  assert.deepEqual(clearedOfflineAccount, {
+    accountEmail: "admin@example.com",
+    preservePendingQueue: true,
+  });
+});
+
+test("logout clears account roster and API cache while preserving only an authorized sync queue", async () => {
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    console,
+    setTimeout,
+    clearTimeout,
+  });
+  for (const script of ["app-state.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+
+  const actions = {
+    cleared: [],
+    deletedEvents: [],
+    deletedMetadata: [],
+  };
+  browserContext.cachedRosterPromise = Promise.resolve([{ id: "old", name: "Old" }]);
+  browserContext.offlineRosterSearchCache = [{ id: "old", name: "Old" }];
+  browserContext.openOfflineDatabase = async () => ({
+    transaction(storeNames) {
+      const transaction = {
+        objectStore(name) {
+          if (name === "roster") {
+            return { clear: () => actions.cleared.push("roster") };
+          }
+          if (name === "apiCache") {
+            return { clear: () => actions.cleared.push("apiCache") };
+          }
+          if (name === "metadata") {
+            return {
+              get(key) {
+                const request = { result: null, onsuccess: null };
+                setTimeout(() => {
+                  if (request.onsuccess) request.onsuccess();
+                }, 0);
+                return request;
+              },
+              delete(key) {
+                actions.deletedMetadata.push(key);
+              },
+            };
+          }
+          if (name === "events") {
+            return {
+              getAll() {
+                const request = {
+                  result: [
+                    { eventId: "event-current", queuedBy: "admin@example.com", timestamp: "2026-01-01T00:00:00.000Z" },
+                    { eventId: "event-other", queuedBy: "other@example.com", timestamp: "2026-01-02T00:00:00.000Z" },
+                  ],
+                  onsuccess: null,
+                };
+                setTimeout(() => {
+                  if (request.onsuccess) request.onsuccess();
+                }, 0);
+                return request;
+              },
+              delete(eventId) {
+                actions.deletedEvents.push(eventId);
+              },
+            };
+          }
+          throw new Error(`Unexpected store: ${name}`);
+        },
+      };
+      setTimeout(() => {
+        if (typeof transaction.oncomplete === "function") transaction.oncomplete();
+      }, 10);
+      return transaction;
+    },
+  });
+
+  await browserContext.clearOfflineDataForAccount("admin@example.com", false);
+  assert.deepEqual(actions.cleared.sort(), ["apiCache", "roster"]);
+  assert.ok(actions.deletedMetadata.includes("roster"));
+  assert.ok(actions.deletedMetadata.includes("syncCredentials"));
+  assert.deepEqual(actions.deletedEvents, ["event-current"]);
+  assert.equal(browserContext.cachedRosterPromise, null);
+  assert.equal(browserContext.offlineRosterSearchCache, null);
+
+  actions.deletedMetadata = [];
+  await browserContext.clearOfflineDataForAccount("admin@example.com", true);
+  assert.ok(actions.deletedMetadata.includes("roster"));
+  assert.ok(!actions.deletedMetadata.includes("syncCredentials"));
+});
+
+test("offline sync queue count normalizes account email casing and spacing", async () => {
+  const browserContext = vm.createContext({
+    window: { LAMBAS_CONFIG: { apiUrl: "https://example.test/api" } },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    console,
+    setTimeout,
+    clearTimeout,
+  });
+  for (const script of ["app-state.js", "app-offline.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(frontendRoot, "js", script), "utf8"),
+      browserContext,
+      { filename: script },
+    );
+  }
+  browserContext.getOfflineEvents = async () => [
+    { queuedBy: " Admin@Example.com ", status: "pending" },
+    { queuedBy: "other@example.com", status: "pending" },
+  ];
+
+  assert.equal(
+    await browserContext.getBackgroundSyncEventCount("admin@example.com"),
+    1,
+  );
+  assert.deepEqual(
+    Array.from(browserContext.getOfflineSyncBatch(
+      [{ eventId: "one", queuedBy: " Admin@Example.com ", status: "pending", syncMode: "offline" }],
+      "one",
+      "",
+      "admin@example.com",
+    ), (event) => event.eventId),
+    ["one"],
+  );
+  assert.equal(
+    browserContext.getOfflineSyncBatch(
+      [{ eventId: "one", queuedBy: " Admin@Example.com ", status: "complete", syncMode: "offline" }],
+      "one",
+      "",
+      "admin@example.com",
+    ),
+    null,
+  );
 });
 
 test("offline event persistence prefers the session token for service-worker sync", async () => {

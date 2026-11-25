@@ -178,35 +178,161 @@ function toggleLanguage() {
 }
 
 function applyTheme(mode) {
-  mode = mode === "light" ? "light" : "dark";
-  const themeChanged = currentThemeMode !== mode;
+  const preference = normalizeAppearancePreference(appearancePreference);
+  preference.mode = mode === "system" ? "system" : mode === "light" ? "light" : "dark";
+  appearanceDraft = preference;
+  applyAppearancePreference(preference, true);
+}
+
+const appearancePalettes = ["classic", "midnight", "emerald", "pearl", "royal"];
+const appearanceStyles = ["glass", "solid", "minimal"];
+var appearanceDraft = null;
+
+function normalizeAppearancePreference(value) {
+  const fallback = {
+    version: 1,
+    mode: "system",
+    palette: "classic",
+    style: "glass",
+  };
+  if (!value || typeof value !== "object") return fallback;
+  return {
+    version: 1,
+    mode: ["system", "light", "dark"].includes(value.mode)
+      ? value.mode
+      : fallback.mode,
+    palette: appearancePalettes.includes(value.palette)
+      ? value.palette
+      : fallback.palette,
+    style: appearanceStyles.includes(value.style)
+      ? value.style
+      : fallback.style,
+  };
+}
+
+function resolveAppearanceMode(mode) {
+  if (mode === "light" || mode === "dark") return mode;
+  return window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
+function applyAppearancePreference(value, persist) {
+  const preference = normalizeAppearancePreference(value);
+  const resolvedMode = resolveAppearanceMode(preference.mode);
+  appearanceDraft = preference;
   const changeTheme = () => {
-    currentThemeMode = mode;
-    localStorage.setItem("app_theme", mode);
+    currentThemeMode = resolvedMode;
+    localStorage.setItem("app_theme", resolvedMode);
+    if (persist) {
+      localStorage.setItem("app_appearance_v1", JSON.stringify(preference));
+      appearancePreference = preference;
+    }
+    const root = document.documentElement;
     const body = document.body;
-    body.setAttribute("data-theme", mode);
-    document.documentElement.setAttribute("data-theme", mode);
-    body.classList.toggle("theme-light", mode === "light");
-    body.classList.toggle("theme-dark", mode === "dark");
-    document.documentElement.classList.toggle("theme-light", mode === "light");
-    document.documentElement.classList.toggle("theme-dark", mode === "dark");
+    root.dataset.theme = resolvedMode;
+    body.dataset.theme = resolvedMode;
+    root.dataset.palette = preference.palette;
+    body.dataset.palette = preference.palette;
+    root.dataset.visualStyle = preference.style;
+    body.dataset.visualStyle = preference.style;
+    root.classList.toggle("theme-light", resolvedMode === "light");
+    root.classList.toggle("theme-dark", resolvedMode === "dark");
+    body.classList.toggle("theme-light", resolvedMode === "light");
+    body.classList.toggle("theme-dark", resolvedMode === "dark");
+
+    document.querySelectorAll("[data-appearance-mode]").forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.appearanceMode === preference.mode),
+      );
+    });
+    document.querySelectorAll("[data-theme-palette]").forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.themePalette === preference.palette),
+      );
+    });
+    document.querySelectorAll("[data-theme-style]").forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.themeStyle === preference.style),
+      );
+    });
     document
       .getElementById("themeLightOption")
-      ?.setAttribute("aria-pressed", String(mode === "light"));
+      ?.setAttribute("aria-pressed", String(preference.mode === "light"));
     document
       .getElementById("themeDarkOption")
-      ?.setAttribute("aria-pressed", String(mode === "dark"));
-    document
-      .querySelectorAll("[data-setup-theme]")
-      .forEach((button) =>
-        button.setAttribute(
-          "aria-pressed",
-          String(button.dataset.setupTheme === mode),
-        ),
+      ?.setAttribute("aria-pressed", String(preference.mode === "dark"));
+    document.querySelectorAll("[data-setup-theme]").forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.setupTheme === resolvedMode),
+      ),
+    );
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    if (themeColor) {
+      themeColor.setAttribute(
+        "content",
+        resolvedMode === "light" ? "#edf3f7" : "#111827",
       );
+    }
   };
-  if (!themeChanged) changeTheme();
-  else runAppearanceTransition(changeTheme);
+  runAppearanceTransition(changeTheme);
+  return preference;
+}
+
+function previewAppearance(partial) {
+  const preference = normalizeAppearancePreference({
+    ...(appearanceDraft || normalizeAppearancePreference(appearancePreference)),
+    ...partial,
+  });
+  return applyAppearancePreference(preference, false);
+}
+
+function setAppearanceMode(mode) {
+  previewAppearance({ mode });
+}
+
+function setAppearancePalette(palette) {
+  previewAppearance({ palette });
+}
+
+function setAppearanceStyle(style) {
+  previewAppearance({ style });
+}
+
+function applyThemeStudio() {
+  const preference = normalizeAppearancePreference(appearanceDraft);
+  applyAppearancePreference(preference, true);
+  showToast(translations[currentLang].themeApplied, "success");
+}
+
+function resetThemeStudio() {
+  const preference = {
+    version: 1,
+    mode: "system",
+    palette: "classic",
+    style: "glass",
+  };
+  applyAppearancePreference(preference, true);
+  showToast(translations[currentLang].themeReset, "success");
+}
+
+if (typeof window !== "undefined" && window.matchMedia) {
+  const appearanceMedia = window.matchMedia("(prefers-color-scheme: light)");
+  const applySystemAppearance = () => {
+    const preference = normalizeAppearancePreference(appearancePreference);
+    if (preference.mode === "system")
+      applyAppearancePreference(preference, false);
+  };
+  if (appearanceMedia.addEventListener) {
+    appearanceMedia.addEventListener("change", applySystemAppearance);
+  } else if (appearanceMedia.addListener) {
+    appearanceMedia.addListener(applySystemAppearance);
+  }
 }
 
 function toggleTheme() {

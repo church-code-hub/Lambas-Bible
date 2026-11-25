@@ -488,15 +488,23 @@ async function refreshAttendanceContext(force = false) {
   )
     return currentAttendanceContext;
   if (attendanceContextRefreshPromise) return attendanceContextRefreshPromise;
-  attendanceContextRefreshPromise = (async () => {
+  const sessionGeneration = attendanceContextSessionGeneration;
+  const refreshPromise = (async () => {
     try {
       const result = await apiCall(
         "get_attendance_context",
         {},
         (freshResult) => {
-          applyAttendanceContext(freshResult);
+          if (
+            sessionGeneration === attendanceContextSessionGeneration &&
+            currentUser
+          ) applyAttendanceContext(freshResult);
         },
       );
+      if (
+        sessionGeneration !== attendanceContextSessionGeneration ||
+        !currentUser
+      ) return null;
       applyAttendanceContext(result);
       return currentAttendanceContext;
     } catch (error) {
@@ -508,10 +516,12 @@ async function refreshAttendanceContext(force = false) {
         );
       return currentAttendanceContext;
     } finally {
-      attendanceContextRefreshPromise = null;
+      if (attendanceContextRefreshPromise === refreshPromise)
+        attendanceContextRefreshPromise = null;
     }
   })();
-  return attendanceContextRefreshPromise;
+  attendanceContextRefreshPromise = refreshPromise;
+  return refreshPromise;
 }
 
 function zonedAttendanceParts(timestamp, timeZone) {

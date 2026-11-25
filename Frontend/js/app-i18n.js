@@ -33,6 +33,8 @@ const translations = {
       "تسجيل الخروج غير متاح دون اتصال. اتصل بالإنترنت وحاول مرة أخرى.",
     logoutSessionFailed:
       "تعذر تأكيد تسجيل الخروج من الخادم. لا تزال الجلسة نشطة؛ حاول مرة أخرى.",
+    offlineAccountDataClearFailed:
+      "تعذر إتمام مسح بيانات الحساب المحفوظة على هذا الجهاز. يُرجى المحاولة مرة أخرى.",
     offlineQueuedTitle: "محفوظ للمزامنة",
     offlineSyncMessage:
       "سيتم تسجيل الإجراء عند عودة الاتصال والتحقق من الحساب.",
@@ -472,6 +474,8 @@ const translations = {
       "Sign-out is unavailable offline. Reconnect and try again.",
     logoutSessionFailed:
       "The server could not confirm sign-out. Your session is still active; try again.",
+    offlineAccountDataClearFailed:
+      "Could not finish clearing this device's account data. Please try again.",
     offlineQueuedTitle: "Saved for sync",
     offlineSyncMessage:
       "This action will be recorded after connection and account verification return.",

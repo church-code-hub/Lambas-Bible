@@ -1,4 +1,4 @@
-const CACHE_NAME = "lampas-bible-shell-v1";
+const CACHE_NAME = "lambas-bible-shell-v1";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -232,7 +232,12 @@ async function syncPendingEvents() {
       return;
     }
     const pendingEvents = events
-      .filter((event) => event.queuedBy === credentials.email && event.status !== "complete")
+      .filter(
+        (event) =>
+          String(event.queuedBy || "").toLowerCase().trim() ===
+            String(credentials.email || "").toLowerCase().trim() &&
+          event.status !== "complete",
+      )
       .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
     for (let index = 0; index < pendingEvents.length; index += 20) {
       const batch = pendingEvents.slice(index, index + 20);
@@ -263,8 +268,16 @@ async function syncPendingEvents() {
     }
     const remaining = await new Promise((resolve, reject) => {
       const transaction = database.transaction("events", "readonly");
-      const request = transaction.objectStore("events").count();
-      request.onsuccess = () => resolve(request.result);
+      const request = transaction.objectStore("events").getAll();
+      request.onsuccess = () =>
+        resolve(
+          request.result.filter(
+            (event) =>
+              event.status !== "complete" &&
+              String(event.queuedBy || "").toLowerCase().trim() ===
+                String(credentials.email || "").toLowerCase().trim(),
+          ).length,
+        );
       request.onerror = () => reject(request.error || new Error("Could not count pending events"));
     });
     if (!remaining) {

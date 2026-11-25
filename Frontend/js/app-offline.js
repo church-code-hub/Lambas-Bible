@@ -72,7 +72,7 @@ async function clearCachedApiResponses() {
 
 async function getCachedRoster() {
   if (!cachedRosterPromise) {
-    cachedRosterPromise = openOfflineDatabase()
+    const rosterPromise = openOfflineDatabase()
       .then(
         (database) =>
           new Promise((resolve, reject) => {
@@ -86,9 +86,10 @@ async function getCachedRoster() {
           }),
       )
       .catch((error) => {
-        cachedRosterPromise = null;
+        if (cachedRosterPromise === rosterPromise) cachedRosterPromise = null;
         throw error;
       });
+    cachedRosterPromise = rosterPromise;
   }
   return cachedRosterPromise;
 }
@@ -387,6 +388,86 @@ async function clearBackgroundSyncCredentialsIfQueueEmpty() {
   });
 }
 
+async function clearOfflineDataForAccount(email, preservePendingQueue) {
+  const accountEmail = String(email || "").toLowerCase().trim();
+  cachedRosterPromise = null;
+  offlineRosterSearchCache = null;
+  let remainingPendingEvents = [];
+  let syncCredentials = null;
+  if (!preservePendingQueue && accountEmail) {
+    const queuedEvents = await getOfflineEvents();
+    remainingPendingEvents = queuedEvents.filter(
+      (event) =>
+        event &&
+        event.status !== "complete" &&
+        String(event.queuedBy || "").toLowerCase().trim() !== accountEmail,
+    );
+    const credentialDatabase = await openOfflineDatabase();
+    syncCredentials = await new Promise((resolve, reject) => {
+      const transaction = credentialDatabase.transaction(
+        "metadata",
+        "readonly",
+      );
+      const request = transaction
+        .objectStore("metadata")
+        .get("syncCredentials");
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () =>
+        reject(
+          transaction.error ||
+            new Error("Could not inspect background sync credentials"),
+        );
+    });
+  }
+  const database = await openOfflineDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(
+      ["events", "roster", "apiCache", "metadata"],
+      "readwrite",
+    );
+    transaction.objectStore("roster").clear();
+    transaction.objectStore("apiCache").clear();
+    const metadata = transaction.objectStore("metadata");
+    metadata.delete("roster");
+    if (!preservePendingQueue && accountEmail) {
+      const credentialEmail = String(syncCredentials?.email || "")
+        .toLowerCase()
+        .trim();
+      const credentialHasRetainedQueue = remainingPendingEvents.some(
+        (event) =>
+          String(event.queuedBy || "").toLowerCase().trim() === credentialEmail,
+      );
+      if (!credentialHasRetainedQueue) metadata.delete("syncCredentials");
+    }
+
+    if (!preservePendingQueue && accountEmail) {
+      const eventsStore = transaction.objectStore("events");
+      const eventsRequest = eventsStore.getAll();
+      eventsRequest.onsuccess = () => {
+        (eventsRequest.result || []).forEach((event) => {
+          const queuedBy = String(event.queuedBy || "").toLowerCase().trim();
+          if (queuedBy === accountEmail) {
+            eventsStore.delete(event.eventId);
+          }
+        });
+      };
+    }
+    transaction.oncomplete = resolve;
+    transaction.onerror = () =>
+      reject(
+        transaction.error ||
+          new Error("Could not clear account offline data"),
+      );
+    transaction.onabort = () =>
+      reject(
+        transaction.error ||
+          new Error("Account offline data clear was cancelled"),
+      );
+  });
+  cachedRosterPromise = null;
+  offlineRosterSearchCache = null;
+}
+
 function registerPendingEventsSync() {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.ready
@@ -438,11 +519,13 @@ async function getOfflineEventCount() {
 }
 
 async function getBackgroundSyncEventCount(email = "") {
+  const accountEmail = String(email || "").toLowerCase().trim();
   const events = await getOfflineEvents();
   return events.filter(
     (event) =>
       event.status !== "complete" &&
-      (!email || event.queuedBy === email),
+      (!accountEmail ||
+        String(event.queuedBy || "").toLowerCase().trim() === accountEmail),
   ).length;
 }
 
@@ -828,17 +911,21 @@ function offlineEventDescription(event) {
 }
 
 function getOfflineSyncBatch(events, targetEventId, groupType, accountEmail) {
+  const normalizedAccountEmail = String(accountEmail || "").toLowerCase().trim();
+  const belongsToAccount = (event) =>
+    String(event?.queuedBy || "").toLowerCase().trim() === normalizedAccountEmail;
   if (targetEventId) {
     const target = events.find((event) => event.eventId === targetEventId);
     return target &&
-      target.queuedBy === accountEmail &&
+      belongsToAccount(target) &&
+      target.status !== "complete" &&
       target.syncMode !== "online"
       ? [target]
       : null;
   }
   const eligibleEvents = events.filter(
     (event) =>
-      event.queuedBy === accountEmail &&
+      belongsToAccount(event) &&
       event.status !== "complete" &&
       event.syncMode !== "online",
   );
@@ -888,9 +975,15 @@ async function syncOfflineQueue(
       : groupType
         ? events.filter(
             (event) =>
-              event.queuedBy === currentUser.email && event.type === groupType,
+              String(event.queuedBy || "").toLowerCase().trim() ===
+                String(currentUser.email || "").toLowerCase().trim() &&
+              event.type === groupType,
           )
-        : events.filter((event) => event.queuedBy === currentUser.email);
+        : events.filter(
+            (event) =>
+              String(event.queuedBy || "").toLowerCase().trim() ===
+              String(currentUser.email || "").toLowerCase().trim(),
+          );
     progress = showProgress ? createOfflineSyncProgress(progressEvents) : null;
     while (events.length && navigator.onLine && currentUser && hasApiCredential_()) {
       const batch = getOfflineSyncBatch(
@@ -1134,7 +1227,11 @@ async function renderOfflineQueue() {
       groupSync.dataset.onlineOnly = "";
       groupSync.textContent = translations[currentLang].offlineSyncGroup;
       groupSync.disabled =
-        !groupEvents.some((event) => event.queuedBy === currentUser?.email) ||
+        !groupEvents.some(
+          (event) =>
+            String(event.queuedBy || "").toLowerCase().trim() ===
+            String(currentUser?.email || "").toLowerCase().trim(),
+        ) ||
         isSyncingOfflineQueue;
       groupSync.addEventListener("click", () =>
         syncOfflineQueue("", true, type),
@@ -1180,7 +1277,9 @@ async function renderOfflineQueue() {
           ? translations[currentLang].offlineRetry
           : translations[currentLang].offlineSyncEvent;
         retryButton.disabled =
-          event.queuedBy !== currentUser?.email || isSyncingOfflineQueue;
+          String(event.queuedBy || "").toLowerCase().trim() !==
+            String(currentUser?.email || "").toLowerCase().trim() ||
+          isSyncingOfflineQueue;
         retryButton.addEventListener("click", () => {
           actionMenu.open = false;
           runButtonAction(retryButton, () => syncOfflineQueue(event.eventId, true));

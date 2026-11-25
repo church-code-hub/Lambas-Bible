@@ -40,6 +40,7 @@ window.addEventListener("DOMContentLoaded", async function () {
     });
   });
   if (hasSavedUser) {
+    invalidateAccountAttendanceContext_(savedUser.email);
     currentUser = savedUser;
     if (navigator.onLine) {
       if (backendSessionToken || googleIdToken) {
@@ -214,6 +215,7 @@ async function handleCredentialResponse(response) {
         .toLowerCase()
         .trim() === payload.email.toLowerCase().trim()
     ) {
+      invalidateAccountAttendanceContext_(payload.email);
       currentUser = {
         email: payload.email.toLowerCase().trim(),
         name: authRes.adminName || payload.name || payload.email,
@@ -924,6 +926,15 @@ function finishFirstRunTutorial() {
   if (currentActiveViewId === "dashboardView") refreshCurrentAttendeesWindow();
 }
 
+async function invalidateAccountAttendanceContext_(nextEmail) {
+  const previousEmail = String(currentUser?.email || "").toLowerCase().trim();
+  const normalizedNextEmail = String(nextEmail || "").toLowerCase().trim();
+  if (previousEmail === normalizedNextEmail) return;
+  attendanceContextSessionGeneration++;
+  attendanceContextRefreshPromise = null;
+  currentAttendanceContext = null;
+}
+
 async function logoutUser(msg, backendSessionRejected = false) {
   const sessionToken = backendSessionToken;
   const email = currentUser && currentUser.email ? currentUser.email : "";
@@ -936,9 +947,10 @@ async function logoutUser(msg, backendSessionRejected = false) {
     );
     return false;
   }
+  let logoutResult = null;
   if (sessionToken && !backendSessionRejected) {
     try {
-      await retireBackendSession_(sessionToken, email);
+      logoutResult = await retireBackendSession_(sessionToken, email);
     } catch (error) {
       console.warn("Could not revoke the app session during logout.", error);
       showToast(
@@ -946,6 +958,25 @@ async function logoutUser(msg, backendSessionRejected = false) {
         "error",
       );
       return false;
+    }
+  }
+  attendanceContextSessionGeneration++;
+  attendanceContextRefreshPromise = null;
+  currentAttendanceContext = null;
+  if (typeof clearOfflineDataForAccount === "function") {
+    try {
+      await clearOfflineDataForAccount(
+        email,
+        Boolean(logoutResult && logoutResult.preserveForSync),
+      );
+    } catch (error) {
+      console.warn("Could not clear account offline data during logout.", error);
+      showToast(
+        translations[currentLang]?.offlineAccountDataClearFailed ||
+          "Could not finish clearing this device's account data.",
+        "error",
+        8000,
+      );
     }
   }
   backendSessionToken = "";
@@ -991,11 +1022,11 @@ async function retireBackendSession_(sessionToken, email) {
   const result = await response.json();
   if (!result || result.success !== true)
     throw new Error("The server did not confirm session logout.");
-  if (preserveForSync && typeof result.revoked !== "boolean")
-    throw new Error("The server did not confirm the session's logout state.");
+  if (preserveForSync && result.revoked !== false)
+    throw new Error("The server did not confirm sync-only logout.");
   if (!preserveForSync && result.revoked !== true)
     throw new Error("The server did not revoke the app session.");
-  return result;
+  return { ...result, preserveForSync };
 }
 
 function showLoginError(msg) {

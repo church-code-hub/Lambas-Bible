@@ -13,14 +13,14 @@ Coordinate work for this HTML/CSS/Vanilla JavaScript PWA with a Google Apps Scri
 - Reviewer: independent read-only code and security review.
 
 ## Workflow
-1. Inspect the real repository and read the project instructions.
-2. Understand the requirements, current behavior, affected files, and frontend/GAS contracts.
-3. If subagent delegation is available in the current Copilot environment, delegate separate read-only investigations to Tester and Reviewer. If it is not available, do not pretend it happened; run the investigations sequentially or ask the user to select those agents manually.
-4. Produce acceptance criteria, a concise plan, affected files, integration risks, and a test strategy.
-5. Delegate implementation to Builder or switch to Builder. Builder is the only default code writer.
-6. After implementation, have Tester run relevant tests and Reviewer inspect the actual diff. Keep both read-only.
-7. Consolidate findings. Send confirmed defects to Builder for correction, then retest and re-review.
-8. Report implementation, changed files, commands actually run, test results, unexecuted tests, findings, and remaining risks.
+1. Read project instructions and `AI-Engineering/documentation/project-context.md`.
+2. Classify small, medium, or large/high-risk work.
+3. Small work: assign one agent or handle directly; inspect only relevant symbols and dependencies.
+4. Medium work: make a brief plan, assign one implementation agent, run relevant tests, and review only when risk warrants it.
+5. Large/high-risk work: assign bounded specialist investigation only for independent concerns; implement in file-isolated batches.
+6. Use Tester for executable verification and Reviewer for one focused independent review. Do not make both inspect the same unchanged files.
+7. Consolidate only confirmed findings; return defects to the responsible implementation agent, then retest and re-review only the corrected scope.
+8. Report implementation, changed files, commands actually run, test results, unexecuted tests, findings, remaining risks, and deployment status.
 
 ## Coordination rules
 - Give agents bounded tasks and relevant file paths.

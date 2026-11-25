@@ -12,14 +12,31 @@
     <script src="./js/config.js"></script>
     <script>
       (() => {
-        const savedTheme = window.LAMBAS_TEST_STORAGE_READY === true
-          ? localStorage.getItem("app_theme")
-          : null;
+        let savedMode = null;
+        let palette = "classic";
+        let style = "glass";
+        if (window.LAMBAS_TEST_STORAGE_READY === true) {
+          savedMode = localStorage.getItem("app_theme");
+          try {
+            const appearance = JSON.parse(
+              localStorage.getItem("app_appearance_v1") || "null",
+            );
+            if (appearance?.version === 1) {
+              savedMode = appearance.mode || savedMode;
+              palette = appearance.palette || palette;
+              style = appearance.style || style;
+            }
+          } catch {}
+        }
         const systemTheme = window.matchMedia &&
           window.matchMedia("(prefers-color-scheme: light)").matches
           ? "light"
           : "dark";
-        document.documentElement.dataset.theme = savedTheme || systemTheme;
+        const resolvedMode =
+          savedMode === "system" || !savedMode ? systemTheme : savedMode;
+        document.documentElement.dataset.theme = resolvedMode;
+        document.documentElement.dataset.palette = palette;
+        document.documentElement.dataset.visualStyle = style;
       })();
     </script>
     <script src="https://accounts.google.com/gsi/client" defer></script>
@@ -30,7 +47,7 @@
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#0d1b2a" />
     <link rel="apple-touch-icon" href="Assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="./css/styles.css?v=88" />
+    <link rel="stylesheet" href="./css/styles.css?v=89" />
   </head>
   <body data-theme="dark">
     <div class="ambient-blobs" aria-hidden="true">
@@ -381,13 +398,62 @@
         </section>
         <section class="app-preference-group" aria-labelledby="appThemeTitle">
           <h3 id="appThemeTitle" data-i18n="themeSettingTitle">المظهر</h3>
-          <div class="preference-options" role="group" aria-labelledby="appThemeTitle">
-            <button id="themeLightOption" type="button" class="preference-option" onclick="applyTheme('light')">
-              <i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">فاتح</span>
-            </button>
-            <button id="themeDarkOption" type="button" class="preference-option" onclick="applyTheme('dark')">
-              <i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">داكن</span>
-            </button>
+          <div class="theme-studio" id="themeStudio">
+            <div class="theme-studio-section">
+              <h4 data-i18n="appearanceModeTitle">Appearance mode</h4>
+              <div class="preference-options theme-mode-options" role="group" aria-label="Appearance mode">
+                <button type="button" class="preference-option" data-appearance-mode="system" aria-pressed="true" onclick="setAppearanceMode('system')">
+                  <i class="fa-solid fa-desktop"></i><span data-i18n="systemTheme">System</span>
+                </button>
+                <button id="themeLightOption" type="button" class="preference-option" data-appearance-mode="light" aria-pressed="false" onclick="setAppearanceMode('light')">
+                  <i class="fa-solid fa-sun"></i><span data-i18n="lightTheme">Light</span>
+                </button>
+                <button id="themeDarkOption" type="button" class="preference-option" data-appearance-mode="dark" aria-pressed="false" onclick="setAppearanceMode('dark')">
+                  <i class="fa-solid fa-moon"></i><span data-i18n="darkTheme">Dark</span>
+                </button>
+              </div>
+            </div>
+            <div class="theme-studio-section">
+              <h4 data-i18n="paletteTitle">Color palette</h4>
+              <div class="theme-palette-grid" role="group" aria-label="Color palette">
+                <button type="button" class="theme-preset-card" data-theme-palette="classic" aria-pressed="true" onclick="setAppearancePalette('classic')">
+                  <span class="theme-preset-preview palette-classic"><i></i><b></b><em></em></span>
+                  <span data-i18n="paletteClassic">Lambas Classic</span>
+                </button>
+                <button type="button" class="theme-preset-card" data-theme-palette="midnight" aria-pressed="false" onclick="setAppearancePalette('midnight')">
+                  <span class="theme-preset-preview palette-midnight"><i></i><b></b><em></em></span>
+                  <span data-i18n="paletteMidnight">Midnight</span>
+                </button>
+                <button type="button" class="theme-preset-card" data-theme-palette="emerald" aria-pressed="false" onclick="setAppearancePalette('emerald')">
+                  <span class="theme-preset-preview palette-emerald"><i></i><b></b><em></em></span>
+                  <span data-i18n="paletteEmerald">Emerald</span>
+                </button>
+                <button type="button" class="theme-preset-card" data-theme-palette="pearl" aria-pressed="false" onclick="setAppearancePalette('pearl')">
+                  <span class="theme-preset-preview palette-pearl"><i></i><b></b><em></em></span>
+                  <span data-i18n="palettePearl">Pearl</span>
+                </button>
+                <button type="button" class="theme-preset-card" data-theme-palette="royal" aria-pressed="false" onclick="setAppearancePalette('royal')">
+                  <span class="theme-preset-preview palette-royal"><i></i><b></b><em></em></span>
+                  <span data-i18n="paletteRoyal">Royal</span>
+                </button>
+              </div>
+            </div>
+            <div class="theme-studio-section">
+              <h4 data-i18n="visualStyleTitle">Visual style</h4>
+              <div class="preference-options theme-style-options" role="group" aria-label="Visual style">
+                <button type="button" class="preference-option" data-theme-style="glass" aria-pressed="true" onclick="setAppearanceStyle('glass')"><i class="fa-solid fa-layer-group"></i><span data-i18n="styleGlass">Glass</span></button>
+                <button type="button" class="preference-option" data-theme-style="solid" aria-pressed="false" onclick="setAppearanceStyle('solid')"><i class="fa-solid fa-square"></i><span data-i18n="styleSolid">Solid</span></button>
+                <button type="button" class="preference-option" data-theme-style="minimal" aria-pressed="false" onclick="setAppearanceStyle('minimal')"><i class="fa-solid fa-minus"></i><span data-i18n="styleMinimal">Minimal</span></button>
+              </div>
+            </div>
+            <div class="theme-preview-shell" aria-label="Theme preview">
+              <div class="theme-preview-bar"></div>
+              <div class="theme-preview-content"><span></span><span></span><span></span></div>
+            </div>
+            <div class="theme-studio-actions">
+              <button type="button" class="btn" onclick="applyThemeStudio()" data-i18n="applyTheme">Apply</button>
+              <button type="button" class="btn secondary" onclick="resetThemeStudio()" data-i18n="resetTheme">Reset</button>
+            </div>
           </div>
         </section>
         <section class="app-preference-group" aria-labelledby="scanModeSettingTitle">
@@ -1448,8 +1514,8 @@
     </div>
 
   <script src="./js/app-state.js?v=79"></script>
-  <script src="./js/app-i18n.js?v=88"></script>
-  <script src="./js/app-core.js?v=77"></script>
+  <script src="./js/app-i18n.js?v=89"></script>
+  <script src="./js/app-core.js?v=78"></script>
   <script src="./js/app-offline.js?v=78"></script>
   <script src="./js/app-views.js?v=90"></script>
   <script src="./js/app-individual.js?v=2"></script>

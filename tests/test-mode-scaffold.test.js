@@ -307,91 +307,91 @@ test("same production/test spreadsheet IDs are rejected before opening a sheet",
     spreadsheetId: "same-id",
     productionSpreadsheetId: "same-id",
   });
-
-  test("Test Mode password is checked only on the server and is not returned", () => {
-    const context = createBackendContext();
-    const valid = context.doPost({
-      postData: {
-        contents: JSON.stringify({
-          action: "verify_test_mode_password",
-          idToken: "test-token",
-          password: "test-password-only-for-tests",
-        }),
-      },
-    });
-    const invalid = context.doPost({
-      postData: {
-        contents: JSON.stringify({
-          action: "verify_test_mode_password",
-          idToken: "test-token",
-          password: "wrong",
-        }),
-      },
-    });
-    assert.deepEqual(valid, { success: true, valid: true });
-    assert.deepEqual(invalid, { success: true, valid: false });
-    assert.equal(JSON.stringify(valid).includes("test-password-only-for-tests"), false);
-  });
-
-  test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
-    const context = createBackendContext();
-    const status = post(
-      context,
-      "get_whatsapp_automation_status",
-      "test-token",
-    );
-    assert.equal(status.success, true);
-    assert.equal(status.configured, false);
-    assert.equal(status.sendingEnabled, false);
-    assert.equal(status.schedulingEnabled, false);
-    assert.equal(status.providerImplemented, false);
-
-    const rejected = context.doPost({
-      postData: {
-        contents: JSON.stringify({
-          action: "validate_whatsapp_automation_intent",
-          idToken: "test-token",
-          type: "birthday",
-          personId: "7",
-          templateName: "approved-test-template",
-          idempotencyKey: "birthday:7:2026",
-          optedIn: false,
-        }),
-      },
-    });
-    assert.equal(rejected.success, false);
-    assert.equal(rejected.code, "WHATSAPP_OPT_IN_REQUIRED");
-    const consentedContext = createBackendContext({
-      whatsappConsentRows: [
-        ["Person ID", "Opted In"],
-        ["7", true],
-      ],
-      whatsappRosterRows: [
-        ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
-        ["7", "Test Person", "", "+15555550100", "", "Active"],
-      ],
-    });
-    const notSent = consentedContext.doPost({
-      postData: {
-        contents: JSON.stringify({
-          action: "validate_whatsapp_automation_intent",
-          idToken: "test-token",
-          type: "birthday",
-          personId: "7",
-          templateName: "approved-test-template",
-          idempotencyKey: "birthday:7:2026",
-          optedIn: true,
-        }),
-      },
-    });
-    assert.equal(notSent.success, false);
-    assert.equal(notSent.code, "WHATSAPP_PROVIDER_NOT_IMPLEMENTED");
-    assert.match(backendSource, /WHATSAPP_PROVIDER_NOT_IMPLEMENTED/);
-  });
   const response = post(context, "check_test_access", "test-token");
 
   assert.equal(response.code, "TEST_MODE_NOT_CONFIGURED");
   assert.deepEqual(context.openedSpreadsheetIds, []);
+});
+
+test("Test Mode password is checked only on the server and is not returned", () => {
+  const context = createBackendContext();
+  const valid = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "verify_test_mode_password",
+        idToken: "test-token",
+        password: "test-password-only-for-tests",
+      }),
+    },
+  });
+  const invalid = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "verify_test_mode_password",
+        idToken: "test-token",
+        password: "wrong",
+      }),
+    },
+  });
+  assert.deepEqual(valid, { success: true, valid: true });
+  assert.deepEqual(invalid, { success: true, valid: false });
+  assert.equal(JSON.stringify(valid).includes("test-password-only-for-tests"), false);
+});
+
+test("WhatsApp scaffold is disabled and enforces explicit consent", () => {
+  const context = createBackendContext();
+  const status = post(
+    context,
+    "get_whatsapp_automation_status",
+    "test-token",
+  );
+  assert.equal(status.success, true);
+  assert.equal(status.configured, false);
+  assert.equal(status.sendingEnabled, false);
+  assert.equal(status.schedulingEnabled, false);
+  assert.equal(status.providerImplemented, false);
+
+  const rejected = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "validate_whatsapp_automation_intent",
+        idToken: "test-token",
+        type: "birthday",
+        personId: "7",
+        templateName: "approved-test-template",
+        idempotencyKey: "birthday:7:2026",
+        optedIn: false,
+      }),
+    },
+  });
+  assert.equal(rejected.success, false);
+  assert.equal(rejected.code, "WHATSAPP_OPT_IN_REQUIRED");
+  const consentedContext = createBackendContext({
+    whatsappConsentRows: [
+      ["Person ID", "Opted In"],
+      ["7", true],
+    ],
+    whatsappRosterRows: [
+      ["ID", "Name", "Birthdate", "Phone", "Drive Link", "Status"],
+      ["7", "Test Person", "", "+15555550100", "", "Active"],
+    ],
+  });
+  const notSent = consentedContext.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: "validate_whatsapp_automation_intent",
+        idToken: "test-token",
+        type: "birthday",
+        personId: "7",
+        templateName: "approved-test-template",
+        idempotencyKey: "birthday:7:2026",
+        optedIn: true,
+      }),
+    },
+  });
+  assert.equal(notSent.success, false);
+  assert.equal(notSent.code, "WHATSAPP_PROVIDER_NOT_IMPLEMENTED");
+  assert.match(backendSource, /WHATSAPP_PROVIDER_NOT_IMPLEMENTED/);
 });
 
 test("spreadsheet access is test-only and all sensitive properties require TEST_ names", () => {
@@ -624,7 +624,7 @@ test("test clone is visibly marked, has same-origin return, and no entry action"
   assert.match(auth, /const clearStores = \["roster", "apiCache"\]/);
   assert.match(state, /LAMBAS_TEST_STORAGE_READY/);
   assert.match(appOffline, /lambas-test-mode-attendance-offline-v1/);
-  assert.match(serviceWorker, /lambas-test-mode-shell-v8/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v9/);
   assert.doesNotMatch(serviceWorker, /lambas-attendance-offline/);
   assert.match(serviceWorker, /action: "check_test_access"/);
   assert.match(productionServiceWorker, /requestUrl\.pathname\.startsWith\(testModePath\)/);
@@ -769,6 +769,47 @@ test("dashboard editor move controls keep vertical semantics at desktop widths",
   );
   assert.match(styles, /\.dashboard-editor-list\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.doesNotMatch(styles, /\.dashboard-editor-list\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
+});
+
+test("Test Mode Theme Studio offers palettes, styles, system mode and isolated persistence", () => {
+  const html = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "index.html"),
+    "utf8",
+  );
+  const core = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "js", "app-core.js"),
+    "utf8",
+  );
+  const foundation = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "css", "01-foundation.css"),
+    "utf8",
+  );
+  const serviceWorker = fs.readFileSync(
+    path.join(testModeRoot, "Frontend", "sw.js"),
+    "utf8",
+  );
+
+  for (const palette of ["classic", "midnight", "emerald", "pearl", "royal"]) {
+    assert.match(html, new RegExp(`data-theme-palette="${palette}"`));
+  }
+  for (const style of ["glass", "solid", "minimal"]) {
+    assert.match(html, new RegExp(`data-theme-style="${style}"`));
+  }
+  assert.match(html, /data-appearance-mode="system"/);
+  assert.match(html, /onclick="applyThemeStudio\(\)"/);
+  assert.match(html, /onclick="resetThemeStudio\(\)"/);
+  assert.match(core, /app_appearance_v1/);
+  assert.match(core, /prefers-color-scheme/);
+  assert.match(core, /normalizeAppearancePreference/);
+  assert.match(core, /applyAppearancePreference/);
+  assert.match(core, /addListener/);
+  assert.match(foundation, /data-visual-style="solid"/);
+  assert.match(foundation, /data-visual-style="minimal"/);
+  assert.match(foundation, /data-palette="midnight"\]\[data-theme="light"/);
+  assert.match(foundation, /data-palette="emerald"\]\[data-theme="light"/);
+  assert.match(foundation, /data-palette="pearl"\]\[data-theme="dark"/);
+  assert.match(foundation, /data-palette="royal"\]\[data-theme="light"/);
+  assert.match(serviceWorker, /lambas-test-mode-shell-v9/);
 });
 
 test("fullscreen scanner uses the existing background gradient token", () => {

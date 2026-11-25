@@ -31,6 +31,7 @@ var isProcessingScan = false;
 var currentAttendanceEventId = "";
 var currentAttendanceContext = null;
 var attendanceContextRefreshPromise = null;
+var attendanceContextSessionGeneration = 0;
 var isNameSearchRunning = false;
 var isCardSearchRunning = false;
 var pushMessageHandlerRegistered = false;

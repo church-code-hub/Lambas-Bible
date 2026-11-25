@@ -88,7 +88,31 @@ var currentEmergencyCheckoutId = "";
 var appearanceTransitionTimeout = 0;
 var appearanceTransitionGeneration = 0;
 var currentLang = localStorage.getItem("app_lang") || "ar";
+var appearancePreference =
+  (() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("app_appearance_v1") || "null",
+      );
+      if (saved?.version === 1) return saved;
+    } catch {}
+    const legacyMode = localStorage.getItem("app_theme");
+    return legacyMode === "light" || legacyMode === "dark"
+      ? {
+          version: 1,
+          mode: legacyMode,
+          palette: "classic",
+          style: "glass",
+        }
+      : null;
+  })();
 var currentThemeMode =
+  appearancePreference?.mode === "system"
+    ? ((window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: light)").matches)
+      ? "light"
+      : "dark")
+    : appearancePreference?.mode ||
   localStorage.getItem("app_theme") ||
   (window.matchMedia &&
   window.matchMedia("(prefers-color-scheme: light)").matches

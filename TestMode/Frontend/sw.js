@@ -1,8 +1,8 @@
-const CACHE_NAME = "lambas-test-mode-shell-v8";
+const CACHE_NAME = "lambas-test-mode-shell-v9";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/styles.css?v=88",
+  "./css/styles.css?v=89",
   "./css/01-foundation.css",
   "./css/02-app-chrome.css",
   "./css/03-feedback.css",
@@ -14,8 +14,8 @@ const APP_SHELL = [
   "./css/09-sync-progress.css",
   "./js/app-state.js?v=79",
   "./js/storage-namespace.js",
-  "./js/app-i18n.js?v=88",
-  "./js/app-core.js?v=77",
+  "./js/app-i18n.js?v=89",
+  "./js/app-core.js?v=78",
   "./js/app-offline.js?v=78",
   "./js/app-views.js?v=90",
   "./js/app-individual.js?v=2",

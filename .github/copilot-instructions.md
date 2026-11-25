@@ -39,3 +39,22 @@ Do not discard unrelated changes. Do not commit, push, publish, deploy, or modif
 
 ## Final response
 Report changes, files modified, tests actually executed and results, review findings, and remaining risks.
+
+## Engineering workflow
+- Inspect existing implementation before proposing or making changes.
+- Define acceptance criteria, affected files, contracts, risks, and tests before implementation.
+- Keep production and Test Mode isolated; never use production data or resources for tests.
+- Never modify QR generation, encryption, decryption, token formats, or card compatibility unless separately authorized.
+- Never commit, push, publish, or deploy without explicit approval.
+- Have implementation independently reviewed and tested where available.
+- Report implemented, tested, reviewed, and deployed work separately.
+
+## Efficiency routing
+- Load only the project context and relevant modules required by the task.
+- Use exact-symbol search and targeted line ranges. Avoid full-file dumps, broad scans, and re-reading unchanged context.
+- Small tasks: one focused implementation and one relevant verification.
+- Medium tasks: concise plan, implementation, relevant tests, and diff review.
+- Large/high-risk tasks: bounded investigation, staged implementation, targeted tests, and independent review.
+- Delegate only when specialist expertise or independent review adds value. One implementation agent owns each file set.
+- Choose the cheapest reliable model tier: automatic routing when available, or low-cost, economical, capable, and strong-reasoning tiers as complexity requires.
+- Preserve task handoffs as concise facts, not full conversation history.
